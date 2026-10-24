@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 # Windows consoles/pipes may default to a legacy encoding that cannot draw the logo or accents.
@@ -10,7 +11,7 @@ import login
 import utils
 from apis.spotify import Spotify
 from apis.youtube import YouTube
-from const import colours, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
+from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
 from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
 
 DEFAULT_WORKERS = 5  # songs downloaded at the same time
@@ -175,7 +176,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
         downloader.rm_tmp_folder()
 
     if success:
-        print(f"\n{colours.OKGREEN}Download complete!{colours.ENDC} (check the downloads folder)\n")
+        print(f"\n{colours.OKGREEN}Download complete!{colours.ENDC} Your songs are in:\n  {os.path.abspath(downloader.last_output_path)}\n")
     else:
         print(f"\n{colours.FAIL}Download failed!{colours.ENDC} If you need help, please visit {HELP_URL}\n\n")
         sys.exit(1)

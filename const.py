@@ -32,6 +32,8 @@ class colours:
 
 LIKED_KEYWORD = "liked"
 
+# Songs always go here, inside the project, whatever folder the program is started from.
+DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
 BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 LEGAL_PATH_CHARACTERS = string.ascii_letters + string.digits+ " ()[]" + "_-.,&'!@#$%^&+=~`"
 

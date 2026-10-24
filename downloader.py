@@ -1,10 +1,11 @@
-from const import colours
+from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename, long_path, is_hard_to_open
 from utils import resave_audio_clip_with_metadata
+import os
 import sys
 import shutil
 import threading
@@ -95,6 +96,7 @@ class SpotifyDownloader():
         self.short_max_seconds = short_max_seconds
         self._print_lock = threading.Lock()
         self.planned = 0       # songs actually attempted in the last download_tracks call
+        self.last_output_path = None   # folder where the songs of the last request were saved
 
     def _download_collection(self, kind, folder, retrieve, not_found_message):
         """Shared flow for albums, playlists and liked songs. Returns True if at least one track was saved."""
@@ -102,7 +104,7 @@ class SpotifyDownloader():
 
         try:
             collection = retrieve()
-            output_path = f"downloads/{folder}/{sanitize_filename(collection.get_title())}/"
+            output_path = os.path.join(DOWNLOADS_DIR, folder, sanitize_filename(collection.get_title())) + os.sep
             tracks = collection.get_tracks()
         except (SpotifyAlbumNotFound, SpotifyPlaylistNotFound):
             print(f"\n{colours.FAIL}Error: {colours.ENDC}{colours.WARNING}{not_found_message}{colours.ENDC}\n")
@@ -127,6 +129,7 @@ class SpotifyDownloader():
         if not tracks:
             return False
 
+        self.last_output_path = output_path
         self.prep_folder(output_path)
         skipped = self.download_tracks(output_path, tracks)
 
@@ -213,7 +216,8 @@ class SpotifyDownloader():
         skipped tracks. Standalone, they are reported here and False is returned."""
 
         try:
-            output_path = output_path if output_path else "downloads/tracks/"
+            output_path = output_path if output_path else os.path.join(DOWNLOADS_DIR, "tracks") + os.sep
+            self.last_output_path = output_path
 
             if track_url:
                 track = self.spotify_client.track(track_url)
