@@ -103,9 +103,7 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 - **Dónde quedan los MP3.** Siempre en la carpeta `downloads` **dentro del proyecto**, sin importar desde dónde lo ejecutes. Al terminar, el programa muestra la ruta completa.
 - **“Me gusta” con muchas canciones.** Usa `-l --last 50` para bajar solo las más recientes: pide a Spotify únicamente esas (una petición en lugar de veinte). Más adelante puedes repetirlo con otro número y las que ya tienes se saltan, así que sirve para ir actualizando.
 - **Se puede cortar y reanudar.** Si ya existe `Artista - Título.mp3`, se salta. Vuelve a ejecutar el mismo enlace y sigue donde quedó.
-- **Videos con restricción de edad.** El programa prueba automáticamente otra coincidencia (casi siempre hay una versión sin restricción).
-  Si no la hay, puedes dejar que use tu sesión de YouTube con `--cookies-from-browser firefox` (o `chrome`, `edge`…): tienes que haber iniciado
-  sesión en YouTube en ese navegador. Úsalo solo si lo necesitas: usar tu cuenta para bajadas masivas puede llevar a que YouTube la limite. Es opcional y no está probado en todos los navegadores.
+- **Videos para mayores de edad.** Si la única versión de una canción en YouTube está marcada para mayores de edad, YouTube exige iniciar sesión y el programa no puede bajarla sin tu cuenta. En el **modo guiado**, al terminar te pregunta si quieres usar la sesión de YouTube que ya tienes en tu navegador: escribe `firefox` (el que mejor funciona), `chrome`, `edge`... o Enter para dejarlas. En la línea de comandos: `--cookies-from-browser firefox`. Solo se lee el navegador que elijas, y solo cuando lo eliges. Si usas Chrome o Edge, ciérralo por completo antes.
 - **Canciones saltadas.** Al final se lista cuáles no se pudieron bajar y por qué. Archivos locales y podcasts de una playlist se ignoran.
 - **Nombre de archivo:** `Artista - Título.mp3`, dentro de `downloads/playlists/<nombre>/`, `downloads/albums/<nombre>/` o `downloads/tracks/`.
 
@@ -120,6 +118,8 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 | Muchas canciones saltadas con “No YouTube video matches…” | Normal en temas muy nuevos o raros; el programa prefiere saltar antes que bajar una versión equivocada. |
 | Dejó de funcionar de golpe | YouTube cambia seguido. El programa busca solo una versión nueva de `yt-dlp` **una vez al día**. Si acaba de fallar, borra el archivo `.ytdlp_last_check` y vuelve a abrirlo para forzar la búsqueda. |
 | Dos canciones con el mismo nombre | Si la misma canción está repetida en la lista, se baja una sola vez. Si son versiones distintas con el mismo nombre (por ejemplo la original y la *Remastered*), la segunda se guarda como `Artista - Título (2).mp3` y el programa te avisa. |
+| “YouTube pidió comprobar que no eres un robot” | Pasa a veces con un video concreto: el programa prueba solo otra versión de la canción, y al final reintenta una vez las que YouTube rechazó. Si siguen saltadas, espera unos minutos y ejecuta **el mismo enlace**: solo baja las que faltan. |
+| “YouTube marca este video para mayores de edad” | Mira la sección *Videos para mayores de edad* de arriba. |
 | “YouTube te está bloqueando” | Tras 5 canciones seguidas rechazadas el programa se detiene para no empeorarlo. Espera un rato (a veces hasta una hora) o cambia de red y ejecuta **el mismo enlace**: lo ya descargado se salta. |
 
 ## Para desarrolladores

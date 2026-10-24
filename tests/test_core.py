@@ -404,13 +404,16 @@ def _run(outcomes, workers, capsys):
             raise outcomes[track.n]
         return True
 
+    import downloader
     d = SpotifyDownloader(None, None, workers=workers)
-    orig = SpotifyDownloader.download_track
+    orig, orig_delay = SpotifyDownloader.download_track, downloader.RETRY_PASS_DELAY_SECONDS
     SpotifyDownloader.download_track = fake
+    downloader.RETRY_PASS_DELAY_SECONDS = 0       # the end-of-run retry would otherwise wait 15 s
     try:
         skipped = d.download_tracks("out/", [_Song(n) for n in range(len(outcomes))])
     finally:
         SpotifyDownloader.download_track = orig
+        downloader.RETRY_PASS_DELAY_SECONDS = orig_delay
     return d, attempts, skipped, capsys.readouterr().out
 
 
@@ -435,13 +438,13 @@ def test_a_success_in_between_resets_the_streak(capsys):
     outcomes = [b, b, b, b, None, b, b, b, b, None, b, b, b, b]     # never 5 in a row
     d, attempts, skipped, out = _run(outcomes, workers=1, capsys=capsys)
     assert not d.blocked
-    assert len(attempts) == len(outcomes)
+    assert set(attempts) == set(range(len(outcomes)))                 # every song was tried (the failed ones once more at the end)
 
 
 def test_other_failures_do_not_trigger_the_brake(capsys):
     from exceptions import YoutubeItemNotFound
     d, attempts, skipped, out = _run([YoutubeItemNotFound("x")] * 12, workers=1, capsys=capsys)
-    assert not d.blocked and len(attempts) == 12
+    assert not d.blocked and len(attempts) == 12                       # not retryable, so each song is tried exactly once
 
 
 # --- Token only goes to Spotify ----------------------------------------------------------
@@ -859,7 +862,7 @@ def test_an_occasional_403_does_not_stop_the_run(capsys):
     from exceptions import YoutubeTransientError
     t = YoutubeTransientError("HTTP Error 403")
     d, attempts, skipped, out = _run([t, None, t, None, t, t, None, t, None, t, None, t], workers=1, capsys=capsys)
-    assert not d.blocked and len(attempts) == 12
+    assert not d.blocked and set(attempts) == set(range(12))           # every song was tried (the failed ones once more at the end)
 
 
 # --- Search wordings ------------------------------------------------------------------------------
@@ -1193,3 +1196,222 @@ def test_ask_is_refused_for_a_single_song(capsys):
     with pytest.raises(SystemExit):
         app.main(song="https://open.spotify.com/track/abc", confirm=True)
     assert "--ask" in capsys.readouterr().out
+
+
+# --- Plain-language failures, retries and the YouTube login ------------------------------------------------
+
+RAW_AGE = "ERROR: [youtube] n35nuFy_gkc: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication."
+RAW_BOT = "ERROR: [youtube] Heez0bXE4p0: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication."
+
+
+def test_the_two_errors_from_the_screenshot_are_explained_in_plain_words():
+    from downloader import friendly_reason, reason_category
+    from exceptions import YoutubeBlocked, YoutubeVideoUnavailable
+    age, bot = YoutubeVideoUnavailable(RAW_AGE), YoutubeBlocked(RAW_BOT)
+    assert reason_category(age) == "edad" and reason_category(bot) == "robot"
+    assert friendly_reason(age) == "YouTube marca este video para mayores de edad y pide iniciar sesión."
+    assert "no eres un robot" in friendly_reason(bot)
+    for error in (age, bot):
+        text = friendly_reason(error)
+        assert "ERROR" not in text and "[youtube]" not in text and "--cookies" not in text and "http" not in text
+
+
+@pytest.mark.parametrize("error,category", [
+    ("YoutubeVideoUnavailable:Private video", "no_disponible"),
+    ("YoutubeTransientError:HTTP Error 403", "temporal"),
+    ("YoutubeItemNotFound:No YouTube video matches Spotify's duration of 220s (closest video lasts 949s)", "no_encontrada"),
+    ("YoutubeItemNotFound:Could not load results from YouTube", "no_encontrada"),
+    ("ConfigVideoLowViewCount:View count 3", "pocas_vistas"),
+    ("SpotifyTrackNotFound:gone", "no_en_spotify"),
+    ("RuntimeError:Failed to decrypt cookies", "cookies"),
+    ("RuntimeError:disk full", "otro"),
+])
+def test_every_kind_of_failure_has_a_spanish_explanation_and_advice(error, category):
+    import downloader
+    import exceptions
+    name, message = error.split(":", 1)
+    cls = getattr(exceptions, name, None) or RuntimeError
+    err = cls(message)
+    assert downloader.reason_category(err) == category
+    reason = downloader.friendly_reason(err)
+    assert reason and reason[0].isupper() and "Traceback" not in reason
+    assert category in downloader.ADVICE
+
+
+def test_the_duration_explanation_says_why_it_prefers_to_skip():
+    from downloader import friendly_reason
+    from exceptions import YoutubeItemNotFound
+    text = friendly_reason(YoutubeItemNotFound("No YouTube video matches Spotify's duration of 220s"))
+    assert "misma duración" in text and "equivocada" in text
+
+
+def _scripted(script, monkeypatch, **kwargs):
+    """A downloader whose download_track follows script = {song number: [outcome per attempt]} and counts calls."""
+    import downloader
+    from downloader import SpotifyDownloader
+    calls = []
+
+    def fake(self, url, track, i, n, out, sub, filename=None):
+        calls.append(track.n)
+        outcome = script[track.n].pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return True
+
+    monkeypatch.setattr(SpotifyDownloader, "download_track", fake)
+    monkeypatch.setattr(downloader, "RETRY_PASS_DELAY_SECONDS", 0)
+    return SpotifyDownloader(None, None, workers=1, **kwargs), calls
+
+
+def test_the_summary_names_each_song_with_its_reason_and_what_to_do(monkeypatch, capsys):
+    from exceptions import YoutubeBlocked, YoutubeVideoUnavailable
+    d, _ = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE)], 1: [YoutubeBlocked(RAW_BOT)] * 2, 2: [True]}, monkeypatch)
+    skipped = d.download_tracks("out/", [_Song(0), _Song(1), _Song(2)])
+    out = capsys.readouterr().out
+    assert len(skipped) == 2
+    assert "2 canción(es) no se pudieron descargar" in out and "    s0" in out and "    s1" in out
+    assert "mayores de edad" in out and "no eres un robot" in out and "Qué hacer" in out
+    assert "--cookies-from-browser firefox" in out and "Espera unos minutos" in out
+    assert "ERROR:" not in out and "[youtube]" not in out and "Skipped" not in out
+
+
+def test_a_robot_check_on_one_video_moves_on_to_the_next_version(monkeypatch):
+    """Regression: 'LOKENECESITAS' was skipped because its first video gave the robot check, although 11 others work."""
+    import downloader
+    from exceptions import YoutubeBlocked
+    monkeypatch.setattr(downloader, "RETRY_DELAY_SECONDS", 0)
+    yt = type("YT", (), {})()
+    outcomes = iter([YoutubeBlocked("bot"), ("file.m4a", 130)])
+    tried = []
+
+    def download(link, quality):
+        tried.append(link)
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    yt.download = download
+    d = downloader.SpotifyDownloader(None, yt, 128000)
+    track = type("T", (), {"get_title": lambda self, sanitize=False: "Song"})()
+    assert d._download_audio("[1/1]", track, ["A", "B", "C"]) == ("file.m4a", 130)
+    assert tried == ["A", "B"]
+
+
+def test_if_every_version_gives_the_robot_check_it_gives_up_without_a_second_round(monkeypatch):
+    import downloader
+    from exceptions import YoutubeBlocked
+    monkeypatch.setattr(downloader, "RETRY_DELAY_SECONDS", 0)
+    tried = []
+
+    def download(link, quality):
+        tried.append(link)
+        raise YoutubeBlocked("bot")
+
+    yt = type("YT", (), {"download": staticmethod(download)})()
+    d = downloader.SpotifyDownloader(None, yt, 128000)
+    track = type("T", (), {"get_title": lambda self, sanitize=False: "Song"})()
+    with pytest.raises(YoutubeBlocked):
+        d._download_audio("[1/1]", track, ["A", "B", "C"])
+    assert tried == ["A", "B", "C"]                       # each version once; waiting does not fix a block
+
+
+def test_songs_rejected_by_youtube_get_one_calm_retry_at_the_end(monkeypatch, capsys):
+    from exceptions import YoutubeBlocked
+    d, calls = _scripted({0: [YoutubeBlocked("bot"), True], 1: [True]}, monkeypatch)
+    assert d.download_tracks("out/", [_Song(0), _Song(1)]) == []
+    assert calls == [0, 1, 0]                             # song 0 failed, song 1 worked, song 0 was retried and worked
+    assert "Reintentando 1 canción(es)" in capsys.readouterr().out
+
+
+def test_a_song_that_fails_again_in_the_retry_stays_in_the_summary(monkeypatch):
+    from exceptions import YoutubeBlocked
+    d, calls = _scripted({0: [YoutubeBlocked("bot")] * 2}, monkeypatch)
+    skipped = d.download_tracks("out/", [_Song(0)])
+    assert calls == [0, 0] and len(skipped) == 1
+
+
+def test_adult_only_songs_are_not_retried_blindly(monkeypatch):
+    from exceptions import YoutubeVideoUnavailable
+    d, calls = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE)]}, monkeypatch)
+    assert len(d.download_tracks("out/", [_Song(0)])) == 1
+    assert calls == [0]                                   # retrying cannot fix a missing login
+
+
+def test_the_guided_mode_offers_the_youtube_login_for_adult_only_songs(monkeypatch, capsys):
+    import downloader
+    from exceptions import YoutubeVideoUnavailable
+
+    class FakeYouTube:
+        def __init__(self, cookies_from_browser=None):
+            self.cookies_from_browser = cookies_from_browser
+
+    monkeypatch.setattr(downloader, "YouTube", FakeYouTube)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "firefox")
+    d, calls = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE), True]}, monkeypatch, offer_browser_login=True)
+    assert d.download_tracks("out/", [_Song(0)]) == []
+    assert calls == [0, 0] and d.youtube_client.cookies_from_browser == "firefox"
+    assert "sesión de firefox" in capsys.readouterr().out
+
+
+def test_without_a_browser_answer_the_adult_only_songs_are_just_listed(monkeypatch):
+    from exceptions import YoutubeVideoUnavailable
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    d, calls = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE)]}, monkeypatch, offer_browser_login=True)
+    assert len(d.download_tracks("out/", [_Song(0)])) == 1 and calls == [0]
+
+
+def test_the_login_is_never_offered_outside_the_guided_mode(monkeypatch):
+    from exceptions import YoutubeVideoUnavailable
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("must not ask"))
+    d, _ = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE)]}, monkeypatch)
+    assert len(d.download_tracks("out/", [_Song(0)])) == 1
+
+
+def test_ask_browser_only_accepts_a_known_browser(monkeypatch, capsys):
+    from downloader import ask_browser
+    answers = iter(["internet explorer", "Chrome"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert ask_browser() == "chrome"
+    assert "Escribe uno de estos" in capsys.readouterr().out
+
+
+def test_the_command_line_accepts_the_same_browsers():
+    import spotify2mp3 as app
+    from apis.youtube import SUPPORTED_BROWSERS
+    for browser in SUPPORTED_BROWSERS:
+        assert app.build_parser().parse_args(["-l", "--cookies-from-browser", browser]).cookies_from_browser == browser
+
+
+def test_a_lone_song_that_fails_gets_the_same_plain_explanation_and_advice(capsys):
+    from downloader import SpotifyDownloader
+    from exceptions import YoutubeBlocked
+    d = SpotifyDownloader(None, None)
+    assert d._explain_single_failure(YoutubeBlocked(RAW_BOT)) is False
+    out = capsys.readouterr().out
+    assert "no eres un robot" in out and "Qué hacer" in out and "Espera unos minutos" in out
+    assert "ERROR:" not in out and "[youtube]" not in out
+
+
+def test_a_lone_adult_only_song_can_be_retried_with_the_browser_login(monkeypatch):
+    import downloader
+    from exceptions import YoutubeVideoUnavailable
+
+    class FakeYouTube:
+        def __init__(self, cookies_from_browser=None):
+            self.cookies_from_browser = cookies_from_browser
+
+    monkeypatch.setattr(downloader, "YouTube", FakeYouTube)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "firefox")
+    d = downloader.SpotifyDownloader(None, None, offer_browser_login=True)
+    assert d._explain_single_failure(YoutubeVideoUnavailable(RAW_AGE)) is True
+    assert d.youtube_client.cookies_from_browser == "firefox"
+    assert d._explain_single_failure(YoutubeVideoUnavailable(RAW_AGE)) is False      # only one retry, never a loop
+
+
+def test_a_lone_adult_only_song_without_a_browser_answer_is_just_explained(monkeypatch):
+    import downloader
+    from exceptions import YoutubeVideoUnavailable
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    d = downloader.SpotifyDownloader(None, None, offer_browser_login=True)
+    assert d._explain_single_failure(YoutubeVideoUnavailable(RAW_AGE)) is False

@@ -2,7 +2,7 @@ from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
-from apis.youtube import YouTube
+from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from pathutils import sanitize_filename, long_path, is_hard_to_open
 import tempdirs
 from utils import resave_audio_clip_with_metadata
@@ -28,6 +28,7 @@ PREVIEW_LINES = 300        # a preview lists at most this many songs
 CANCEL_PRESSES = 3       # Ctrl+C presses needed to cancel a download in progress
 CTRL_C_POLL_SECONDS = 0.05  # how often the waiting main thread looks for a Ctrl+C
 BLOCK_STREAK_LIMIT = 5   # songs in a row that YouTube refuses before we stop asking
+RETRY_PASS_DELAY_SECONDS = 15   # before the end-of-run retry of songs YouTube rejected
 RETRY_DELAY_SECONDS = 3  # pause before the second round of attempts after a temporary error
 _NOT_STARTED = object()  # returned by a song that was dropped because the run was aborted
 
@@ -65,6 +66,81 @@ def ctrl_c_needs_three_presses():
         yield
     finally:
         signal.signal(signal.SIGINT, previous)
+
+
+def reason_category(error):
+    """What kind of problem an error is, to group the songs and say what to do about each group."""
+    text = str(error).lower()
+    if isinstance(error, YoutubeBlocked):
+        return "robot"
+    if isinstance(error, YoutubeTransientError):
+        return "temporal"
+    if isinstance(error, YoutubeVideoUnavailable):
+        return "edad" if ("age" in text or "inappropriate" in text) else "no_disponible"
+    if isinstance(error, YoutubeItemNotFound):
+        return "no_encontrada"
+    if isinstance(error, ConfigVideoLowViewCount):
+        return "pocas_vistas"
+    if isinstance(error, SpotifyTrackNotFound):
+        return "no_en_spotify"
+    if "cookie" in text:
+        return "cookies"
+    return "otro"
+
+
+def friendly_reason(error):
+    """One sentence, in plain Spanish, saying why a song was not downloaded."""
+    category = reason_category(error)
+    if category == "no_encontrada":
+        if "duration" in str(error).lower():
+            return ("No encontré en YouTube una versión con la misma duración que en Spotify "
+                    "(prefiero saltarla antes que bajar una equivocada).")
+        return "YouTube no devolvió resultados para esta canción."
+    if category == "otro":
+        return f"Algo salió mal ({type(error).__name__}). Vuelve a ejecutar el mismo enlace para reintentarla."
+    return REASONS[category]
+
+
+REASONS = {
+    "edad": "YouTube marca este video para mayores de edad y pide iniciar sesión.",
+    "robot": "YouTube pidió comprobar que no eres un robot (demasiadas solicitudes seguidas).",
+    "temporal": "YouTube falló varias veces seguidas con esta canción (error temporal).",
+    "no_disponible": "Este video no está disponible (privado, retirado o bloqueado en tu país).",
+    "pocas_vistas": "El video tiene menos vistas que el mínimo que pediste (--min-views).",
+    "no_en_spotify": "Spotify no tiene los datos de esta canción.",
+    "cookies": "No pude leer tu sesión del navegador. Cierra el navegador por completo y reintenta, o prueba con Firefox.",
+}
+
+# What to do, in the order they are shown.
+ADVICE = {
+    "edad": "Las de mayores de edad: YouTube exige iniciar sesión. Ejecuta con tu sesión de YouTube: "
+            "--cookies-from-browser firefox (o chrome, edge). En el modo guiado, el programa te lo ofrece al terminar.",
+    "robot": "Las del aviso de robot: YouTube recibió muchas solicitudes. Espera unos minutos y ejecuta de nuevo "
+             "el mismo enlace: solo bajará las que faltan.",
+    "temporal": "Las de error temporal: vuelve a ejecutar el mismo enlace en un rato; solo bajará las que faltan.",
+    "no_encontrada": "Las que no se encontraron: no hay en YouTube una versión con la misma duración (quizá solo "
+                     "existen en Spotify). Prefiero saltarlas antes que bajar una equivocada.",
+    "no_disponible": "Las no disponibles: el video está privado, retirado o bloqueado; no hay otra versión que sirva.",
+    "pocas_vistas": "Las de pocas vistas: baja el mínimo con --min-views.",
+    "no_en_spotify": "Las que Spotify no reconoce: puede que hayan sido retiradas de Spotify.",
+    "cookies": "No se pudo usar tu sesión del navegador: ciérralo por completo y reintenta, o prueba con Firefox.",
+    "otro": "Las demás: vuelve a ejecutar el mismo enlace para reintentarlas. Si se repite, escribe el error en "
+            "https://github.com/jesusobando32/Burdamix/issues",
+}
+
+
+def ask_browser():
+    """Which browser holds the user's YouTube session? Returns its name, or None to leave those songs out."""
+    print("Si en tu navegador tienes YouTube abierto con tu cuenta, el programa puede usar esa sesión para bajarlas.")
+    print("(Firefox es el que mejor funciona; si usas Chrome o Edge, ciérralo por completo antes.)")
+    while True:
+        answer = input(f"{colours.OKGREEN}Escribe el navegador ({', '.join(SUPPORTED_BROWSERS)}) "
+                       f"o pulsa Enter para dejarlas:{colours.ENDC} ").strip().lower()
+        if not answer:
+            return None
+        if answer in SUPPORTED_BROWSERS:
+            return answer
+        print(f"{colours.WARNING}Escribe uno de estos: {', '.join(SUPPORTED_BROWSERS)}.{colours.ENDC}")
 
 
 YES_WORDS = ("yes", "y", "s", "si", "sí")
@@ -134,9 +210,10 @@ class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-                 dry_run=False, ask_before_download=False):
+                 dry_run=False, ask_before_download=False, offer_browser_login=False):
         self.dry_run = dry_run   # list what would be downloaded and stop
         self.ask_before_download = ask_before_download   # list it, then ask yes/no
+        self.offer_browser_login = offer_browser_login   # guided mode: offer the user's YouTube login for adult-only videos
         self.declined = False    # the user answered no to "download them?"
         self.spotify_client = spotify
         self.youtube_client = youtube
@@ -314,12 +391,12 @@ class SpotifyDownloader:
 
         self.blocked = abort.is_set()
 
-        if len(skipped_tracks) > 0:
+        info = {track: (i, name) for i, track, name in plan}
+        if not self.blocked:   # if YouTube is blocking us, asking again right away only makes it worse
+            self._retry_pass(skipped_tracks, info, idx_max, output_path)
+        self._offer_login_retry(skipped_tracks, info, idx_max, output_path)
 
-            print(f"\n{colours.WARNING}[!] Skipped {len(skipped_tracks)} songs.{colours.ENDC}\n")
-
-            for (track, reason) in skipped_tracks:
-                print(f"    {track.get_filename()} {colours.WARNING}[{reason}]{colours.ENDC}")
+        self._print_skipped_summary(skipped_tracks)
 
         if self.blocked:
             print(f"\n{colours.FAIL}YouTube te está bloqueando{colours.ENDC} ({BLOCK_STREAK_LIMIT} canciones seguidas rechazadas). "
@@ -329,26 +406,68 @@ class SpotifyDownloader:
 
         return skipped_tracks
 
+    def _retry_tracks(self, pairs, info, idx_max, output_path, skipped_tracks):
+        """Download each (track, error) of `pairs` again, one at a time. Songs that now work leave
+        `skipped_tracks`; the others keep it, with the newest error."""
+        for track, _old_error in pairs:
+            i, name = info[track]
+            try:
+                self.download_track(None, track, i, idx_max, output_path, True, name)
+            except Exception as error:
+                skipped_tracks[:] = [(t, error if t is track else e) for t, e in skipped_tracks]
+            else:
+                skipped_tracks[:] = [(t, e) for t, e in skipped_tracks if t is not track]
+
+    def _retry_pass(self, skipped_tracks, info, idx_max, output_path):
+        """The "are you a robot" check and temporary errors come and go: songs that failed that way get
+        one more try at the end, calmly, one by one."""
+        pairs = [(t, e) for t, e in skipped_tracks if reason_category(e) in ("robot", "temporal")]
+        if not pairs:
+            return
+        print(f"\n{colours.OKBLUE}[!] Reintentando {len(pairs)} canción(es) que YouTube rechazó, de una en una, "
+              f"en {RETRY_PASS_DELAY_SECONDS} s...{colours.ENDC}")
+        time.sleep(RETRY_PASS_DELAY_SECONDS)
+        self._retry_tracks(pairs, info, idx_max, output_path, skipped_tracks)
+
+    def _offer_login_retry(self, skipped_tracks, info, idx_max, output_path):
+        """Videos marked for adults need a YouTube login. In the guided mode, offer to use the one the user
+        already has in their browser (nothing is read unless they choose a browser)."""
+        pairs = [(t, e) for t, e in skipped_tracks if reason_category(e) == "edad"]
+        if not self.offer_browser_login or not pairs:
+            return
+        print(f"\n{colours.WARNING}[!] {len(pairs)} canción(es) están en videos que YouTube marca para mayores de edad "
+              f"y solo deja bajar con una sesión iniciada.{colours.ENDC}")
+        browser = ask_browser()
+        if browser is None:
+            return
+        self.youtube_client = YouTube(cookies_from_browser=browser)
+        print(f"{colours.OKBLUE}[!] Reintentando esas con tu sesión de {browser}...{colours.ENDC}")
+        self._retry_tracks(pairs, info, idx_max, output_path, skipped_tracks)
+
+    def _print_skipped_summary(self, skipped_tracks):
+        """Songs that could not be downloaded, each with its reason in plain words, and what to do about it."""
+        if not skipped_tracks:
+            return
+        print(f"\n{colours.WARNING}[!] {len(skipped_tracks)} canción(es) no se pudieron descargar:{colours.ENDC}\n")
+        for track, error in skipped_tracks:
+            print(f"    {track.get_filename()}")
+            print(f"        {colours.WARNING}-> {friendly_reason(error)}{colours.ENDC}")
+
+        present = {reason_category(error) for _, error in skipped_tracks}
+        print(f"\n{colours.BOLD}Qué hacer:{colours.ENDC}")
+        for category in ADVICE:
+            if category in present:
+                print(f"  - {ADVICE[category]}")
+
     @staticmethod
     def _describe_error(error):
-        if isinstance(error, YoutubeItemNotFound):
-            return f"{colours.WARNING}[!] Skipped - found on Spotify but not on YouTube."
-        if isinstance(error, ConfigVideoLowViewCount):
-            return f"{colours.WARNING}[!] Skipped - video has fewer views than the minimum (use --min-views)."
-        if isinstance(error, YoutubeBlocked):
-            return f"{colours.FAIL}[!] YouTube rejected the request (bot check / too many requests)."
-        if isinstance(error, YoutubeTransientError):
-            return f"{colours.WARNING}[!] Skipped - temporary YouTube error that kept happening. Run the same link again to retry it."
-        if isinstance(error, YoutubeVideoUnavailable):
-            return f"{colours.FAIL}[!] Skipped - every matching video is restricted or unavailable (age restricted? see README: --cookies-from-browser)."
-        if isinstance(error, SpotifyTrackNotFound):
-            return f"{colours.WARNING}[!] Skipped - song not found on Spotify. {error}"
-        return f"{colours.FAIL}[!] Skipped - something went wrong. {type(error).__name__}: {error}"
+        return f"{colours.WARNING}[!] Saltada: {friendly_reason(error)}"
 
     def _download_audio(self, tag, track, links):
-        """Try the matching videos best first. A video that is restricted or fails for a temporary reason
-        (403, dropped connection) is replaced by the next one; if every video failed at least once for a
-        temporary reason, everything is tried one more time after a short pause."""
+        """Try the matching videos best first. A video that is restricted, gets the "are you a robot" check
+        (it happens per video: the next upload of the same song is usually fine) or fails for a temporary
+        reason (403, dropped connection) is replaced by the next one; if every video failed at least once for
+        a temporary reason, everything is tried one more time after a short pause."""
         last_error = None
         had_temporary_error = False
 
@@ -359,14 +478,17 @@ class SpotifyDownloader:
                     return self.youtube_client.download(link, self.audio_quality)
                 except YoutubeVideoUnavailable as e:
                     last_error = e
-                    self._log(tag, f"{colours.WARNING}Video not available, trying another match...")
+                    self._log(tag, f"{colours.WARNING}Ese video no se puede bajar; pruebo otra versión...")
+                except YoutubeBlocked as e:
+                    last_error = e
+                    self._log(tag, f"{colours.WARNING}YouTube pidió comprobar que no soy un robot con ese video; pruebo otra versión...")
                 except YoutubeTransientError as e:
                     last_error = e
                     had_temporary_error = True
-                    self._log(tag, f"{colours.WARNING}Temporary YouTube error, trying another match...")
+                    self._log(tag, f"{colours.WARNING}Error temporal de YouTube; pruebo otra versión...")
 
             if round_number == 1 and had_temporary_error:
-                self._log(tag, f"{colours.WARNING}Every match failed; trying again in {RETRY_DELAY_SECONDS}s...")
+                self._log(tag, f"{colours.WARNING}Ninguna versión funcionó; reintento en {RETRY_DELAY_SECONDS} s...")
                 time.sleep(RETRY_DELAY_SECONDS)
             else:
                 break
@@ -421,8 +543,24 @@ class SpotifyDownloader:
             if as_sub_function:
                 raise
 
-            print(f"\n{colours.FAIL}Error: {colours.ENDC}{self._describe_error(e)}{colours.ENDC}\n")
+            if self._explain_single_failure(e):   # the user chose a browser login: try once more with it
+                return self.download_track(track_url, track, idx, idx_max, output_path, as_sub_function, filename)
             return False
+
+    def _explain_single_failure(self, error):
+        """Say, in plain words, why a lone song failed and what to do. Returns True when it should be tried
+        again because the user chose to use the YouTube login of their browser."""
+        print(f"\n{colours.FAIL}Error: {colours.ENDC}{friendly_reason(error)}")
+        category = reason_category(error)
+        print(f"{colours.BOLD}Qué hacer:{colours.ENDC} {ADVICE[category]}\n")
+        if category == "edad" and self.offer_browser_login:
+            browser = ask_browser()
+            if browser:
+                self.youtube_client = YouTube(cookies_from_browser=browser)
+                self.offer_browser_login = False   # one retry only; never loop
+                print(f"{colours.OKBLUE}[!] Reintentando con tu sesión de {browser}...{colours.ENDC}")
+                return True
+        return False
 
     def prep_folder(self, folder_name):
         Path(long_path(folder_name)).mkdir(parents=True, exist_ok=True)

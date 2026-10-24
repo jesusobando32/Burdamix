@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import tempdirs
 from exceptions import ConfigVideoLowViewCount, YoutubeBlocked, YoutubeItemNotFound, YoutubeTransientError, YoutubeVideoUnavailable
 
+SUPPORTED_BROWSERS = ("firefox", "chrome", "edge", "brave", "opera", "chromium")   # where yt-dlp can read a YouTube login from
+
 SEARCH_RESULTS = 8          # videos looked at per song
 MAX_FALLBACKS = 3           # best-ranked videos tried if one can't be downloaded
 STRICT_TOLERANCE = 7        # seconds of difference from Spotify's duration

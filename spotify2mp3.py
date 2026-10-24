@@ -12,7 +12,7 @@ for _stream in (sys.stdout, sys.stderr):
 import login
 import utils
 from apis.spotify import Spotify
-from apis.youtube import YouTube
+from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
 import tempdirs
 import updater
@@ -149,7 +149,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
          max_length=None, workers=DEFAULT_WORKERS, cookies_from_browser=None,
          skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
          intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-         last=None, dry_run=False, confirm=False):
+         last=None, dry_run=False, confirm=False, offer_browser=False):
 
     url = song or playlist or album
 
@@ -214,7 +214,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     tempdirs.clean_stale()   # leftovers of runs that were closed by force
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
-                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run, confirm)
+                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run, confirm, offer_browser)
 
     success = False
 
@@ -269,7 +269,7 @@ def build_parser():
     parser.add_argument("--dry-run", help="Only list what would be downloaded (and how much you already have); download nothing", action="store_true")
     parser.add_argument("--ask", help="Show the list first and ask before downloading it (playlists, albums and -l)", action="store_true")
     parser.add_argument("--no-update", help="Do not check for a newer yt-dlp (it is checked once a day)", action="store_true")
-    parser.add_argument("--cookies-from-browser", metavar="BROWSER", choices=["firefox", "chrome", "edge", "brave", "opera", "chromium"],
+    parser.add_argument("--cookies-from-browser", metavar="BROWSER", choices=list(SUPPORTED_BROWSERS),
                         help="Use your YouTube login from this browser, to download age-restricted videos")
     return parser
 
@@ -289,6 +289,7 @@ def run_guided():
                       max_length=DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, workers=DEFAULT_WORKERS)
 
         kwargs.update(extra)   # for 'like it': how many songs, and ask before downloading
+        kwargs["offer_browser"] = True   # adult-only videos: offer the user's YouTube login at the end
 
         with contextlib.suppress(SystemExit):   # the reason was already printed; offer to try again instead of closing the window
             main(**{'song': {'song': url}, 'playlist': {'playlist': url}, 'album': {'album': url}, LIKED_KEYWORD: {'liked': True}}[choice], **kwargs)
