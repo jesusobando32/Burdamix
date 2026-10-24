@@ -20,6 +20,17 @@ INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b"
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
+
+MP3_BITRATES = (48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
+
+
+def mp3_bitrate_for(source_kbps, requested_kbps):
+    """The MP3 bitrate (kbps) to encode with: never above what YouTube gave us, never above what was
+    asked, and a real MP3 rate (the encoder would round an odd value like 132 down to 128 anyway)."""
+    wanted = min(source_kbps, requested_kbps)
+    return min(MP3_BITRATES, key=lambda rate: abs(rate - wanted))
+
+
 def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
     """True for tracks that are not really songs:
@@ -193,7 +204,7 @@ class SpotifyDownloader():
             self._log(tag, f"Converting and tagging: {track.get_title()}")
 
             # Never encode above the source: upscaling 128 kbps audio to 256 only wastes space.
-            target_kbps = min(source_kbps, self.audio_quality // 1000)
+            target_kbps = mp3_bitrate_for(source_kbps, self.audio_quality // 1000)
             resave_audio_clip_with_metadata(video_downloaded_path, track.get_metadata(), track_path, target_kbps)
 
             self._log(tag, f"{colours.OKGREEN}Done!{colours.ENDC} {track.get_title()}")

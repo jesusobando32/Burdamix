@@ -61,7 +61,7 @@ def test_videos_without_duration_are_ignored():
 
 def test_quality_helpers():
     import spotify2mp3 as app
-    assert app.get_bitrate_from_quality("high") == 256000
+    assert app.get_bitrate_from_quality("high") == 320000
     assert app.get_bitrate_from_quality("192") == 192000
     assert app.get_bitrate_from_quality("192000") == 192000
     assert app.validate_quality("320") == "320"
@@ -169,3 +169,29 @@ def test_limits_are_configurable():
     assert not is_interlude("Intro", 90, intro_outro_max_seconds=30)
     assert is_interlude("Song", 55, short_max_seconds=60)
     assert not is_interlude("Song", 12, short_max_seconds=5)
+
+
+# --- Quality ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("source,requested,expected", [
+    (132, 320, 128),   # "high": YouTube's best (Opus 132) becomes a 128 kbps MP3, not 320
+    (130, 320, 128),
+    (67, 320, 64),
+    (132, 80, 80),     # "medium" caps the download
+    (132, 50, 48),
+    (160, 320, 160),   # a 160 kbps source is kept at 160
+    (132, 192, 128),   # asking for more than the source never raises the bitrate
+])
+def test_mp3_bitrate_never_exceeds_source(source, requested, expected):
+    from downloader import mp3_bitrate_for
+    assert mp3_bitrate_for(source, requested) == expected
+
+
+def test_high_means_best_available_and_is_described_honestly():
+    import spotify2mp3 as app
+    assert app.get_bitrate_from_quality("high") == app.MAX_BITRATE_BPS
+    assert "best YouTube offers" in app.describe_quality("high")
+    assert "YouTube offers about" in app.describe_quality("320")   # asking for 320 explains what you really get
+    assert "up to 80" in app.describe_quality("medium")
+
+

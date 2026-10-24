@@ -66,7 +66,7 @@ python spotify2mp3.py -l                                              # tus canc
 
 | Opción | Para qué |
 |---|---|
-| `-q high` | `low`, `medium`, `high` o un número en kbps (48–320). YouTube entrega ~128 kbps como máximo, así que subir más solo agranda el archivo. |
+| `-q high` | `low` (≤50 kbps), `medium` (≤80 kbps), `high` o un número en kbps. **`high` = la mejor calidad que ofrece YouTube** (unos 130 kbps, que queda como MP3 de 128 kbps); es el valor por defecto. Pedir más, por ejemplo `320`, no mejora nada: YouTube no tiene más, así que se usa lo máximo disponible. |
 | `--workers 5` | Canciones que se bajan a la vez (1–8). Por defecto 5. |
 | `--max-length 30` | Descarta videos más largos que esto (minutos). |
 | `--min-views N` | Descarta videos con menos reproducciones (apagado por defecto). |

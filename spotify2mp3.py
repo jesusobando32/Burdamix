@@ -16,9 +16,23 @@ from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT
 DEFAULT_WORKERS = 5  # songs downloaded at the same time
 MAX_WORKERS = 8
 
-QUALITY_PRESETS = {"low": 50000, "medium": 80000, "high": 256000}
 MIN_BITRATE_BPS = 48000
 MAX_BITRATE_BPS = 320000
+YOUTUBE_MAX_KBPS = 130  # what YouTube normally offers at best (Opus ~132 kbps, AAC ~130 kbps)
+
+# "high" means "the best YouTube has": the cap is the top of the range, and the real bitrate is
+# whatever the best stream is (about 130 kbps), never more.
+QUALITY_PRESETS = {"low": 50000, "medium": 80000, "high": MAX_BITRATE_BPS}
+
+
+def describe_quality(quality):
+    """One line telling the user what quality they will really get."""
+    if quality == "high":
+        return f"high = the best YouTube offers (about {YOUTUBE_MAX_KBPS} kbps)"
+    kbps = get_bitrate_from_quality(quality) // 1000
+    if kbps > YOUTUBE_MAX_KBPS:
+        return f"{quality}: {kbps} kbps requested, but YouTube offers about {YOUTUBE_MAX_KBPS} at most, so that is what you get"
+    return f"{quality} (up to {kbps} kbps)"
 
 
 def get_bitrate_from_quality(quality):
@@ -122,7 +136,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
         print(f"{colours.OKGREEN}Liked Songs{colours.ENDC}")
 
     quality = quality or "high"
-    print(f"{colours.OKGREEN}Song quality / bitrate{colours.ENDC}: {quality} / {get_bitrate_from_quality(quality)} bps")
+    print(f"{colours.OKGREEN}Quality{colours.ENDC}: {describe_quality(quality)}")
 
     if min_views != DEFAULT_MIN_VIEWS_FOR_DOWNLOAD:
         print(f"{colours.OKGREEN}Minimum view count{colours.ENDC}: {min_views}")
@@ -177,7 +191,7 @@ def build_parser():
     group.add_argument("-a", "--album", help="Album link", type=str)
     group.add_argument("-l", f"--{LIKED_KEYWORD}", help=f"Your {LIKED_KEYWORD} songs", action="store_true")
 
-    parser.add_argument("-q", "--quality", help="low, medium, high, or a bitrate in kbps (48-320)", type=validate_quality, default="high")
+    parser.add_argument("-q", "--quality", help="low, medium, high (= the best YouTube offers, ~130 kbps) or a bitrate in kbps (48-320)", type=validate_quality, default="high")
     parser.add_argument("--workers", help=f"Songs downloaded at the same time (default {DEFAULT_WORKERS})", type=int,
                         choices=range(1, MAX_WORKERS + 1), metavar=f"1-{MAX_WORKERS}", default=DEFAULT_WORKERS)
     parser.add_argument("--min-views", help="Minimum view count on YouTube (default: off)", type=int, default=DEFAULT_MIN_VIEWS_FOR_DOWNLOAD)
