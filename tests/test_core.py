@@ -121,7 +121,7 @@ def test_download_tracks_runs_in_parallel_and_collects_failures(monkeypatch):
         def __init__(self, n): self.n = n
         def get_filename(self): return f"t{self.n}"
 
-    def fake_download_track(self, url, track, i, n, out, sub):
+    def fake_download_track(self, url, track, i, n, out, sub, filename=None):
         with lock:
             running[0] += 1
             peak[0] = max(peak[0], running[0])
@@ -402,6 +402,63 @@ def test_redirects_are_not_followed():
     with pytest.raises(sp.SpotifyRetrievalError):
         _api(url).get(url)
     srv.shutdown()
+
+
+# --- File name collisions ------------------------------------------------------------------
+
+class _Named:
+    def __init__(self, spotify_id, filename): self.resource_id, self._f = spotify_id, filename
+    def get_filename(self): return self._f
+
+
+def test_same_song_twice_is_planned_once():
+    from downloader import plan_filenames
+    a1, a2 = _Named("id1", "Artista - Song"), _Named("id1", "Artista - Song")
+    plan, repeated, renamed = plan_filenames([a1, a2])
+    assert [name for _, _, name in plan] == ["Artista - Song"] and repeated == [a2] and renamed == []
+
+
+def test_different_songs_with_the_same_name_get_a_number():
+    from downloader import plan_filenames
+    original, remaster = _Named("aaa", "Queen - Song"), _Named("bbb", "Queen - Song")
+    plan, repeated, renamed = plan_filenames([original, remaster])
+    assert sorted(name for _, _, name in plan) == ["Queen - Song", "Queen - Song (2)"]
+    assert len(renamed) == 1 and repeated == []
+
+
+def test_names_that_differ_only_in_case_collide_on_windows_and_are_separated():
+    from downloader import plan_filenames
+    plan, _, renamed = plan_filenames([_Named("x1", "Artista - Intro"), _Named("x2", "ARTISTA - INTRO")])
+    assert len({name.casefold() for _, _, name in plan}) == 2       # two different files, even ignoring case
+
+
+def test_names_do_not_depend_on_playlist_order():
+    """A second run, with the playlist in another order, must give each version the same file name."""
+    from downloader import plan_filenames
+    a, b = _Named("aaa", "Q - Song"), _Named("bbb", "Q - Song")
+    first = {t.resource_id: n for _, t, n in plan_filenames([a, b])[0]}
+    second = {t.resource_id: n for _, t, n in plan_filenames([b, a])[0]}
+    assert first == second
+
+
+def test_download_tracks_downloads_a_repeated_song_once_and_reports_it(capsys):
+    from downloader import SpotifyDownloader
+    calls = []
+
+    def fake(self, url, track, i, n, out, sub, filename=None):
+        calls.append(filename)
+        return True
+
+    orig = SpotifyDownloader.download_track
+    SpotifyDownloader.download_track = fake
+    try:
+        d = SpotifyDownloader(None, None, workers=1)
+        d.download_tracks("out/", [_Named("a", "X - One"), _Named("a", "X - One"), _Named("b", "X - Two"), _Named("c", "X - Two")])
+    finally:
+        SpotifyDownloader.download_track = orig
+    assert sorted(calls) == ["X - One", "X - Two", "X - Two (2)"]
+    out = capsys.readouterr().out
+    assert "repeated song" in out and "X - Two (2)" in out and d.planned == 3
 
 
 # --- Config location ------------------------------------------------------------------------

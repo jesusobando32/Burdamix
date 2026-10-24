@@ -31,6 +31,39 @@ def mp3_bitrate_for(source_kbps, requested_kbps):
     return min(MP3_BITRATES, key=lambda rate: abs(rate - wanted))
 
 
+def plan_filenames(tracks):
+    """Decide the file name of every track before downloading anything.
+
+    Returns (plan, repeated, renamed):
+    - plan: [(index, track, file name)] to download;
+    - repeated: [track] that are the very same Spotify song as an earlier one (downloaded once);
+    - renamed: [(track, file name)] different songs whose name collides with another one (the file
+      system ignores case, so 'Song' and 'SONG' are the same file); they get ' (2)', ' (3)'...
+
+    Names depend on the Spotify ids, not on the playlist order, so a second run gives the same names."""
+    groups = {}
+    for index, track in enumerate(tracks):
+        groups.setdefault(track.get_filename().casefold(), []).append((index, track))
+
+    names = {}
+    repeated = []
+    renamed = []
+    for entries in groups.values():
+        by_id = {}
+        for index, track in entries:
+            by_id.setdefault(getattr(track, "resource_id", None) or id(track), []).append((index, track))
+        for rank, track_id in enumerate(sorted(by_id, key=str), start=1):
+            first_index, first_track = by_id[track_id][0]
+            base = first_track.get_filename()
+            names[first_index] = base if rank == 1 else f"{base} ({rank})"
+            if rank > 1:
+                renamed.append((first_track, names[first_index]))
+            repeated.extend(track for _, track in by_id[track_id][1:])
+
+    plan = [(index, tracks[index], name) for index, name in sorted(names.items())]
+    return plan, repeated, renamed
+
+
 def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
     """True for tracks that are not really songs:
@@ -61,6 +94,7 @@ class SpotifyDownloader():
         self.intro_outro_max_seconds = intro_outro_max_seconds
         self.short_max_seconds = short_max_seconds
         self._print_lock = threading.Lock()
+        self.planned = 0       # songs actually attempted in the last download_tracks call
 
     def _download_collection(self, kind, folder, retrieve, not_found_message):
         """Shared flow for albums, playlists and liked songs. Returns True if at least one track was saved."""
@@ -96,7 +130,7 @@ class SpotifyDownloader():
         self.prep_folder(output_path)
         skipped = self.download_tracks(output_path, tracks)
 
-        return len(skipped) < len(tracks)
+        return len(skipped) < self.planned
 
     def download_album(self, album_url):
         return self._download_collection(
@@ -123,17 +157,24 @@ class SpotifyDownloader():
 
         skipped_tracks = []
         idx_max = len(tracks)
+        plan, repeated, renamed = plan_filenames(tracks)
+        self.planned = len(plan)
+        if repeated:
+            print(f"{colours.OKBLUE}[!] {len(repeated)} repeated song(s) in the list, downloaded once: "
+                  f"{', '.join(sorted({t.get_filename() for t in repeated}))}{colours.ENDC}")
+        for _track, name in renamed:
+            print(f"{colours.OKBLUE}[!] Different song with the same file name, saved as '{name}'{colours.ENDC}")
 
         executor = ThreadPoolExecutor(max_workers=self.workers)
         try:
-            futures = {executor.submit(self.download_track, None, track, i, idx_max, output_path, True): track
-                       for i, track in enumerate(tracks)}
+            futures = {executor.submit(self.download_track, None, track, i, idx_max, output_path, True, filename): (i, track)
+                       for i, track, filename in plan}
 
             for future in as_completed(futures):
-                track = futures[future]
+                i, track = futures[future]
                 error = future.exception()
                 if error is not None:
-                    self._log(f"[{tracks.index(track) + 1}/{idx_max}]", self._describe_error(error))
+                    self._log(f"[{i + 1}/{idx_max}]", self._describe_error(error))
                     skipped_tracks.append((track, error))
         except KeyboardInterrupt:
             print(f"\n{colours.WARNING}[!] Cancelled. Finishing the songs already in progress...{colours.ENDC}")
@@ -165,7 +206,7 @@ class SpotifyDownloader():
             return f"{colours.WARNING}[!] Skipped - song not found on Spotify. {error}"
         return f"{colours.FAIL}[!] Skipped - something went wrong. {type(error).__name__}: {error}"
 
-    def download_track(self, track_url = None, track = None, idx = 0, idx_max = 1, output_path = None, as_sub_function = False):
+    def download_track(self, track_url = None, track = None, idx = 0, idx_max = 1, output_path = None, as_sub_function = False, filename = None):
         """Download one track. Returns True on success (or if the file already exists).
 
         As a sub function (used by the worker threads), errors propagate so the caller can list
@@ -182,7 +223,7 @@ class SpotifyDownloader():
             tag = f"[{idx+1}/{idx_max}]"
             self._log(tag, f"{colours.OKGREEN}Searching{colours.ENDC}: {track.get_title()} by {track.get_artist()}")
 
-            track_path = output_path + track.get_filename() + ".mp3"
+            track_path = output_path + (filename or track.get_filename()) + ".mp3"
 
             if is_hard_to_open(track_path):
                 self._log(tag, f"{colours.WARNING}[!] Long file name: it will be saved, but some Windows programs may not open it.")
