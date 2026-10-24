@@ -1044,7 +1044,7 @@ def test_dry_run_with_a_single_song_is_refused(capsys):
     import spotify2mp3 as app
     with pytest.raises(SystemExit):
         app.main(song="https://open.spotify.com/track/abc", dry_run=True)
-    assert "--dry-run previews a list" in capsys.readouterr().out
+    assert "preview a list" in capsys.readouterr().out
 
 
 def test_dry_run_lists_the_songs_and_downloads_nothing(tmp_path, capsys, monkeypatch):
@@ -1072,14 +1072,124 @@ def test_dry_run_counts_what_is_already_on_disk(tmp_path, capsys):
     assert "ya descargadas: 1 | por descargar: 2" in capsys.readouterr().out
 
 
+# --- "like it" in the guided mode --------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,expected", [
+    ("like it", (True, 200)),                 # no number: the latest 200
+    ("Like It", (True, 200)),
+    ("like it 50", (True, 50)),
+    ("LIKE IT 7", (True, 7)),
+    ("likeit 30", (True, 30)),
+    ("like it all", (True, None)),            # None = every liked song
+    ("like it todas", (True, None)),
+    ("liked", (True, 200)),                   # the old keyword keeps working
+    ("me gusta 15", (True, 15)),
+    ("  like it   25  ", (True, 25)),
+    ("https://open.spotify.com/track/abc", (False, None)),
+    ("like", (False, None)),
+    ("", (False, None)),
+])
+def test_the_like_it_command(text, expected):
+    import spotify2mp3 as app
+    assert app.parse_liked_command(text) == expected
+
+
+@pytest.mark.parametrize("bad", ["like it 0", "like it abc", "like it -5", "like it 2.5"])
+def test_like_it_with_a_wrong_number_explains_what_to_write(bad):
+    import spotify2mp3 as app
+    with pytest.raises(ValueError, match="like it 50"):
+        app.parse_liked_command(bad)
+
+
+def test_like_it_asks_nothing_else_and_leads_to_the_list(monkeypatch):
+    import spotify2mp3 as app
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "like it 50")
+    assert app.get_user_input() == ("liked", "like it 50", "high", {"last": 50, "confirm": True})
+    assert len(asked) == 1                                    # not even the quality: the list comes first
+
+
+def test_a_wrong_like_it_is_asked_again(monkeypatch, capsys):
+    import spotify2mp3 as app
+    answers = iter(["like it 0", "like it 3"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert app.get_user_input()[3] == {"last": 3, "confirm": True}
+    assert "like it 50" in capsys.readouterr().out
+
 
 def test_the_quality_question_shows_what_youtube_really_offers_not_320(monkeypatch):
     """Regression: the question kept saying '(48-320)' although YouTube never gives more than ~130 kbps."""
     import spotify2mp3 as app
     prompts, answers = [], iter(["https://open.spotify.com/track/abc", ""])
     monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt) or next(answers))
-    assert app.get_user_input() == ("song", "https://open.spotify.com/track/abc", "high")
+    assert app.get_user_input() == ("song", "https://open.spotify.com/track/abc", "high", {})
     quality_question = prompts[1]
     assert "320" not in quality_question and "48" not in quality_question
     assert f"~{app.YOUTUBE_MAX_KBPS} kbps" in quality_question
 
+
+def test_the_instructions_mention_like_it(monkeypatch, capsys):
+    import spotify2mp3 as app
+    monkeypatch.setattr("builtins.input", lambda prompt="": "like it")
+    app.get_user_input()
+    assert "like it 50" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("text,expected", [("yes", True), ("Y", True), ("s", True), ("sí", True), ("SI", True), ("no", False), ("N", False)])
+def test_yes_no_answers(monkeypatch, text, expected):
+    from downloader import ask_yes_no
+    monkeypatch.setattr("builtins.input", lambda prompt="": text)
+    assert ask_yes_no("?") is expected
+
+
+def test_yes_no_asks_again_until_it_understands(monkeypatch, capsys):
+    from downloader import ask_yes_no
+    answers = iter(["quizás", "", "no"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert ask_yes_no("?") is False
+    assert capsys.readouterr().out.count("Responde yes o no") == 2
+
+
+def _asking_downloader(monkeypatch, tmp_path, answer, total=3, last=None):
+    import downloader
+    from downloader import SpotifyDownloader
+    monkeypatch.setattr(downloader, "DOWNLOADS_DIR", str(tmp_path))
+    liked, _ = _liked(total=total, limit=last)
+    d = SpotifyDownloader(type("S", (), {"likedSongs": lambda self, n=None: liked})(), None, ask_before_download=True)
+    downloaded = []
+
+    def fake_download_tracks(self, out, tracks):
+        downloaded.append(len(tracks))
+        self.planned = len(tracks)        # what the real method records
+        return []
+
+    monkeypatch.setattr(SpotifyDownloader, "download_tracks", fake_download_tracks)
+    monkeypatch.setattr("builtins.input", lambda prompt="": answer)
+    return d, downloaded
+
+
+def test_after_the_list_yes_downloads_exactly_what_was_shown(monkeypatch, tmp_path, capsys):
+    d, downloaded = _asking_downloader(monkeypatch, tmp_path, "yes", total=5, last=3)
+    assert d.download_liked_songs(3) is True
+    out = capsys.readouterr().out
+    assert "Vista previa" in out and "   3. " in out                 # the list came first
+    assert downloaded == [3] and not d.declined                        # same 3 songs, no second fetch
+
+
+def test_after_the_list_no_downloads_nothing(monkeypatch, tmp_path, capsys):
+    d, downloaded = _asking_downloader(monkeypatch, tmp_path, "no", total=5, last=3)
+    assert d.download_liked_songs(3) is True
+    assert downloaded == [] and d.declined
+    assert not (tmp_path / "liked").exists()
+
+
+def test_the_preview_lists_up_to_300_songs():
+    import downloader
+    assert downloader.PREVIEW_LINES == 300                             # "like it" (200) shows every song
+
+
+def test_ask_is_refused_for_a_single_song(capsys):
+    import spotify2mp3 as app
+    with pytest.raises(SystemExit):
+        app.main(song="https://open.spotify.com/track/abc", confirm=True)
+    assert "--ask" in capsys.readouterr().out

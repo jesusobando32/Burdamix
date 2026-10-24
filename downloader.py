@@ -24,7 +24,7 @@ INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b"
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
-PREVIEW_LINES = 100        # --dry-run lists at most this many songs
+PREVIEW_LINES = 300        # a preview lists at most this many songs
 CANCEL_PRESSES = 3       # Ctrl+C presses needed to cancel a download in progress
 CTRL_C_POLL_SECONDS = 0.05  # how often the waiting main thread looks for a Ctrl+C
 BLOCK_STREAK_LIMIT = 5   # songs in a row that YouTube refuses before we stop asking
@@ -65,6 +65,21 @@ def ctrl_c_needs_three_presses():
         yield
     finally:
         signal.signal(signal.SIGINT, previous)
+
+
+YES_WORDS = ("yes", "y", "s", "si", "sí")
+NO_WORDS = ("no", "n")
+
+
+def ask_yes_no(prompt):
+    """Ask until the answer is yes or no (also s/si/sí/y/n)."""
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in YES_WORDS:
+            return True
+        if answer in NO_WORDS:
+            return False
+        print(f"{colours.WARNING}Responde yes o no.{colours.ENDC}")
 
 
 def plan_filenames(tracks):
@@ -119,8 +134,10 @@ class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-                 dry_run=False):
+                 dry_run=False, ask_before_download=False):
         self.dry_run = dry_run   # list what would be downloaded and stop
+        self.ask_before_download = ask_before_download   # list it, then ask yes/no
+        self.declined = False    # the user answered no to "download them?"
         self.spotify_client = spotify
         self.youtube_client = youtube
         self.audio_quality = audio_quality  # requested bitrate in bps; never modified after construction
@@ -169,9 +186,13 @@ class SpotifyDownloader:
         if not tracks:
             return False
 
-        if self.dry_run:
+        if self.dry_run or self.ask_before_download:
             self._show_plan(tracks, output_path, total)
-            return True
+            if self.dry_run:
+                return True
+            if not ask_yes_no(f"\n{colours.OKGREEN}¿Quieres descargarlas?{colours.ENDC} (yes/no): "):
+                self.declined = True
+                return True
 
         self.last_output_path = output_path
         self.prep_folder(output_path)

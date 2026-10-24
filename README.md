@@ -52,6 +52,16 @@ Si algo sale mal o cambias de app: `python spotify2mp3.py --setup`.
 
 **Modo guiado** (lo más fácil): abre `iniciar.bat` (o `python spotify2mp3.py`), pega el enlace y elige la calidad.
 
+Para tus canciones con **“Me gusta”**, en vez de un enlace escribe:
+
+| Escribes | Qué pasa |
+|---|---|
+| `like it` | Te muestra tus **últimas 200** (las más recientes primero) |
+| `like it 50` | Te muestra las **últimas 50** (o el número que pongas) |
+| `like it all` | Te muestra **todas** |
+
+Primero ves la lista (con la fecha en que guardaste cada una y cuántas ya tienes) y el programa pregunta **“¿Quieres descargarlas? (yes/no)”**. Con `yes` baja exactamente esas; con `no` no hace nada.
+
 Para sacar el enlace: clic derecho en la canción, playlist o álbum > *Compartir* > *Copiar enlace*.
 En el móvil: tres puntos > *Compartir* > *Copiar enlace*. Los enlaces cortos `spotify.link` no funcionan; ábrelos en el navegador y copia el enlace largo.
 
@@ -74,6 +84,7 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 | `--min-views N` | Descarta videos con menos reproducciones (apagado por defecto). |
 | `--keep-interludes` | Descarga también los interludios (por defecto se saltan). |
 | `--last 50` | Con `-l`: solo tus **50 canciones más recientes** de “Me gusta” (Spotify las ordena de la más nueva a la más vieja). Si tienes miles, no hace falta bajarlas todas. |
+| `--ask` | Muestra la lista primero y pregunta **yes/no** antes de descargar (es lo que hace `like it` en el modo guiado). |
 | `--dry-run` | Solo **muestra la lista** (con la fecha en que la guardaste y cuántas ya tienes) y no descarga nada. Sirve para ver cuántas detecta antes de bajar. |
 | `--short-max 50` | Se salta cualquier tema de esta duración o menos, se llame como se llame (segundos). |
 | `--interlude-max 70` | Se salta un tema llamado *interlude*, *interludio*, *skit* o *prelude* si dura esto o menos. |

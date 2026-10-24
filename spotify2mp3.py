@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import os
+import re
 import sys
 
 # Windows consoles/pipes may default to a legacy encoding that cannot draw the logo or accents.
@@ -90,14 +91,43 @@ def validate_spotify_url(url):
         raise ValueError("Eso no parece un enlace de Spotify de una canción, playlist o álbum.")
 
 
+DEFAULT_LIKED_COUNT = 200   # how many songs "like it" shows when no number is given
+LIKED_COMMAND = re.compile(r"^(?:like\s*it|likeit|liked|likes|me\s*gusta)(?:\s+(?P<count>\S+))?$", re.IGNORECASE)
+ALL_WORDS = ("all", "todas", "todo", "todos")
+
+
+def parse_liked_command(text):
+    """The words that mean "my liked songs" in the guided mode.
+
+    'like it' -> (True, 200) | 'like it 50' -> (True, 50) | 'like it all' -> (True, None = all)
+    | anything else (a Spotify link, for example) -> (False, None)."""
+    match = LIKED_COMMAND.match(text.strip())
+    if not match:
+        return False, None
+    count = match.group("count")
+    if count is None:
+        return True, DEFAULT_LIKED_COUNT
+    if count.lower() in ALL_WORDS:
+        return True, None
+    if count.isdigit() and int(count) >= 1:
+        return True, int(count)
+    raise ValueError("Después de 'like it' pon un número mayor que 0 (por ejemplo: like it 50) o 'all' para todas.")
+
+
 def get_user_input():
-    """Ask, in plain Spanish, what to download. Returns (type, url, quality)."""
+    """Ask, in plain Spanish, what to download. Returns (type, url, quality, extra options for main())."""
     print(f"{colours.BOLD}Copia el enlace en Spotify:{colours.ENDC} clic derecho en la canción, playlist o álbum > Compartir > Copiar enlace.")
-    print(f"(Las playlists tienen que ser {colours.BOLD}tuyas{colours.ENDC}; es una limitación de Spotify.)\n")
+    print(f"(Las playlists tienen que ser {colours.BOLD}tuyas{colours.ENDC}; es una limitación de Spotify.)")
+    print(f"Para tus canciones con \"Me gusta\" escribe {colours.BOLD}like it{colours.ENDC} (las últimas {DEFAULT_LIKED_COUNT}), "
+          f"{colours.BOLD}like it 50{colours.ENDC} (las últimas 50) o {colours.BOLD}like it all{colours.ENDC} (todas).\n")
 
     while True:
-        url = input(f"{colours.OKGREEN}Pega el enlace aquí y pulsa Enter:{colours.ENDC}\n> ").strip()
+        url = input(f"{colours.OKGREEN}Pega el enlace aquí (o escribe like it) y pulsa Enter:{colours.ENDC}\n> ").strip()
         try:
+            is_liked, count = parse_liked_command(url)
+            if is_liked:
+                # The list is shown first and the user decides afterwards; the best quality is the only sensible one.
+                return LIKED_KEYWORD, url, "high", {"last": count, "confirm": True}
             choice = validate_spotify_url(url)
             break
         except ValueError as e:
@@ -112,14 +142,14 @@ def get_user_input():
         except argparse.ArgumentTypeError as e:
             print(f"{colours.WARNING}{e}{colours.ENDC}")
 
-    return choice, url, quality
+    return choice, url, quality, {}
 
 
 def main(authtype=None, playlist=None, song=None, album=None, liked=False, quality=None, min_views=None,
          max_length=None, workers=DEFAULT_WORKERS, cookies_from_browser=None,
          skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
          intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-         last=None, dry_run=False):
+         last=None, dry_run=False, confirm=False):
 
     url = song or playlist or album
 
@@ -138,8 +168,8 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
         print(f"{colours.FAIL}Error: --last only works with your liked songs (-l): Spotify lists those newest first.{colours.ENDC}")
         sys.exit(1)
 
-    if dry_run and song:
-        print(f"{colours.FAIL}Error: --dry-run previews a list; use it with a playlist, an album or -l.{colours.ENDC}")
+    if (dry_run or confirm) and song:
+        print(f"{colours.FAIL}Error: --dry-run and --ask preview a list; use them with a playlist, an album or -l.{colours.ENDC}")
         sys.exit(1)
 
     # Spotify only returns playlist contents and liked songs to a logged-in user.
@@ -184,7 +214,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     tempdirs.clean_stale()   # leftovers of runs that were closed by force
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
-                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run)
+                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run, confirm)
 
     success = False
 
@@ -201,7 +231,9 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     finally:
         downloader.rm_tmp_folder()
 
-    if success and dry_run:
+    if success and downloader.declined:
+        print(f"\n{colours.OKBLUE}Ok, no se descargó nada.{colours.ENDC}\n")
+    elif success and dry_run:
         print(f"\n{colours.OKGREEN}Listo.{colours.ENDC} Nada se descargó; quita --dry-run para bajar estas canciones.\n")
     elif success:
         print(f"\n{colours.OKGREEN}Download complete!{colours.ENDC} Your songs are in:\n  {os.path.abspath(downloader.last_output_path)}\n")
@@ -235,6 +267,7 @@ def build_parser():
     parser.add_argument("--last", metavar="N", type=positive_int,
                         help="With -l: only your N most recently liked songs (Spotify lists them newest first)")
     parser.add_argument("--dry-run", help="Only list what would be downloaded (and how much you already have); download nothing", action="store_true")
+    parser.add_argument("--ask", help="Show the list first and ask before downloading it (playlists, albums and -l)", action="store_true")
     parser.add_argument("--no-update", help="Do not check for a newer yt-dlp (it is checked once a day)", action="store_true")
     parser.add_argument("--cookies-from-browser", metavar="BROWSER", choices=["firefox", "chrome", "edge", "brave", "opera", "chromium"],
                         help="Use your YouTube login from this browser, to download age-restricted videos")
@@ -251,9 +284,11 @@ def run_guided():
         print()
 
     while True:
-        choice, url, quality = get_user_input()
+        choice, url, quality, extra = get_user_input()
         kwargs = dict(quality=quality, min_views=DEFAULT_MIN_VIEWS_FOR_DOWNLOAD,
                       max_length=DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, workers=DEFAULT_WORKERS)
+
+        kwargs.update(extra)   # for 'like it': how many songs, and ask before downloading
 
         with contextlib.suppress(SystemExit):   # the reason was already printed; offer to try again instead of closing the window
             main(**{'song': {'song': url}, 'playlist': {'playlist': url}, 'album': {'album': url}, LIKED_KEYWORD: {'liked': True}}[choice], **kwargs)
@@ -288,7 +323,7 @@ def run():
              min_views=args.min_views, max_length=args.max_length * 60, workers=args.workers,
              cookies_from_browser=args.cookies_from_browser,
              skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max,
-             last=args.last, dry_run=args.dry_run)
+             last=args.last, dry_run=args.dry_run, confirm=args.ask)
     else:
         run_guided()
 
