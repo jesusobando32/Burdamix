@@ -220,6 +220,160 @@ def test_setup_with_a_new_app_forgets_the_old_login(tmp_path, monkeypatch):
     assert login.is_client_configured()
 
 
+# --- Spotify rate limit ------------------------------------------------------------
+
+def _api(url):
+    """An API client allowed to talk to the local test server at `url`."""
+    from urllib.parse import urlparse
+    import apis.spotify as sp
+    parsed = urlparse(url)
+    return sp.SpotifyAPI("t", allowed_origins={f"{parsed.scheme}://{parsed.netloc}"})
+
+
+def _server(handler_body):
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        hits = 0
+
+        def do_GET(self):
+            type(self).hits += 1
+            handler_body(self, type(self).hits)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_port}/x"
+
+
+def test_long_rate_limit_stops_with_a_clear_message_instead_of_sleeping_for_hours(monkeypatch):
+    import apis.spotify as sp
+
+    def handler(h, n):
+        h.send_response(429); h.send_header("Retry-After", "86400"); h.end_headers()
+
+    srv, url = _server(handler)
+    slept = []
+    monkeypatch.setattr(sp.time, "sleep", slept.append)
+    with pytest.raises(sp.SpotifyRateLimited) as e:
+        _api(url).get(url)
+    srv.shutdown()
+    assert slept == []                       # it did not wait a day
+    assert "minuto" in str(e.value)
+
+
+def test_short_rate_limit_is_waited_out_and_the_request_then_succeeds(monkeypatch):
+    import apis.spotify as sp
+
+    def handler(h, n):
+        if n == 1:
+            h.send_response(429); h.send_header("Retry-After", "2"); h.end_headers()
+        else:
+            h.send_response(200); h.send_header("Content-Type", "application/json"); h.end_headers(); h.wfile.write(b'{"ok": true}')
+
+    srv, url = _server(handler)
+    slept = []
+    monkeypatch.setattr(sp.time, "sleep", slept.append)
+    assert _api(url).get(url) == {"ok": True}
+    srv.shutdown()
+    assert slept == [3]
+
+
+def test_total_wait_is_capped_at_five_minutes(monkeypatch):
+    import apis.spotify as sp
+
+    def handler(h, n):
+        h.send_response(429); h.send_header("Retry-After", "200"); h.end_headers()
+
+    srv, url = _server(handler)
+    slept = []
+    monkeypatch.setattr(sp.time, "sleep", slept.append)
+    with pytest.raises(sp.SpotifyRateLimited):
+        _api(url).get(url)
+    srv.shutdown()
+    assert sum(slept) <= sp.MAX_RATE_LIMIT_WAIT_SECONDS
+
+
+# --- Network errors ------------------------------------------------------------------
+
+def test_no_internet_becomes_a_clear_error_not_a_raw_requests_exception():
+    import apis.spotify as sp
+    with pytest.raises(sp.SpotifyNetworkError) as e:
+        _api("http://127.0.0.1:9/never").get("http://127.0.0.1:9/never")      # nothing listens on port 9
+    assert "internet" in str(e.value)
+
+
+def test_a_non_json_200_is_reported_as_a_network_problem():
+    import apis.spotify as sp
+
+    def handler(h, n):
+        h.send_response(200); h.end_headers(); h.wfile.write(b"<html>Wi-Fi login</html>")
+
+    srv, url = _server(handler)
+    with pytest.raises(sp.SpotifyNetworkError):
+        _api(url).get(url)
+    srv.shutdown()
+
+
+def test_collection_download_exits_cleanly_when_spotify_is_unreachable(capsys):
+    """Regression: a ConnectionError used to escape as a traceback while reading a playlist."""
+    import apis.spotify as sp
+    from downloader import SpotifyDownloader
+
+    class Playlist:
+        def get_title(self): return "x"
+        def get_tracks(self): raise sp.SpotifyNetworkError("ConnectionError")
+
+    with pytest.raises(SystemExit):
+        SpotifyDownloader(None, None)._download_collection("playlist", "playlists", lambda: Playlist(), "nf")
+    out = capsys.readouterr().out
+    assert "No pude conectarme a Spotify" in out and "Could not read" not in out
+
+
+# --- Token only goes to Spotify ----------------------------------------------------------
+
+def test_token_is_never_sent_to_another_host():
+    """Regression: a 'next' link pointing elsewhere used to receive 'Authorization: Bearer <token>'."""
+    import apis.spotify as sp
+    seen = []
+
+    def handler(h, n):
+        seen.append(h.headers.get("Authorization"))
+        h.send_response(200); h.send_header("Content-Type", "application/json"); h.end_headers(); h.wfile.write(b'{"items": []}')
+
+    srv, url = _server(handler)
+    api = sp.SpotifyAPI("SECRET_TOKEN")            # default: only api.spotify.com is allowed
+    with pytest.raises(sp.SpotifyRetrievalError, match="unexpected address"):
+        api.get(url)
+    with pytest.raises(sp.SpotifyRetrievalError):
+        list(api.paginate({"items": [], "next": url}))   # the same link arriving as a 'next' page
+    srv.shutdown()
+    assert seen == []                                # the foreign server never saw a request, let alone the token
+
+
+@pytest.mark.parametrize("bad", ["http://api.spotify.com/v1/me", "https://api.spotify.com.evil.com/v1/me",
+                                 "https://evil.com/https://api.spotify.com/", "//api.spotify.com/v1/me"])
+def test_lookalike_addresses_are_rejected(bad):
+    import apis.spotify as sp
+    with pytest.raises(sp.SpotifyRetrievalError):
+        sp.SpotifyAPI("t").get(bad)
+
+
+def test_redirects_are_not_followed():
+    import apis.spotify as sp
+
+    def handler(h, n):
+        h.send_response(302); h.send_header("Location", "http://127.0.0.1:1/steal"); h.end_headers()
+
+    srv, url = _server(handler)
+    with pytest.raises(sp.SpotifyRetrievalError):
+        _api(url).get(url)
+    srv.shutdown()
+
+
 # --- Config location ------------------------------------------------------------------------
 
 def test_config_lives_outside_the_project_folder():

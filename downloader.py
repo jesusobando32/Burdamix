@@ -1,7 +1,7 @@
 from const import colours
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable)
-from apis.spotify import Spotify
+from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename
 from utils import resave_audio_clip_with_metadata
@@ -72,6 +72,9 @@ class SpotifyDownloader():
             tracks = collection.get_tracks()
         except (SpotifyAlbumNotFound, SpotifyPlaylistNotFound):
             print(f"\n{colours.FAIL}Error: {colours.ENDC}{colours.WARNING}{not_found_message}{colours.ENDC}\n")
+            sys.exit(1)
+        except (SpotifyNetworkError, SpotifyRateLimited) as e:
+            print(f"\n{colours.FAIL}Error: {colours.ENDC}{e}{colours.ENDC}\n")
             sys.exit(1)
         except (SpotifyRetrievalError, InvalidSpotifyURL) as e:
             print(f"\n{colours.FAIL}Error: {colours.ENDC}Could not read the {kind} from Spotify. {e}{colours.ENDC}\n")

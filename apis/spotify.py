@@ -1,6 +1,7 @@
 from exceptions import InvalidSpotifyURL, SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError
 import re
 import time
+from urllib.parse import urlparse
 
 import requests
 
@@ -9,6 +10,8 @@ import const
 from pathutils import sanitize_filename
 
 API_BASE = "https://api.spotify.com/v1/"
+SPOTIFY_ORIGIN = "https://api.spotify.com"
+MAX_RATE_LIMIT_WAIT_SECONDS = 5 * 60   # longer than this in total: stop and tell the user instead of hanging
 
 PLAYLIST_NOT_READABLE = (
     "Spotify only lets this app read playlists that are YOURS (or collaborative ones you are part of). "
@@ -23,27 +26,63 @@ class SpotifyHTTPError(SpotifyRetrievalError):
         self.status_code = status_code
 
 
+class SpotifyNetworkError(SpotifyRetrievalError):
+    def __init__(self, detail=""):
+        super().__init__("No pude conectarme a Spotify. Revisa tu conexión a internet e inténtalo de nuevo."
+                         + (f" ({detail})" if detail else ""))
+
+
+class SpotifyRateLimited(SpotifyHTTPError):
+    def __init__(self, status_code, wait_seconds):
+        super().__init__(status_code, f"Spotify te limitó por hacer demasiadas peticiones. Intenta de nuevo en unos {max(1, round(wait_seconds / 60))} minuto(s).")
+
+
 class SpotifyAPI:
     """Minimal Spotify Web API client. Talks to the REST API directly instead of through
     tekore's models, which reject the responses Spotify returns today."""
 
-    def __init__(self, access_token):
+    def __init__(self, access_token, allowed_origins=None):
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {access_token}"
+        # The token is only ever sent to these origins. Links inside responses ('next' pages) are
+        # checked against them, so a strange link can never make us hand the token to another server.
+        self.allowed_origins = set(allowed_origins or {SPOTIFY_ORIGIN})
 
     def get(self, path, **params):
         url = path if path.startswith("http") else API_BASE + path
+        parsed = urlparse(url)
+        if f"{parsed.scheme}://{parsed.netloc}" not in self.allowed_origins:
+            raise SpotifyRetrievalError(f"Refusing to send the Spotify token to an unexpected address: {parsed.netloc or url[:40]}")
+        waited = 0
 
         for _ in range(5):
-            response = self.session.get(url, params=params or None, timeout=20)
+            try:
+                response = self.session.get(url, params=params or None, timeout=20, allow_redirects=False)
+            except requests.RequestException as e:   # no internet, DNS failure, timeout...
+                raise SpotifyNetworkError(type(e).__name__) from None
             if response.status_code != 429:
                 break
-            time.sleep(int(response.headers.get("Retry-After", 2)) + 1)
 
+            try:
+                wait = int(response.headers.get("Retry-After", 2)) + 1
+            except ValueError:
+                wait = 3
+            if waited + wait > MAX_RATE_LIMIT_WAIT_SECONDS:
+                raise SpotifyRateLimited(response.status_code, wait)
+
+            print(f"[!] Spotify te limitó por pedir demasiado; espero {wait} s...")
+            time.sleep(wait)
+            waited += wait
+
+        if response.status_code == 429:
+            raise SpotifyRateLimited(429, wait)
         if response.status_code != 200:
             raise SpotifyHTTPError(response.status_code, f"Spotify answered {response.status_code} for {url.replace(API_BASE, '')}")
 
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:   # a 200 that is not JSON, e.g. a Wi-Fi login page
+            raise SpotifyNetworkError("respuesta inesperada") from None
 
     def paginate(self, first_page):
         """Yield every item of a paging object, following 'next' links."""
