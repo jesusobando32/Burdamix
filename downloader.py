@@ -3,7 +3,7 @@ from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlayl
                         InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
-from pathutils import sanitize_filename
+from pathutils import sanitize_filename, long_path, is_hard_to_open
 from utils import resave_audio_clip_with_metadata
 import sys
 import shutil
@@ -184,6 +184,9 @@ class SpotifyDownloader():
 
             track_path = output_path + track.get_filename() + ".mp3"
 
+            if is_hard_to_open(track_path):
+                self._log(tag, f"{colours.WARNING}[!] Long file name: it will be saved, but some Windows programs may not open it.")
+
             self.prep_folder(output_path)
             if self.file_exists(track_path):
                 self._log(tag, f"{colours.OKCYAN}File exists, skipping.")
@@ -222,11 +225,11 @@ class SpotifyDownloader():
             return False
 
     def prep_folder(self, folder_name):
-        Path(str(folder_name)).mkdir(parents=True, exist_ok=True)
+        Path(long_path(folder_name)).mkdir(parents=True, exist_ok=True)
         Path('temp/').mkdir(parents=True, exist_ok=True)
 
     def file_exists(self, file_path):
-        return Path(str(file_path)).exists()
+        return Path(long_path(file_path)).exists()
 
     def rm_tmp_folder(self):
         shutil.rmtree('./temp', ignore_errors=True)

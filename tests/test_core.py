@@ -333,6 +333,36 @@ def test_collection_download_exits_cleanly_when_spotify_is_unreachable(capsys):
     assert "No pude conectarme a Spotify" in out and "Could not read" not in out
 
 
+# --- Long paths --------------------------------------------------------------------
+
+def test_files_can_be_written_past_260_characters(tmp_path):
+    """Windows rejects such paths unless long-path support is on; long_path() makes them work anyway."""
+    from pathutils import long_path
+    from downloader import SpotifyDownloader
+    from pathlib import Path
+
+    deep = str(tmp_path / ("P" * 120) / ("Artista - " + "T" * 140)) + ".mp3"
+    assert len(deep) > 260 if os.name == "nt" else True
+
+    d = SpotifyDownloader(None, None)
+    d.prep_folder(os.path.dirname(deep) + os.sep)
+    with open(long_path(deep), "wb") as f:
+        f.write(b"data")
+    assert d.file_exists(deep)
+    assert Path(long_path(deep)).read_bytes() == b"data"
+
+
+def test_hard_to_open_warning_only_for_very_long_paths():
+    from pathutils import is_hard_to_open
+    assert not is_hard_to_open("downloads/albums/Album/Artista - Titulo.mp3")
+    if os.name == "nt":
+        assert is_hard_to_open("C:/" + "a" * 300 + ".mp3")
+
+
+def test_invisible_direction_characters_are_removed_from_names():
+    assert sanitize_filename("x‮exe.mp3") == "xexe.mp3"
+
+
 # --- Token only goes to Spotify ----------------------------------------------------------
 
 def test_token_is_never_sent_to_another_host():

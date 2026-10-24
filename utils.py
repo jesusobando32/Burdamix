@@ -11,6 +11,7 @@ import requests
 import shutil
 import os
 import functools
+from pathutils import long_path
 
 logging.getLogger('moviepy').setLevel(logging.CRITICAL)
 
@@ -46,7 +47,8 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
     `song_output_path` atomically. The input file is always removed afterwards."""
 
     temporary_audio_path = "./temp/" + random_string(20) + ".mp3"
-    partial_output_path = song_output_path + ".part"
+    final_path = long_path(song_output_path)    # works past 260 characters on Windows
+    partial_output_path = final_path + ".part"
 
     try:
         clip = AudioFileClip(audio_input_path)
@@ -74,7 +76,7 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
         audiofile.tag.save()
 
         shutil.copy(temporary_audio_path, partial_output_path)
-        os.replace(partial_output_path, song_output_path)  # a half-written .mp3 can never look finished
+        os.replace(partial_output_path, final_path)  # a half-written .mp3 can never look finished
     finally:
         for leftover in (temporary_audio_path, partial_output_path, audio_input_path):
             try:
