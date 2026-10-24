@@ -42,6 +42,12 @@ def _fetch_cover(image_url):
     return response.content
 
 
+def _image_mime_type(data):
+    """Spotify covers are JPEG but the fallback cover is a PNG; label each one correctly."""
+    png_signature = bytes([137, 80, 78, 71])   # the first four bytes of every PNG file
+    return "image/png" if data[:4] == png_signature else "image/jpeg"
+
+
 def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output_path, audio_quality):
     """Convert `audio_input_path` to mp3 at `audio_quality` kbps, tag it and write it to
     `song_output_path` atomically. The input file is always removed afterwards."""
@@ -63,7 +69,8 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
             audiofile.initTag()
 
         try:
-            audiofile.tag.images.set(ImageFrame.FRONT_COVER, _fetch_cover(song_metadata['image_url']), 'image/jpeg', "Cover Image from Spotify")
+            cover = _fetch_cover(song_metadata['image_url'])
+            audiofile.tag.images.set(ImageFrame.FRONT_COVER, cover, _image_mime_type(cover), "Cover Image from Spotify")
         except requests.RequestException as e:
             print(f"   - {colours.WARNING}[!] Could not download cover art, continuing without it.{colours.ENDC} {e}")
 
@@ -71,9 +78,12 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
         audiofile.tag.artist = ", ".join(song_metadata['artist'])
         audiofile.tag.album = song_metadata['album']
         audiofile.tag.track_num = (song_metadata['track_num'], 0)
-        audiofile.tag.release_date = song_metadata['release_date'][:4]  # only the year
+        year = (song_metadata.get('release_date') or "")[:4]
+        if year:
+            audiofile.tag.recording_date = year   # ID3v2.3 stores the year in TYER; 'release_date' would be dropped
 
-        audiofile.tag.save()
+        # v2.3 (not the newer v2.4): old car radios and players only read accents correctly in v2.3
+        audiofile.tag.save(version=eyed3.id3.ID3_V2_3)
 
         shutil.copy(temporary_audio_path, partial_output_path)
         os.replace(partial_output_path, final_path)  # a half-written .mp3 can never look finished

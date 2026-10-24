@@ -453,3 +453,55 @@ def test_an_existing_new_config_is_never_overwritten_by_the_old_one(tmp_path, mo
     assert new.read_text() == "NEW" and old.exists()
 
 
+# --- Tags ----------------------------------------------------------------------------------------
+
+def _tone_file(path, seconds=3):
+    import subprocess
+    import imageio_ffmpeg
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    f"sine=frequency=440:duration={seconds}", "-c:a", "aac", "-b:a", "96k", str(path)], check=True)
+
+
+def _cover_bytes(fmt):
+    import subprocess
+    import imageio_ffmpeg
+    codec = "mjpeg" if fmt == "jpeg" else "png"
+    return subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64",
+                           "-frames:v", "1", "-f", "image2pipe", "-c:v", codec, "-"], capture_output=True).stdout
+
+
+@pytest.mark.parametrize("fmt,mime", [("jpeg", "image/jpeg"), ("png", "image/png")])
+def test_mp3_is_written_as_id3v23_with_accents_year_cover_and_no_leftovers(tmp_path, monkeypatch, fmt, mime):
+    from mutagen.id3 import ID3
+    import utils
+
+    src, out = tmp_path / "in.m4a", tmp_path / "out" / "Artista - Canción.mp3"
+    (tmp_path / "out").mkdir(); (tmp_path / "temp").mkdir()
+    _tone_file(src)
+    monkeypatch.chdir(tmp_path)                                  # the converter uses ./temp
+    monkeypatch.setattr(utils, "_fetch_cover", lambda url: _cover_bytes(fmt))
+
+    md = {"title": "Canción Ñandú", "artist": ["Bad Bunny", "Rosalía"], "album": "Mañana", "release_date": "2023-10-13",
+          "track_num": 3, "image_url": "x"}
+    utils.resave_audio_clip_with_metadata(str(src), md, str(out), 96)
+
+    tags = ID3(str(out), translate=False)   # frames exactly as stored in the file
+    assert tags.version == (2, 3, 0)
+    assert str(tags["TIT2"]) == "Canción Ñandú" and str(tags["TPE1"]) == "Bad Bunny, Rosalía" and str(tags["TALB"]) == "Mañana"
+    assert str(tags["TYER"]) == "2023"                           # the year survives in v2.3
+    cover = next(frame for key, frame in tags.items() if key.startswith("APIC"))
+    assert cover.mime == mime and len(cover.data) > 50
+    assert not src.exists() and not os.path.exists(str(out) + ".part") and os.listdir(tmp_path / "temp") == []
+
+
+def test_a_track_without_release_date_still_gets_tagged(tmp_path, monkeypatch):
+    from mutagen.id3 import ID3
+    import utils
+    src, out = tmp_path / "in.m4a", tmp_path / "o.mp3"
+    (tmp_path / "temp").mkdir(); _tone_file(src)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(utils, "_fetch_cover", lambda url: _cover_bytes("jpeg"))
+    utils.resave_audio_clip_with_metadata(str(src), {"title": "T", "artist": ["A"], "album": "Al", "release_date": "", "track_num": 1, "image_url": "x"}, str(out), 96)
+    assert "TYER" not in ID3(str(out)) and str(ID3(str(out))["TIT2"]) == "T"
+
+
