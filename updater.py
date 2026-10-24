@@ -31,6 +31,8 @@ def update_ytdlp_if_due(marker=MARKER, run=subprocess.run):
     """At most once a day, ask pip for a newer yt-dlp. Never raises: no internet just means no update.
 
     Must run before yt_dlp is imported, so that the new version is the one that gets used."""
+    if getattr(sys, "frozen", False):
+        return  # the compiled program has no pip; it ships the yt-dlp it was built with
     if not is_due(marker):
         return
 

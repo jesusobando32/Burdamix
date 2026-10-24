@@ -27,8 +27,30 @@ class colours:
 
 LIKED_KEYWORD = "liked"
 
-# Songs always go here, inside the project, whatever folder the program is started from.
-DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+IS_FROZEN = getattr(sys, "frozen", False)  # True inside the compiled program (PyInstaller)
+PORTABLE_MARKER = "portable.txt"           # an empty file with this name next to the .exe keeps everything in its folder
+
+
+def app_dir():
+    """Folder of the project, or of the .exe when compiled."""
+    if IS_FROZEN:
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def is_portable():
+    return IS_FROZEN and os.path.exists(os.path.join(app_dir(), PORTABLE_MARKER))
+
+
+def _downloads_dir():
+    """Songs go inside the project when run as a script, next to the .exe when portable,
+    and in the user's Music folder when installed (Program Files cannot be written to)."""
+    if IS_FROZEN and not is_portable():
+        return os.path.join(os.path.expanduser("~"), "Music", "Burdamix")
+    return os.path.join(app_dir(), "downloads")
+
+
+DOWNLOADS_DIR = _downloads_dir()
 
 DEFAULT_MIN_VIEWS_FOR_DOWNLOAD = 0  # the duration match already rules out wrong videos
 DEFAULT_MAX_LENGTH_FOR_DOWNLOAD = 60*30

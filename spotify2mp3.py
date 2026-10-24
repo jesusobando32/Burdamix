@@ -330,6 +330,8 @@ def run():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()   # the compiled .exe starts the login server as a child process
     try:
         run()
     except (KeyboardInterrupt, EOFError):   # Ctrl+C or a closed input at any question: say goodbye, no traceback

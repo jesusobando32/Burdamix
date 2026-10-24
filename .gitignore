@@ -14,3 +14,4 @@ tekore_cfg.ini
 .ruff_cache/
 *.mp3
 *.part
+build_out/
