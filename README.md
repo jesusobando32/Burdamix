@@ -109,6 +109,14 @@ python spotify2mp3.py -l                                              # tus canc
 ## Para desarrolladores
 
 ```bash
-pip install -r requirements.txt pytest
+pip install -r requirements.lock yt-dlp pytest mutagen
 python -m pytest tests
+```
+
+**Versiones fijas.** `requirements.lock` tiene las versiones exactas (con hashes) con las que se probó todo, y es lo que instala `iniciar.bat`.
+`yt-dlp` queda fuera a propósito: se actualiza solo. Para subir versiones, edita `requirements.in` y regenera:
+
+```bash
+pip install pip-tools
+pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.lock requirements.in
 ```

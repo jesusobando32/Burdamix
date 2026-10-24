@@ -32,7 +32,17 @@ if not exist ".venv\pip_actualizado" (
     if not errorlevel 1 echo ok> ".venv\pip_actualizado"
 )
 
-".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check -r requirements.txt
+rem Versiones exactas y verificadas (hashes) de todo lo que se probo. Si no sirven para tu version de Python,
+rem se instalan versiones compatibles en su lugar.
+".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check --require-hashes -r requirements.lock
+if errorlevel 1 (
+    echo  Las versiones fijas no sirven para esta version de Python; instalo versiones compatibles...
+    ".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check -r requirements.txt
+    if errorlevel 1 goto fail
+)
+
+rem yt-dlp queda fuera del lock a proposito: YouTube cambia y debe poder actualizarse solo.
+".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check "yt-dlp>=2025.1.1"
 if errorlevel 1 goto fail
 
 ".venv\Scripts\python.exe" spotify2mp3.py %*

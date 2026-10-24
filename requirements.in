@@ -1,0 +1,8 @@
+# Direct dependencies of Burdamix, WITHOUT yt-dlp (it is installed and updated on its own, see updater.py).
+# requirements.lock is generated from this file; do not edit the lock by hand.
+eyed3>=0.9.6
+flask>=2.2.5
+imageio-ffmpeg>=0.4.7
+moviepy>=1.0.3,<2     # 2.x removed moviepy.editor, which utils.py imports
+requests>=2.27.1
+tekore>=5.0.1         # only used for the Spotify login (token refresh)
