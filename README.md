@@ -84,6 +84,7 @@ python spotify2mp3.py -l                                              # tus canc
   Truco: abre la playlist en Spotify, selecciona todo (`Ctrl+A`), *Añadir a playlist* > *Nueva playlist*, y usa el enlace de tu copia.
   Los **álbumes y canciones sueltas** funcionan con cualquier enlace.
 - **Velocidad.** Medido con un álbum de 14 canciones: 2 a la vez = 70 s, 4 = 41 s, 8 = 32 s. Por eso el valor por defecto es 5: subir más rinde poco y aumenta el riesgo de que YouTube te limite.
+- **Cancelar.** Mientras se descarga (una playlist, un álbum o una canción), pulsa **Ctrl+C tres veces**: una o dos solo avisan y la descarga sigue (probado con pulsaciones reales de consola). Al cancelar se conserva lo ya descargado. En las preguntas del modo guiado, un Ctrl+C te despide al instante.
 - **Dónde quedan los MP3.** Siempre en la carpeta `downloads` **dentro del proyecto**, sin importar desde dónde lo ejecutes. Al terminar, el programa muestra la ruta completa.
 - **Se puede cortar y reanudar.** Si ya existe `Artista - Título.mp3`, se salta. Vuelve a ejecutar el mismo enlace y sigue donde quedó.
 - **Videos con restricción de edad.** El programa prueba automáticamente otra coincidencia (casi siempre hay una versión sin restricción).

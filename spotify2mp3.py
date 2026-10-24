@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import os
 import sys
 
@@ -13,7 +14,8 @@ from apis.spotify import Spotify
 from apis.youtube import YouTube
 from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
 import updater
-from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
+from pathutils import long_path
+from downloader import ctrl_c_needs_three_presses, SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
 
 DEFAULT_WORKERS = 5  # songs downloaded at the same time
 MAX_WORKERS = 8
@@ -166,7 +168,8 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
 
     try:
         if song:
-            success = downloader.download_track(song)
+            with ctrl_c_needs_three_presses():   # a single song needs the 3 presses too
+                success = downloader.download_track(song)
         elif playlist:
             success = downloader.download_playlist(playlist)
         elif album:
@@ -235,8 +238,20 @@ def run_guided():
         print()
 
 
-if __name__ == "__main__":
+def say_goodbye_and_exit(code=130):
+    """Used when the user cancels. Downloads running in worker threads cannot be interrupted, so the process
+    ends right away instead of waiting for them; unfinished '.part' files are removed so they never look like songs."""
+    print(f"\n{colours.OKBLUE}Cancelado. Lo que ya se descargó se conserva. ¡Hasta luego!{colours.ENDC}")
+    for folder, _dirs, files in os.walk(DOWNLOADS_DIR):
+        for name in files:
+            if name.endswith(".part"):
+                with contextlib.suppress(OSError):
+                    os.remove(long_path(os.path.join(folder, name)))
+    sys.stdout.flush()
+    os._exit(code)
 
+
+def run():
     if sys.argv[1:] == ["--setup"]:
         login.do_client_login()
     elif len(sys.argv) > 1:
@@ -249,3 +264,10 @@ if __name__ == "__main__":
              skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max)
     else:
         run_guided()
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except (KeyboardInterrupt, EOFError):   # Ctrl+C or a closed input at any question: say goodbye, no traceback
+        say_goodbye_and_exit()

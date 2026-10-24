@@ -745,6 +745,61 @@ def test_a_track_without_release_date_still_gets_tagged(tmp_path, monkeypatch):
     assert "TYER" not in ID3(str(out)) and str(ID3(str(out))["TIT2"]) == "T"
 
 
+# --- Ctrl+C ----------------------------------------------------------------------------------------
+
+def _download_with_ctrl_c(presses, monkeypatch, capsys):
+    """Run download_tracks on slow fake songs and press Ctrl+C `presses` times while it works."""
+    import signal
+    import threading
+    import time
+    from downloader import SpotifyDownloader
+
+    finished = []
+
+    def slow(self, url, track, i, n, out, sub, filename=None):
+        time.sleep(0.5)
+        finished.append(track.n)
+        return True
+
+    monkeypatch.setattr(SpotifyDownloader, "download_track", slow)
+
+    def presser():
+        time.sleep(0.15)
+        for _ in range(presses):
+            signal.raise_signal(signal.SIGINT)
+            time.sleep(0.2)
+
+    threading.Thread(target=presser, daemon=True).start()
+    d = SpotifyDownloader(None, None, workers=1)
+    try:
+        d.download_tracks("out/", [_Song(n) for n in range(3)])
+        return finished, False
+    except KeyboardInterrupt:
+        return finished, True
+    finally:
+        capsys.readouterr()
+
+
+def test_one_or_two_ctrl_c_do_not_cancel_a_download(monkeypatch, capsys):
+    for presses in (1, 2):
+        finished, cancelled = _download_with_ctrl_c(presses, monkeypatch, capsys)
+        assert not cancelled and finished == [0, 1, 2]
+
+
+def test_the_third_ctrl_c_cancels_the_download(monkeypatch, capsys):
+    finished, cancelled = _download_with_ctrl_c(3, monkeypatch, capsys)
+    assert cancelled and len(finished) < 3                  # songs that had not started never did
+
+
+def test_the_original_ctrl_c_behaviour_is_restored_afterwards():
+    import signal
+    from downloader import ctrl_c_needs_three_presses
+    before = signal.getsignal(signal.SIGINT)
+    with ctrl_c_needs_three_presses():
+        assert signal.getsignal(signal.SIGINT) is not before
+    assert signal.getsignal(signal.SIGINT) is before
+
+
 def test_songs_that_keep_failing_with_403_also_stop_the_run(capsys):
     """Regression: persistent 403s used to reset the brake, so a 300-song list was attempted to the end."""
     from exceptions import YoutubeTransientError

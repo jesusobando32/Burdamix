@@ -5,11 +5,13 @@ from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename, long_path, is_hard_to_open
 from utils import resave_audio_clip_with_metadata
+import contextlib
 import os
+import signal
 import sys
 import shutil
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from pathlib import Path
 import re
@@ -22,6 +24,8 @@ INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b"
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
+CANCEL_PRESSES = 3       # Ctrl+C presses needed to cancel a download in progress
+CTRL_C_POLL_SECONDS = 0.05  # how often the waiting main thread looks for a Ctrl+C
 BLOCK_STREAK_LIMIT = 5   # songs in a row that YouTube refuses before we stop asking
 RETRY_DELAY_SECONDS = 3  # pause before the second round of attempts after a temporary error
 _NOT_STARTED = object()  # returned by a song that was dropped because the run was aborted
@@ -34,6 +38,32 @@ def mp3_bitrate_for(source_kbps, requested_kbps):
     asked, and a real MP3 rate (the encoder would round an odd value like 132 down to 128 anyway)."""
     wanted = min(source_kbps, requested_kbps)
     return min(MP3_BITRATES, key=lambda rate: abs(rate - wanted))
+
+
+@contextlib.contextmanager
+def ctrl_c_needs_three_presses():
+    """While songs are downloading, Ctrl+C has to be pressed CANCEL_PRESSES times to cancel: a stray press
+    (or one meant for another window) must not throw away a long download. Only works in the main thread."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    presses = [0]
+
+    def handler(signum, frame):
+        presses[0] += 1
+        if presses[0] >= CANCEL_PRESSES:
+            raise KeyboardInterrupt
+        remaining = CANCEL_PRESSES - presses[0]
+        # plain print: this runs between two instructions of the main thread, so it must not take our log lock
+        print(f"\n{colours.WARNING}[!] Ctrl+C {presses[0]}/{CANCEL_PRESSES}: sigo descargando. "
+              f"Pulsa Ctrl+C {remaining} vez/veces más para cancelar.{colours.ENDC}")
+
+    previous = signal.signal(signal.SIGINT, handler)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def plan_filenames(tracks):
@@ -207,20 +237,25 @@ class SpotifyDownloader():
 
         executor = ThreadPoolExecutor(max_workers=self.workers)
         try:
-            futures = {executor.submit(run_one, i, track, name): (i, track) for i, track, name in plan}
+            with ctrl_c_needs_three_presses():
+                futures = {executor.submit(run_one, i, track, name): (i, track) for i, track, name in plan}
 
-            for future in as_completed(futures):
-                i, track = futures[future]
-                error = future.exception()
-                if error is not None:
-                    self._log(f"[{i + 1}/{idx_max}]", self._describe_error(error))
-                    skipped_tracks.append((track, error))
-                elif future.result() is _NOT_STARTED:
-                    not_started += 1
+                # Wait in short slices instead of until a song finishes: on Windows a thread blocked in a long
+                # wait does not notice Ctrl+C, so presses would only be seen once the next song ended.
+                pending = set(futures)
+                while pending:
+                    done, pending = wait(pending, timeout=CTRL_C_POLL_SECONDS, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        i, track = futures[future]
+                        error = future.exception()
+                        if error is not None:
+                            self._log(f"[{i + 1}/{idx_max}]", self._describe_error(error))
+                            skipped_tracks.append((track, error))
+                        elif future.result() is _NOT_STARTED:
+                            not_started += 1
         except KeyboardInterrupt:
-            print(f"\n{colours.WARNING}[!] Cancelled. Finishing the songs already in progress...{colours.ENDC}")
-            abort.set()
-            executor.shutdown(wait=True, cancel_futures=True)
+            abort.set()                                         # songs that have not started never will
+            executor.shutdown(wait=False, cancel_futures=True)  # do not wait for downloads that cannot be interrupted
             raise
         else:
             executor.shutdown(wait=True)
