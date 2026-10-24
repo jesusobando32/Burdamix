@@ -1,18 +1,17 @@
-from const import colours, BASE62
-import logging
-import string
-import sys
-import random
-import eyed3
-from eyed3.id3.frames import ImageFrame
-import moviepy.editor as mp
-from moviepy.editor import *
-import requests
-import shutil
-import os
+import contextlib
 import functools
+import logging
+import os
+import shutil
 import tempfile
+
+import eyed3
+import requests
+from eyed3.id3.frames import ImageFrame
+from moviepy.editor import AudioFileClip
+
 import tempdirs
+from const import colours
 from pathutils import long_path
 
 logging.getLogger('moviepy').setLevel(logging.CRITICAL)
@@ -31,11 +30,6 @@ def print_splash_screen():
 
     ''' + colours.ENDC + colours.BOLD + '''     Tus playlists de Spotify, en MP3.  ''' + colours.ENDC + "\n")
 
-
-def random_string(length=10):
-    """Generate a random string of fixed length."""
-    letters = string.ascii_letters  # This includes both lowercase and uppercase letters.
-    return ''.join(random.choice(letters) for i in range(length))
 
 @functools.lru_cache(maxsize=32)  # an album's tracks share one cover
 def _fetch_cover(image_url):
@@ -92,7 +86,5 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
         os.replace(partial_output_path, final_path)  # a half-written .mp3 can never look finished
     finally:
         for leftover in (temporary_audio_path, partial_output_path, audio_input_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(leftover)
-            except OSError:
-                pass

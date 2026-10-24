@@ -55,7 +55,7 @@ def validate_quality(quality):
     try:
         bitrate = get_bitrate_from_quality(quality)
     except (ValueError, TypeError):
-        raise argparse.ArgumentTypeError(f"Invalid quality/bitrate: {quality}")
+        raise argparse.ArgumentTypeError(f"Invalid quality/bitrate: {quality}") from None
 
     if MIN_BITRATE_BPS <= bitrate <= MAX_BITRATE_BPS:
         return quality
@@ -230,10 +230,8 @@ def run_guided():
         kwargs = dict(quality=quality, min_views=DEFAULT_MIN_VIEWS_FOR_DOWNLOAD,
                       max_length=DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, workers=DEFAULT_WORKERS)
 
-        try:
+        with contextlib.suppress(SystemExit):   # the reason was already printed; offer to try again instead of closing the window
             main(**{'song': {'song': url}, 'playlist': {'playlist': url}, 'album': {'album': url}, LIKED_KEYWORD: {'liked': True}}[choice], **kwargs)
-        except SystemExit:
-            pass  # the reason was already printed; offer to try again instead of closing the window
 
         if input(f"\n{colours.OKGREEN}¿Descargar otra cosa? (s/n):{colours.ENDC} ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
             break

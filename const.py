@@ -1,6 +1,5 @@
 from enum import Enum
 import sys
-import string
 import os
 
 def supports_24bit_color():
@@ -22,10 +21,6 @@ class colours:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    CBLACK  = '\33[30m'
-    CGREENBG  = '\33[42m'
-    CREDBG    = '\33[41m'
     CVIOLETBG2 = '\33[105m'
     SPOTIFYGREEN = '\033[38;2;30;215;96m' if supports_24bit_color() else '\033[92m'
 
@@ -34,8 +29,6 @@ LIKED_KEYWORD = "liked"
 
 # Songs always go here, inside the project, whatever folder the program is started from.
 DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
-BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-LEGAL_PATH_CHARACTERS = string.ascii_letters + string.digits+ " ()[]" + "_-.,&'!@#$%^&+=~`"
 
 DEFAULT_MIN_VIEWS_FOR_DOWNLOAD = 0  # the duration match already rules out wrong videos
 DEFAULT_MAX_LENGTH_FOR_DOWNLOAD = 60*30

@@ -1,6 +1,6 @@
 from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
-                        InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
+                        InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename, long_path, is_hard_to_open
@@ -10,7 +10,6 @@ import contextlib
 import os
 import signal
 import sys
-import shutil
 import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -115,7 +114,7 @@ def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECO
     return bool(INTRO_OUTRO_WORDS.search(title)) and duration_seconds <= intro_outro_max_seconds
 
 
-class SpotifyDownloader():
+class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
@@ -282,8 +281,6 @@ class SpotifyDownloader():
     def _describe_error(error):
         if isinstance(error, YoutubeItemNotFound):
             return f"{colours.WARNING}[!] Skipped - found on Spotify but not on YouTube."
-        if isinstance(error, ConfigVideoMaxLength):
-            return f"{colours.WARNING}[!] Skipped - video longer than the max length (use --max-length)."
         if isinstance(error, ConfigVideoLowViewCount):
             return f"{colours.WARNING}[!] Skipped - video has fewer views than the minimum (use --min-views)."
         if isinstance(error, YoutubeBlocked):

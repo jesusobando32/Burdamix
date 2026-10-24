@@ -1,9 +1,6 @@
 class InvalidSpotifyURL(Exception):
     pass
 
-class ConfigVideoMaxLength(Exception):
-    pass
-
 class ConfigVideoLowViewCount(Exception):
     pass
 

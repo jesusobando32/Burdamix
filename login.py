@@ -16,7 +16,6 @@ from flask import Flask, request, redirect
 from const import colours
 
 auths = {}  # Auth attempts. Stores data across spotify login
-flask_process = None
 
 def _config_dir():
     """Private folder of the user, outside the project: it is not inside Documents (so OneDrive does not
@@ -162,8 +161,6 @@ def _port_in_use():
 
 def do_user_login():
     """Open the browser so the user can allow the app to read their playlists. Exits the program on failure."""
-    global flask_process
-
     if not is_client_configured():
         do_client_login()
 

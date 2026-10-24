@@ -9,3 +9,8 @@ __pycache__
 tekore_cfg.ini
 .venv/
 .ytdlp_last_check
+.pytest_cache/
+.coverage
+.ruff_cache/
+*.mp3
+*.part

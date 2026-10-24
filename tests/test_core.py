@@ -89,7 +89,6 @@ def test_track_from_data_builds_metadata_and_filename():
     track = track_from_data(None, _api_track())
     assert track.get_filename() == "Artista - Canción"
     assert track.get_metadata()["image_url"] == "http://img/1.jpg"
-    assert track.get_searchable_title() == "Canción - Artista"
 
 
 @pytest.mark.parametrize("bad", [

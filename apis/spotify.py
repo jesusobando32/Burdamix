@@ -167,10 +167,6 @@ class _Collection:
         title = self.metadata.get("title", self.default_title)
         return sanitize_filename(title) if sanitize else title
 
-    def get_cover_art_url(self):
-        self._ensure_loaded()
-        return self.metadata.get("image_url", const.UNKNOWN_ALBUM_COVER_URL)
-
     def get_tracks(self):
         self._ensure_loaded()
         return self.metadata.get("tracks", [])
@@ -202,9 +198,9 @@ class SpotifyPlaylist(_Collection):
                     tracks.append(track)
         except SpotifyHTTPError as e:
             if e.status_code == 404:
-                raise SpotifyPlaylistNotFound("Playlist not found.")
+                raise SpotifyPlaylistNotFound("Playlist not found.") from None
             if e.status_code in (401, 403):
-                raise SpotifyPlaylistNotFound(PLAYLIST_NOT_READABLE)
+                raise SpotifyPlaylistNotFound(PLAYLIST_NOT_READABLE) from None
             raise
 
         self.metadata = {"title": info.get("name", self.default_title), "image_url": _best_image(info.get("images")), "tracks": tracks}
@@ -231,7 +227,7 @@ class SpotifyAlbum(_Collection):
                     tracks.append(track)
         except SpotifyHTTPError as e:
             if e.status_code == 404:
-                raise SpotifyAlbumNotFound("Album not found.")
+                raise SpotifyAlbumNotFound("Album not found.") from None
             raise
 
         self.metadata = {"title": album.get("name", self.default_title), "image_url": _best_image(album.get("images")), "tracks": tracks}
@@ -251,7 +247,7 @@ class SpotifyLikedSongs(_Collection):
         self.metadata = {"title": "Liked Songs", "image_url": const.UNKNOWN_ALBUM_COVER_URL, "tracks": tracks}
 
 
-class SpotifyTrack():
+class SpotifyTrack:
     def __init__(self, base: Spotify, resource_url):
         self.base = base
         self.resource_url = resource_url
@@ -264,7 +260,7 @@ class SpotifyTrack():
                 track_data = self.base.api.get(f"tracks/{self.resource_id}")
             except SpotifyHTTPError as e:
                 if e.status_code == 404:
-                    raise SpotifyTrackNotFound("Track not found.")
+                    raise SpotifyTrackNotFound("Track not found.") from None
                 raise
 
         album_data = track_data.get("album") or album_data
@@ -309,14 +305,6 @@ class SpotifyTrack():
         self._ensure_loaded()
         artist_name = " ".join(self.track_metadata.get("artist", ["Unknown artist"]))
         return sanitize_filename(artist_name) if sanitize else artist_name
-
-    def get_searchable_title(self):
-        self._ensure_loaded()
-        return self.track_metadata["title"] + " - " + " ".join(self.track_metadata["artist"])
-
-    def get_cover_art_url(self):
-        self._ensure_loaded()
-        return self.track_metadata.get("image_url", const.UNKNOWN_ALBUM_COVER_URL)
 
     def get_metadata(self):
         self._ensure_loaded()
