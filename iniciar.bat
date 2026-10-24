@@ -4,7 +4,11 @@ cd /d "%~dp0"
 chcp 65001 >nul
 title Burdamix
 
-where python >nul 2>nul
+rem Por defecto Windows busca los programas PRIMERO en esta carpeta. Se desactiva: asi un python.exe
+rem puesto aqui por alguien mas nunca se ejecuta; solo se usa el Python instalado en el sistema.
+set NoDefaultCurrentDirectoryInExePath=1
+
+python --version >nul 2>nul
 if errorlevel 1 (
     echo.
     echo  Python no esta instalado. Se abrira la pagina de descarga.
@@ -17,8 +21,15 @@ if errorlevel 1 (
 
 if not exist ".venv\Scripts\python.exe" (
     echo  Preparando por primera vez, esto puede tardar unos minutos...
-    python -m venv .venv
+    python -m venv --upgrade-deps .venv
     if errorlevel 1 goto fail
+    echo ok> ".venv\pip_actualizado"
+)
+
+rem Entornos creados antes: poner el instalador (pip) al dia una sola vez.
+if not exist ".venv\pip_actualizado" (
+    ".venv\Scripts\python.exe" -m pip install -q --upgrade --disable-pip-version-check pip
+    if not errorlevel 1 echo ok> ".venv\pip_actualizado"
 )
 
 ".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check -r requirements.txt
