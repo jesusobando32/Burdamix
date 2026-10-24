@@ -92,6 +92,17 @@ def score_candidate(candidate, title, artists, duration_seconds):
     return score, title_matches, difference
 
 
+def search_queries(title, artists):
+    """Search wordings to try, in order. The first one favours the studio audio; the others are simpler
+    and find songs the first one misses (obscure artists, several artists, titles made of symbols)."""
+    wordings = [
+        f"{title} {' '.join(artists[:2])} audio",
+        f"{artists[0]} {title}",
+        f"{title} {' '.join(artists)}",
+    ]
+    return list(dict.fromkeys(wordings))   # no repeats, order kept
+
+
 def rank_candidates(candidates, title, artists, duration_seconds, max_length=None):
     """Best-first list of videos that plausibly are this song, judged against Spotify's data."""
     scored = []
@@ -142,11 +153,22 @@ class YouTube:
 
         Videos are judged against Spotify's own data (duration, title, artist), so the music-video
         cut with a long intro is rejected in favour of the audio that really is the song."""
-        candidates = list(self._search(f"{title} {' '.join(artists[:2])} audio"))
+        # YouTube's search is picky: a long query (title + several artists + "audio") can return a single
+        # unrelated video, or nothing at all when the title is made of symbols. So if one wording does not
+        # give a video with the right duration, the next one is tried, adding what was found to the pool.
+        candidates = {}
+        ranked = []
+        for query in search_queries(title, artists):
+            for candidate in self._search(query):
+                candidates.setdefault(candidate.url, candidate)
+            ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length)
+            if ranked:
+                break
+
+        candidates = list(candidates.values())
         if not candidates:
             raise YoutubeItemNotFound('Could not load results from YouTube')
 
-        ranked = rank_candidates(candidates, title, artists, duration_seconds, max_length)
         if not ranked:
             closest = min((c.duration for c in candidates if c.duration), key=lambda d: abs(d - duration_seconds), default=None)
             hint = f" (closest video lasts {closest}s)" if closest else ""

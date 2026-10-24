@@ -860,3 +860,66 @@ def test_an_occasional_403_does_not_stop_the_run(capsys):
     t = YoutubeTransientError("HTTP Error 403")
     d, attempts, skipped, out = _run([t, None, t, None, t, t, None, t, None, t, None, t], workers=1, capsys=capsys)
     assert not d.blocked and len(attempts) == 12
+
+
+# --- Search wordings ------------------------------------------------------------------------------
+
+def _searching(results_by_query):
+    """A YouTube client whose search answers from a table: {query: [Candidate, ...]}. Records the queries asked."""
+    from apis.youtube import YouTube
+    yt = YouTube()
+    asked = []
+
+    def fake(query, count=8):
+        asked.append(query)
+        return iter(results_by_query.get(query, []))
+
+    yt._search = fake
+    return yt, asked
+
+
+def test_a_simpler_wording_rescues_a_song_the_first_one_misses():
+    """Regression: 'mariposas en el estómago' returned only a 949 s concert for the long query and was skipped."""
+    from apis.youtube import search_queries
+    long_q, simple_q, *_ = search_queries("mariposas en el estómago", ["RaiNao", "El Laberinto del Coco"])
+    yt, asked = _searching({
+        long_q: [cand("RaiNao: Tiny Desk Concert", 949, "NPR Music", 650_000, "concert")],
+        simple_q: [cand("RaiNao & El Laberinto del Coco - mariposas en el estómago (BICHOALIZER)", 221, "RaiNao", 55_000, "song")],
+    })
+    assert yt.search("mariposas en el estómago", ["RaiNao", "El Laberinto del Coco"], 220, 1800, 0) == ["song"]
+    assert asked == [long_q, simple_q]
+
+
+def test_a_title_made_of_symbols_is_found_when_the_first_query_returns_nothing():
+    from apis.youtube import search_queries
+    title = "へ( •́ ‸ •̀) ʋ"
+    long_q, simple_q, *_ = search_queries(title, ["RaiNao"])
+    yt, asked = _searching({long_q: [], simple_q: [cand("RaiNao - へ[ •́ ‸ •̀ ]ʋ (BICHOALIZER)", 61, "RaiNao", 640_000, "kaomoji")]})
+    assert yt.search(title, ["RaiNao"], 60, 1800, 0) == ["kaomoji"]
+
+
+def test_no_extra_searches_when_the_first_wording_already_works():
+    from apis.youtube import search_queries
+    long_q = search_queries("Blinding Lights", ["The Weeknd"])[0]
+    yt, asked = _searching({long_q: [cand("The Weeknd - Blinding Lights (Official Audio)", 204, "The Weeknd", 883_000_000, "audio")]})
+    assert yt.search("Blinding Lights", ["The Weeknd"], 200, 1800, 0) == ["audio"]
+    assert asked == [long_q]
+
+
+def test_it_gives_up_only_after_every_wording_and_says_what_it_saw():
+    yt, asked = _searching({})
+    with pytest.raises(YoutubeItemNotFound, match="Could not load"):
+        yt.search("Nada", ["Nadie"], 200, 1800, 0)
+    assert len(asked) == 3
+
+    from apis.youtube import search_queries
+    yt, _ = _searching({q: [cand("Otra cosa", 949, "X", 10, "u")] for q in search_queries("Nada", ["Nadie"])})
+    with pytest.raises(YoutubeItemNotFound, match="closest video lasts 949s"):
+        yt.search("Nada", ["Nadie"], 200, 1800, 0)
+
+
+def test_search_wordings_have_no_repeats():
+    from apis.youtube import search_queries
+    assert len(search_queries("Song", ["A"])) == len(set(search_queries("Song", ["A"])))
+
+
