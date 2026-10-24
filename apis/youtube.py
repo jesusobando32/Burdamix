@@ -1,8 +1,10 @@
 import math
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
 
+import tempdirs
 from exceptions import ConfigVideoLowViewCount, YoutubeBlocked, YoutubeItemNotFound, YoutubeTransientError, YoutubeVideoUnavailable
 
 SEARCH_RESULTS = 8          # videos looked at per song
@@ -156,7 +158,7 @@ class YouTube:
         return [c.url for c in ranked[:MAX_FALLBACKS]]
 
     def download(self, url, audio_bitrate):
-        """Download the audio of `url` into ./temp/.
+        """Download the audio of `url` into this run's temporary folder.
 
         `audio_bitrate` is the requested bitrate in bps. Returns (path, kbps)
         where kbps is the real bitrate of the stream that was downloaded.
@@ -166,7 +168,7 @@ class YouTube:
         target_kbps = int(audio_bitrate / 1000)
         options = self._options(**{
             'format': f'bestaudio[abr<={target_kbps}]/worstaudio/best',
-            'outtmpl': './temp/%(id)s.%(ext)s',  # video id: unique, so parallel downloads never collide
+            'outtmpl': tempdirs.run_dir().replace('%', '%%').replace(os.sep, '/') + '/%(id)s.%(ext)s',  # video id: unique per video
             'noplaylist': True,
             'retries': 3,
         })

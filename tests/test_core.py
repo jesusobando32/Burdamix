@@ -695,6 +695,14 @@ def test_an_existing_new_config_is_never_overwritten_by_the_old_one(tmp_path, mo
 
 # --- Tags ----------------------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def private_temp_root(tmp_path, monkeypatch):
+    """Every test gets its own temporary root, so tests never touch (or depend on) the real one."""
+    import tempdirs
+    monkeypatch.setattr(tempdirs, "ROOT", str(tmp_path / "Burdamix-temp"))
+    monkeypatch.setattr(tempdirs, "_run_dir", None)
+
+
 def _tone_file(path, seconds=3):
     import subprocess
     import imageio_ffmpeg
@@ -716,7 +724,7 @@ def test_mp3_is_written_as_id3v23_with_accents_year_cover_and_no_leftovers(tmp_p
     import utils
 
     src, out = tmp_path / "in.m4a", tmp_path / "out" / "Artista - Canción.mp3"
-    (tmp_path / "out").mkdir(); (tmp_path / "temp").mkdir()
+    (tmp_path / "out").mkdir()
     _tone_file(src)
     monkeypatch.chdir(tmp_path)                                  # the converter uses ./temp
     monkeypatch.setattr(utils, "_fetch_cover", lambda url: _cover_bytes(fmt))
@@ -731,14 +739,15 @@ def test_mp3_is_written_as_id3v23_with_accents_year_cover_and_no_leftovers(tmp_p
     assert str(tags["TYER"]) == "2023"                           # the year survives in v2.3
     cover = next(frame for key, frame in tags.items() if key.startswith("APIC"))
     assert cover.mime == mime and len(cover.data) > 50
-    assert not src.exists() and not os.path.exists(str(out) + ".part") and os.listdir(tmp_path / "temp") == []
+    import tempdirs
+    assert not src.exists() and not os.path.exists(str(out) + ".part") and os.listdir(tempdirs.run_dir()) == []
 
 
 def test_a_track_without_release_date_still_gets_tagged(tmp_path, monkeypatch):
     from mutagen.id3 import ID3
     import utils
     src, out = tmp_path / "in.m4a", tmp_path / "o.mp3"
-    (tmp_path / "temp").mkdir(); _tone_file(src)
+    _tone_file(src)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(utils, "_fetch_cover", lambda url: _cover_bytes("jpeg"))
     utils.resave_audio_clip_with_metadata(str(src), {"title": "T", "artist": ["A"], "album": "Al", "release_date": "", "track_num": 1, "image_url": "x"}, str(out), 96)
@@ -798,6 +807,45 @@ def test_the_original_ctrl_c_behaviour_is_restored_afterwards():
     with ctrl_c_needs_three_presses():
         assert signal.getsignal(signal.SIGINT) is not before
     assert signal.getsignal(signal.SIGINT) is before
+
+
+# --- Temporary folders ----------------------------------------------------------------------------
+
+def test_each_run_has_its_own_temporary_folder_and_removes_it():
+    import tempdirs
+    folder = tempdirs.run_dir()
+    assert os.path.isdir(folder) and folder.startswith(tempdirs.ROOT)
+    assert tempdirs.run_dir() == folder                      # same folder for the whole run
+    open(os.path.join(folder, "x.webm"), "w").close()
+    tempdirs.remove_run_dir()
+    assert not os.path.exists(folder) and not os.path.exists(tempdirs.ROOT)
+
+
+def test_two_runs_do_not_delete_each_others_files(monkeypatch):
+    """Regression: with one shared 'temp' folder, a run that finished wiped the other run's files."""
+    import tempdirs
+    first = tempdirs.run_dir()
+    open(os.path.join(first, "in_progress.webm"), "w").close()
+
+    monkeypatch.setattr(tempdirs, "_run_dir", None)          # a second copy of the program starts
+    second = tempdirs.run_dir()
+    assert second != first
+    tempdirs.remove_run_dir()                                # the second one finishes first
+
+    assert os.path.exists(os.path.join(first, "in_progress.webm"))   # the first one's files are intact
+
+
+def test_only_old_abandoned_folders_are_cleaned_at_start():
+    import time
+    import tempdirs
+    live = tempdirs.run_dir()
+    old = os.path.join(tempdirs.ROOT, "run-abandoned")
+    os.makedirs(old)
+    long_ago = time.time() - 48 * 3600
+    os.utime(old, (long_ago, long_ago))
+
+    tempdirs.clean_stale()
+    assert not os.path.exists(old) and os.path.isdir(live)
 
 
 def test_songs_that_keep_failing_with_403_also_stop_the_run(capsys):

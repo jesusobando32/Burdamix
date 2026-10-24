@@ -11,6 +11,8 @@ import requests
 import shutil
 import os
 import functools
+import tempfile
+import tempdirs
 from pathutils import long_path
 
 logging.getLogger('moviepy').setLevel(logging.CRITICAL)
@@ -52,7 +54,8 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
     """Convert `audio_input_path` to mp3 at `audio_quality` kbps, tag it and write it to
     `song_output_path` atomically. The input file is always removed afterwards."""
 
-    temporary_audio_path = "./temp/" + random_string(20) + ".mp3"
+    handle, temporary_audio_path = tempfile.mkstemp(suffix=".mp3", dir=tempdirs.run_dir())   # unique name
+    os.close(handle)
     final_path = long_path(song_output_path)    # works past 260 characters on Windows
     partial_output_path = final_path + ".part"
 

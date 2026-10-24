@@ -4,6 +4,7 @@ from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlayl
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename, long_path, is_hard_to_open
+import tempdirs
 from utils import resave_audio_clip_with_metadata
 import contextlib
 import os
@@ -376,10 +377,9 @@ class SpotifyDownloader():
 
     def prep_folder(self, folder_name):
         Path(long_path(folder_name)).mkdir(parents=True, exist_ok=True)
-        Path('temp/').mkdir(parents=True, exist_ok=True)
 
     def file_exists(self, file_path):
         return Path(long_path(file_path)).exists()
 
     def rm_tmp_folder(self):
-        shutil.rmtree('./temp', ignore_errors=True)
+        tempdirs.remove_run_dir()

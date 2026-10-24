@@ -13,6 +13,7 @@ import utils
 from apis.spotify import Spotify
 from apis.youtube import YouTube
 from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
+import tempdirs
 import updater
 from pathutils import long_path
 from downloader import ctrl_c_needs_three_presses, SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
@@ -160,6 +161,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
               f"Si cambiaste o borraste tu app de Spotify, ejecuta: python spotify2mp3.py --setup")
         sys.exit(1)
 
+    tempdirs.clean_stale()   # leftovers of runs that were closed by force
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
                                   skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds)
@@ -247,6 +249,7 @@ def say_goodbye_and_exit(code=130):
             if name.endswith(".part"):
                 with contextlib.suppress(OSError):
                     os.remove(long_path(os.path.join(folder, name)))
+    tempdirs.remove_run_dir()
     sys.stdout.flush()
     os._exit(code)
 
