@@ -223,7 +223,9 @@ class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-                 dry_run=False, ask_before_download=False, offer_browser_login=False):
+                 dry_run=False, ask_before_download=False, offer_browser_login=False, on_event=None):
+        self.on_event = on_event   # graphical interface: called with (kind, **data) as each song progresses
+        self.cancelled = threading.Event()   # set to stop starting new songs
         self.dry_run = dry_run   # list what would be downloaded and stop
         self.ask_before_download = ask_before_download   # list it, then ask yes/no
         self.offer_browser_login = offer_browser_login   # guided mode: offer the user's YouTube login for adult-only videos
@@ -242,6 +244,23 @@ class SpotifyDownloader:
         self.blocked = False   # set when YouTube made us stop mid-run
         self.planned = 0       # songs actually attempted in the last download_tracks call
         self.last_output_path = None   # folder where the songs of the last request were saved
+
+    def split_interludes(self, tracks):
+        """(songs to download, short interludes left out). Nothing is left out when skipping is off."""
+        if not self.skip_interludes:
+            return tracks, []
+        interludes = [t for t in tracks if is_interlude(t.get_title(), t.get_metadata()["duration_ms"] / 1000,
+                                                        self.interlude_max_seconds, self.intro_outro_max_seconds, self.short_max_seconds)]
+        return [t for t in tracks if t not in interludes], interludes
+
+    def _emit(self, kind, track=None, **data):
+        """Tell the graphical interface what happened; a bug in the interface must never stop a download."""
+        if self.on_event is None:
+            return
+        try:
+            self.on_event(kind, key=getattr(track, "resource_id", None), **data)
+        except Exception:
+            pass
 
     def _download_collection(self, kind, folder, retrieve, not_found_message):
         """Shared flow for albums, playlists and liked songs. Returns True if at least one track was saved."""
@@ -265,13 +284,10 @@ class SpotifyDownloader:
         recent = f" (the {len(tracks)} most recent of the {total} you have)" if getattr(collection, "limit", None) and total and total > len(tracks) else ""
         print(f"\n{colours.OKBLUE}[!] Found {len(tracks)} downloadable tracks in {kind}{recent}.")
 
-        if self.skip_interludes:
-            interludes = [t for t in tracks if is_interlude(t.get_title(), t.get_metadata()["duration_ms"] / 1000,
-                                                     self.interlude_max_seconds, self.intro_outro_max_seconds, self.short_max_seconds)]
-            if interludes:
-                tracks = [t for t in tracks if t not in interludes]
-                print(f"{colours.OKBLUE}[!] Skipping {len(interludes)} short track(s) (use --keep-interludes to keep them): "
-                      f"{', '.join(t.get_title() for t in interludes)}{colours.ENDC}")
+        tracks, interludes = self.split_interludes(tracks)
+        if interludes:
+            print(f"{colours.OKBLUE}[!] Skipping {len(interludes)} short track(s) (use --keep-interludes to keep them): "
+                  f"{', '.join(t.get_title() for t in interludes)}{colours.ENDC}")
 
         if not tracks:
             return False
@@ -348,7 +364,7 @@ class SpotifyDownloader:
         streak = [0]
 
         def run_one(i, track, filename):
-            if abort.is_set():
+            if abort.is_set() or self.cancelled.is_set():
                 return _NOT_STARTED
             try:
                 self.download_track(None, track, i, idx_max, output_path, True, filename)
@@ -392,6 +408,7 @@ class SpotifyDownloader:
                         error = future.exception()
                         if error is not None:
                             self._log(f"[{i + 1}/{idx_max}]", self._describe_error(error))
+                            self._emit("failed", track, reason=friendly_reason(error), category=reason_category(error))
                             skipped_tracks.append((track, error))
                         elif future.result() is _NOT_STARTED:
                             not_started += 1
@@ -405,7 +422,7 @@ class SpotifyDownloader:
         self.blocked = abort.is_set()
 
         info = {track: (i, name) for i, track, name in plan}
-        if not self.blocked:   # if YouTube is blocking us, asking again right away only makes it worse
+        if not self.blocked and not self.cancelled.is_set():   # if YouTube is blocking us, asking again right away only makes it worse
             self._retry_pass(skipped_tracks, info, idx_max, output_path)
         self._offer_login_retry(skipped_tracks, info, idx_max, output_path)
 
@@ -449,6 +466,7 @@ class SpotifyDownloader:
             try:
                 self.download_track(None, track, i, idx_max, output_path, True, name)
             except Exception as error:
+                self._emit("failed", track, reason=friendly_reason(error), category=reason_category(error))
                 skipped_tracks[:] = [(t, error if t is track else e) for t, e in skipped_tracks]
             else:
                 skipped_tracks[:] = [(t, e) for t, e in skipped_tracks if t is not track]
@@ -546,6 +564,7 @@ class SpotifyDownloader:
                 raise ValueError("No Track was supplied to download track!")
 
             tag = f"[{idx+1}/{idx_max}]"
+            self._emit("stage", track, stage="searching")
             self._log(tag, f"{colours.OKGREEN}Searching{colours.ENDC}: {track.get_title()} by {track.get_artist()}")
 
             track_path = output_path + (filename or track.get_filename()) + ".mp3"
@@ -556,14 +575,17 @@ class SpotifyDownloader:
             self.prep_folder(output_path)
             if self.file_exists(track_path):
                 self._log(tag, f"{colours.OKCYAN}File exists, skipping.")
+                self._emit("done", track, existed=True)
                 return True
 
             metadata = track.get_metadata()
             links = self.youtube_client.search(metadata["title"], metadata["artist"], round(metadata["duration_ms"] / 1000),
                                                self.max_length, self.min_view_count)
 
+            self._emit("stage", track, stage="downloading")
             video_downloaded_path, source_kbps = self._download_audio(tag, track, links)
 
+            self._emit("stage", track, stage="converting")
             self._log(tag, f"Converting and tagging: {track.get_title()}")
 
             # Never encode above the source: upscaling 128 kbps audio to 256 only wastes space.
@@ -571,6 +593,7 @@ class SpotifyDownloader:
             resave_audio_clip_with_metadata(video_downloaded_path, track.get_metadata(), track_path, target_kbps)
 
             self._log(tag, f"{colours.OKGREEN}Done!{colours.ENDC} {track.get_title()}")
+            self._emit("done", track, existed=False)
 
             return True
 

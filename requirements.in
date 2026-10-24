@@ -4,5 +4,6 @@ eyed3>=0.9.6
 flask>=2.2.5
 imageio-ffmpeg>=0.4.7
 moviepy>=1.0.3,<2     # 2.x removed moviepy.editor, which utils.py imports
+pywebview>=5.0       # the window of gui_app.py (uses the Microsoft Edge WebView2 that comes with Windows)
 requests>=2.27.1
 tekore>=5.0.1         # only used for the Spotify login (token refresh)

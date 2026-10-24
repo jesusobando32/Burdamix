@@ -1555,3 +1555,155 @@ def test_the_update_is_never_offered_outside_the_compiled_guided_mode(monkeypatc
     assert _update_offer(monkeypatch, "yes", frozen=False) == []
     assert _update_offer(monkeypatch, "yes", guided=False) == []
     assert _update_offer(monkeypatch, "yes", error=RuntimeError("disk full")) == []
+
+
+# --- The window (gui/backend.py) and the progress events it listens to ------------------------------------------------
+
+def _window_api(tmp_path, monkeypatch):
+    import const
+    import downloader
+    monkeypatch.setattr(const, "data_dir", lambda: str(tmp_path))                  # never touch the real settings
+    monkeypatch.setattr(downloader, "DOWNLOADS_DIR", downloader.DOWNLOADS_DIR)    # restored after the test
+    from gui.backend import Api
+    return Api()
+
+
+def test_the_window_starts_with_sensible_settings_when_nothing_was_saved(tmp_path, monkeypatch):
+    s = _window_api(tmp_path, monkeypatch).get_settings()
+    assert s["workers"] == 5 and s["skip_interludes"] is True and s["browser"] == ""
+    assert s["effective_downloads_dir"]
+
+
+def test_settings_are_saved_cleaned_and_remembered(tmp_path, monkeypatch):
+    import downloader
+    api = _window_api(tmp_path, monkeypatch)
+    folder = str(tmp_path / "mis canciones")
+    result = api.save_settings({"workers": 99, "browser": "internet explorer", "downloads_dir": folder, "skip_interludes": False})
+    assert result["ok"] and result["workers"] == 8 and result["browser"] == ""    # clamped; an unknown browser is dropped
+    assert downloader.DOWNLOADS_DIR == folder                                       # the downloader uses the new folder at once
+    again = _window_api(tmp_path, monkeypatch)                                             # a new run remembers them
+    assert again.get_settings()["downloads_dir"] == folder and again.get_settings()["skip_interludes"] is False
+
+
+def test_garbage_in_the_settings_file_falls_back_to_the_defaults(tmp_path, monkeypatch):
+    (tmp_path / "settings.json").write_text("{not json")
+    assert _window_api(tmp_path, monkeypatch).get_settings()["workers"] == 5
+    (tmp_path / "settings.json").write_text('{"workers": "many", "browser": 7, "unknown": 1}')
+    s = _window_api(tmp_path, monkeypatch).get_settings()
+    assert s["workers"] == 5 and s["browser"] == "" and "unknown" not in s
+
+
+def test_the_window_only_opens_known_pages(tmp_path, monkeypatch):
+    import gui.backend as backend
+    opened = []
+    monkeypatch.setattr(backend.webbrowser, "open", opened.append)
+    api = _window_api(tmp_path, monkeypatch)
+    assert api.open_external("https://developer.spotify.com/dashboard") is True
+    assert api.open_external("https://evil.example/https://developer.spotify.com/") is False
+    assert api.open_external("file:///C:/Windows/System32/cmd.exe") is False
+    assert api.open_external(None) is False
+    assert opened == ["https://developer.spotify.com/dashboard"]
+
+
+def test_events_are_delivered_once_and_in_order(tmp_path, monkeypatch):
+    api = _window_api(tmp_path, monkeypatch)
+    api._push("stage", key="a", stage="searching")
+    api._push("done", key="a", existed=False)
+    first = api.get_events()
+    assert [e["kind"] for e in first] == ["stage", "done"] and first[0]["key"] == "a"
+    assert api.get_events() == []
+
+
+def test_a_bad_link_is_explained_before_anything_is_contacted(tmp_path, monkeypatch):
+    api = _window_api(tmp_path, monkeypatch)
+    assert "no parece un enlace de Spotify" in api.preview("https://example.com/hola")["error"]
+    assert "spotify.link" in api.preview("https://spotify.link/abc")["error"]
+    assert "número" in api.preview_liked("abc")["error"] and "mayor que 0" in api.preview_liked(-5)["error"]
+
+
+def test_the_window_asks_for_setup_or_login_instead_of_failing(tmp_path, monkeypatch):
+    import gui.backend as backend
+    api = _window_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(backend.login, "is_client_configured", lambda: False)
+    assert api.preview("https://open.spotify.com/album/abc")["error"] == "setup_required"
+    monkeypatch.setattr(backend.login, "is_client_configured", lambda: True)
+    monkeypatch.setattr(backend.login, "is_user_logged_in", lambda: False)
+    assert api.preview("https://open.spotify.com/playlist/abc")["error"] == "login_required"
+    assert api.preview_liked(50)["error"] == "login_required"
+
+
+def test_downloading_needs_a_list_and_checked_songs(tmp_path, monkeypatch):
+    api = _window_api(tmp_path, monkeypatch)
+    assert api.start_download(["x"])["ok"] is False                      # no link was pasted yet
+    api._pending = {"tracks": {"a": object()}, "output_path": "out/", "spotify": None}
+    assert api.start_download([])["ok"] is False                         # nothing checked
+    assert api.start_download(["not-in-the-list"])["ok"] is False
+
+
+def test_the_spotify_app_is_checked_before_it_is_saved(tmp_path, monkeypatch):
+    import login
+    monkeypatch.setattr(login, "cfg_filename", str(tmp_path / "cfg.ini"))
+    assert "obligatorios" in login.save_client_credentials("", "x")
+
+    def refuse(client_id, client_secret):
+        raise RuntimeError("bad")
+
+    monkeypatch.setattr(login, "_request_client_token", refuse)
+    assert "no aceptó" in login.save_client_credentials("id", "secret")
+    assert not (tmp_path / "cfg.ini").exists()
+    monkeypatch.setattr(login, "_request_client_token", lambda i, s: "token")
+    assert login.save_client_credentials("  id  ", " secret ") is None
+    import tekore as tk
+    assert tk.config_from_file(str(tmp_path / "cfg.ini"), return_refresh=True)[:2] == ("id", "secret")
+
+
+def test_progress_events_report_each_stage_and_a_broken_listener_cannot_stop_a_download():
+    import downloader
+    events = []
+    d = downloader.SpotifyDownloader(None, None, on_event=lambda kind, **data: events.append((kind, data)))
+    song = type("S", (), {"resource_id": "abc"})()
+    d._emit("stage", song, stage="searching")
+    d._emit("done", song, existed=True)
+    assert events == [("stage", {"key": "abc", "stage": "searching"}), ("done", {"key": "abc", "existed": True})]
+
+    def broken(kind, **data):
+        raise RuntimeError("the window crashed")
+
+    downloader.SpotifyDownloader(None, None, on_event=broken)._emit("done", song)   # must not raise
+
+
+def test_a_failed_song_is_reported_to_the_window_with_its_reason(monkeypatch):
+    from exceptions import YoutubeVideoUnavailable
+    events = []
+    d, _ = _scripted({0: [YoutubeVideoUnavailable(RAW_AGE)]}, monkeypatch)
+    d.on_event = lambda kind, **data: events.append((kind, data))
+    d.download_tracks("out/", [_Song(0)])
+    failed = [data for kind, data in events if kind == "failed"]
+    assert len(failed) == 1 and failed[0]["category"] == "edad" and "mayores de edad" in failed[0]["reason"]
+
+
+def test_cancelling_stops_new_songs_and_skips_the_retry_pass(monkeypatch):
+    from exceptions import YoutubeBlocked
+    d, calls = _scripted({0: [YoutubeBlocked("bot")], 1: [True]}, monkeypatch)
+    d.cancelled.set()
+    d.download_tracks("out/", [_Song(0), _Song(1)])
+    assert calls == []                                       # nothing started, and nothing was retried
+
+
+def test_short_tracks_are_split_off_the_same_way_for_the_console_and_the_window():
+    import downloader
+    short = type("T", (), {"get_title": lambda self: "Intro", "get_metadata": lambda self: {"duration_ms": 30000}})()
+    song = type("T", (), {"get_title": lambda self: "Real song", "get_metadata": lambda self: {"duration_ms": 200000}})()
+    d = downloader.SpotifyDownloader(None, None, skip_interludes=True)
+    assert d.split_interludes([short, song]) == ([song], [short])
+    keep = downloader.SpotifyDownloader(None, None, skip_interludes=False)
+    assert keep.split_interludes([short, song]) == ([short, song], [])
+
+
+def test_the_window_files_exist_and_the_page_works_offline():
+    import const
+    web = os.path.join(const.resource_dir(), "gui", "web")
+    for name in ("index.html", "style.css", "app.js", "logo.png"):
+        assert os.path.exists(os.path.join(web, name)), name
+    html = open(os.path.join(web, "index.html"), encoding="utf-8").read()
+    assert 'href="style.css"' in html and 'src="app.js"' in html and "https://" not in html

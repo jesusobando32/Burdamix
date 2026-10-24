@@ -1,7 +1,7 @@
 ; Inno Setup recipe for the Burdamix installer. Build it with build_installer.bat (after build_exe.bat).
 #define AppName "Burdamix"
 #ifndef AppVersion
-  #define AppVersion "0.1.1-pre"
+  #define AppVersion "0.2.0-pre"
 #endif
 
 [Setup]

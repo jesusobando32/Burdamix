@@ -25,6 +25,7 @@ class colours:
     SPOTIFYGREEN = '\033[38;2;30;215;96m' if supports_24bit_color() else '\033[92m'
 
 
+APP_VERSION = "0.2.0-pre"
 LIKED_KEYWORD = "liked"
 
 IS_FROZEN = getattr(sys, "frozen", False)  # True inside the compiled program (PyInstaller)
@@ -35,6 +36,13 @@ def app_dir():
     """Folder of the project, or of the .exe when compiled."""
     if IS_FROZEN:
         return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def resource_dir():
+    """Where the program's own files (like the window's web page) are: next to the code, or inside the .exe's bundle."""
+    if IS_FROZEN:
+        return getattr(sys, "_MEIPASS", app_dir())
     return os.path.dirname(os.path.abspath(__file__))
 
 

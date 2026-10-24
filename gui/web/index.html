@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burdamix</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="sidebar-open">
+
+  <aside id="sidebar" aria-label="Menú">
+    <div class="side-top">
+      <button class="icon-btn" id="toggle" aria-label="Mostrar u ocultar el menú" title="Menú">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="brand"><img src="logo.png" alt=""><span>Burdamix</span></div>
+    </div>
+
+    <nav>
+      <button class="nav active" data-view="home" title="Pegar enlace">
+        <svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+        <span>Pegar enlace</span>
+      </button>
+      <button class="nav" data-view="favorites" title="Mis favoritos">
+        <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+        <span>Mis favoritos</span>
+      </button>
+      <div class="nav-sep"></div>
+      <button class="nav" data-view="tutorial" title="Tutorial e inicio de sesión">
+        <svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5a1.5 1.5 0 0 1 1.5 1.5z"/></svg>
+        <span>Tutorial · Iniciar sesión</span>
+      </button>
+      <button class="nav" data-view="faq" title="Preguntas frecuentes">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5M12 17h.01"/></svg>
+        <span>Preguntas frecuentes</span>
+      </button>
+      <button class="nav" data-view="settings" title="Configuración">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        <span>Configuración</span>
+      </button>
+    </nav>
+
+    <div class="side-bottom">
+      <div id="conn" class="conn" title="Estado de la conexión con Spotify"><i></i><span>Comprobando…</span></div>
+      <div id="version" class="muted small"></div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <button class="icon-btn float-toggle" id="toggle2" aria-label="Abrir el menú" title="Menú">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <!-- Pegar enlace -->
+    <section class="view active" id="view-home">
+      <div class="scroll" id="home-scroll">
+        <div class="hero" id="home-hero">
+          <img class="hero-logo" src="logo.png" alt="">
+          <h1>Burdamix</h1>
+          <p class="lead">Pega un enlace de Spotify y bájalo en MP3.</p>
+        </div>
+        <div class="results" id="home-results"></div>
+      </div>
+      <div class="dock" id="home-dock">
+        <form class="composer" id="composer" autocomplete="off">
+          <input id="link" type="text" spellcheck="false" placeholder="Pega aquí el enlace de una canción, álbum o playlist de Spotify">
+          <button type="button" class="icon-btn" id="paste" title="Pegar del portapapeles" aria-label="Pegar">
+            <svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
+          </button>
+          <button type="submit" class="send" id="send" title="Ver canciones" aria-label="Ver canciones">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
+        <div class="chips" id="home-chips">
+          <span class="chip-note">Funciona con</span>
+          <span class="pill">Canción</span><span class="pill">Álbum</span><span class="pill">Playlist tuya</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mis favoritos -->
+    <section class="view" id="view-favorites">
+      <div class="scroll" id="fav-scroll">
+        <div class="hero small" id="fav-hero">
+          <div class="heart-badge"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></div>
+          <h1>Tus canciones favoritas</h1>
+          <p class="lead">Elige cuántas de tus «Me gusta» más recientes quieres ver.</p>
+          <div class="seg" id="fav-counts" role="group" aria-label="Cantidad">
+            <button type="button" data-n="50">50</button>
+            <button type="button" data-n="100">100</button>
+            <button type="button" data-n="200" class="on">200</button>
+            <button type="button" data-n="500">500</button>
+            <button type="button" data-n="0">Todas</button>
+          </div>
+          <div class="row-center">
+            <label class="muted small" for="fav-custom">o escribe un número</label>
+            <input id="fav-custom" class="num" type="number" min="1" placeholder="p. ej. 75">
+          </div>
+          <button class="btn primary big" id="fav-go">Ver mi lista</button>
+        </div>
+        <div class="results" id="fav-results"></div>
+      </div>
+    </section>
+
+    <!-- Tutorial -->
+    <section class="view" id="view-tutorial">
+      <div class="scroll page">
+        <h1>Tutorial · Iniciar sesión</h1>
+        <p class="lead">Se hace una sola vez. <b>Nunca</b> se te pide tu usuario ni tu contraseña de Spotify.</p>
+
+        <div class="card step" id="step1">
+          <div class="step-head"><span class="num-dot">1</span><h2>Crea tu app de Spotify</h2><span class="badge ok hidden" id="step1-ok">Hecho</span></div>
+          <p>Spotify exige que cada persona cree su propia «app» gratuita. Es lo que permite leer tus playlists.</p>
+          <ol class="steps">
+            <li>Abre el panel de Spotify e inicia sesión. <button class="btn" id="open-dash">Abrir Spotify Developer</button></li>
+            <li>Pulsa <b>Create app</b>. Nombre y descripción: lo que quieras (por ejemplo «Burdamix»).</li>
+            <li>En <b>Redirect URI</b> copia exactamente esto y pulsa <b>Add</b>:
+              <div class="copyline"><code id="redirect"></code><button class="btn small-btn" id="copy-redirect">Copiar</button></div></li>
+            <li>En «Which API/SDKs are you planning to use?» marca <b>Web API</b>.</li>
+            <li>Acepta los términos y pulsa <b>Save</b>.</li>
+            <li>Abre tu app nueva → <b>Settings</b>. Verás el <b>Client ID</b> y, con «View client secret», el <b>Client secret</b>. Pégalos aquí:</li>
+          </ol>
+          <form id="creds" class="creds" autocomplete="off">
+            <label>Client ID<input id="client-id" type="text" spellcheck="false" autocomplete="off"></label>
+            <label>Client secret<input id="client-secret" type="password" spellcheck="false" autocomplete="off"></label>
+            <button class="btn primary" type="submit" id="save-creds">Guardar y comprobar</button>
+            <div class="form-msg" id="creds-msg"></div>
+          </form>
+        </div>
+
+        <div class="card step" id="step2">
+          <div class="step-head"><span class="num-dot">2</span><h2>Inicia sesión en Spotify</h2><span class="badge ok hidden" id="step2-ok">Hecho</span></div>
+          <p>Hace falta solo para <b>tus playlists</b> y <b>tus favoritos</b>. Para canciones sueltas y álbumes no es necesario.
+             Se abrirá tu navegador: elige tu cuenta y pulsa <b>Aceptar</b>. Tienes 3 minutos.</p>
+          <button class="btn primary" id="do-login">Iniciar sesión en Spotify</button>
+          <div class="form-msg" id="login-msg"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preguntas frecuentes -->
+    <section class="view" id="view-faq">
+      <div class="scroll page">
+        <h1>Preguntas frecuentes</h1>
+        <div class="faq" id="faq-list"></div>
+      </div>
+    </section>
+
+    <!-- Configuración -->
+    <section class="view" id="view-settings">
+      <div class="scroll page">
+        <h1>Configuración</h1>
+
+        <div class="card setting">
+          <div><h3>Carpeta de descargas</h3><p class="muted" id="set-folder-path"></p></div>
+          <div class="btn-row"><button class="btn" id="set-folder-open">Abrir</button><button class="btn primary" id="set-folder-change">Cambiar…</button></div>
+        </div>
+
+        <div class="card setting">
+          <div><h3>Canciones a la vez</h3><p class="muted">Más es más rápido, pero YouTube puede bloquearte si pides demasiadas. 5 va bien.</p></div>
+          <div class="slider"><input id="set-workers" type="range" min="1" max="8" step="1"><output id="set-workers-out">5</output></div>
+        </div>
+
+        <div class="card setting">
+          <div><h3>Saltar introducciones e interludios</h3><p class="muted">Las pistas cortas (menos de 50 s, o intro/outro de menos de 95 s) no se descargan.</p></div>
+          <label class="switch"><input id="set-interludes" type="checkbox"><span></span></label>
+        </div>
+
+        <div class="card setting">
+          <div><h3>Usar mi sesión de YouTube</h3>
+            <p class="muted">Solo si YouTube pide iniciar sesión (videos para mayores de edad). Lee la sesión que ya tienes abierta en ese navegador; no se guarda ni se envía a ningún sitio. Ciérralo antes de bajar.</p></div>
+          <select id="set-browser"></select>
+        </div>
+
+        <div class="card setting">
+          <div><h3>Actualizar yt-dlp</h3><p class="muted" id="set-ytdlp">YouTube cambia cada pocas semanas. Si una descarga falla de repente, actualiza esto.</p></div>
+          <button class="btn" id="set-update">Buscar actualización</button>
+        </div>
+
+        <p class="muted small about" id="about"></p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

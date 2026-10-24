@@ -13,6 +13,21 @@ y le pone título, artista, álbum, año y portada.
 
 ---
 
+## Aplicación con ventana (Windows)
+
+Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistente de IA:
+
+| Menú | Qué hace |
+|---|---|
+| **Pegar enlace** | Pegas el enlace de una canción, álbum o playlist; ves la lista con portadas, marcas las que quieres y descargas. El progreso y los errores salen en la misma pantalla. |
+| **Mis favoritos** | Tus «Me gusta» más recientes (50, 100, 200, 500, todas o el número que escribas). |
+| **Tutorial · Iniciar sesión** | Los pasos para conectar el programa con Spotify, con los campos para pegar el Client ID y el Client secret. |
+| **Preguntas frecuentes** | Las dudas más comunes. |
+| **Configuración** | Carpeta de descargas, canciones a la vez, saltar intros, sesión del navegador y actualizar yt-dlp. |
+
+Para abrirla desde el código: `python gui_app.py`. Las versiones compiladas (instalador y portable) están en la sección
+*Releases* del repositorio y abren esta ventana; `Burdamix-consola.exe` es el modo de texto de siempre.
+
 ## Inicio rápido (Windows)
 
 1. Instala **Python 3.10 o más nuevo** desde <https://www.python.org/downloads/>.

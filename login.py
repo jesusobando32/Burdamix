@@ -193,6 +193,54 @@ def do_user_login():
         sys.exit(1)
 
 
+def save_client_credentials(client_id, client_secret):
+    """Check a Client ID / Secret with Spotify and store them (no console). Returns an error text, or None when saved.
+
+    Like do_client_login, it starts from an empty file: an old refresh token belongs to the previous Spotify app."""
+    client_id, client_secret = (client_id or "").strip(), (client_secret or "").strip()
+    if not client_id or not client_secret:
+        return "Los dos datos son obligatorios."
+    try:
+        _request_client_token(client_id, client_secret)
+    except Exception:
+        return "Spotify no aceptó esos datos. Revisa que copiaste el Client ID y el Client secret completos, sin espacios."
+    if os.path.exists(cfg_filename):
+        os.remove(cfg_filename)
+    _write_config((client_id, client_secret, login_redirect_url, None))
+    return None
+
+
+def run_user_login_flow(open_browser=webbrowser.open):
+    """The browser login without any console prompt, for the graphical interface. Blocks until it ends (at most
+    LOGIN_TIMEOUT_SECONDS). Returns (True, user name) or (False, a message for the user)."""
+    if not is_client_configured():
+        return False, "Primero conecta tu app de Spotify (Tutorial)."
+    if _port_in_use():
+        return False, f"El puerto {app_port} está ocupado por otro programa. Ciérralo e inténtalo de nuevo."
+
+    threading.Timer(1.25, lambda: open_browser(app_url)).start()
+    flask_process = multiprocessing.Process(target=start_flask)
+    flask_process.start()
+
+    deadline = time.time() + LOGIN_TIMEOUT_SECONDS
+    while flask_process.is_alive() and time.time() < deadline:
+        time.sleep(0.5)
+
+    if flask_process.is_alive():
+        flask_process.terminate()
+        return False, "Se acabó el tiempo sin completar el inicio de sesión. Inténtalo de nuevo."
+    if flask_process.exitcode != 0:
+        return False, "No se dio el permiso en Spotify. Inténtalo de nuevo y pulsa Aceptar."
+
+    try:
+        access_token = get_user_token().access_token
+        me = requests.get('https://api.spotify.com/v1/me', headers={'Authorization': f'Bearer {access_token}'}, timeout=20)
+        me.raise_for_status()
+        return True, me.json().get('display_name') or me.json().get('id') or ""
+    except Exception:
+        return False, "El inicio de sesión no quedó bien. Inténtalo de nuevo."
+
+
 def do_client_login():
     """Guide the user through creating a Spotify app and store its Client ID / Secret (checked before saving)."""
     print(client_prompt)
