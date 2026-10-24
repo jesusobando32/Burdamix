@@ -363,6 +363,88 @@ def test_invisible_direction_characters_are_removed_from_names():
     assert sanitize_filename("x‮exe.mp3") == "xexe.mp3"
 
 
+# --- YouTube block brake ---------------------------------------------------------------
+
+@pytest.mark.parametrize("message,kind", [
+    ("ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser", "YoutubeBlocked"),
+    ("ERROR: HTTP Error 429: Too Many Requests", "YoutubeBlocked"),
+    ("ERROR: The current session has been rate-limited by YouTube for up to an hour", "YoutubeBlocked"),
+    ("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate", "YoutubeVideoUnavailable"),
+    ("ERROR: [youtube] abc: Video unavailable", "YoutubeVideoUnavailable"),
+    ("ERROR: unable to download video data: HTTP Error 403: Forbidden", "YoutubeTransientError"),
+    ("ERROR: <urlopen error [WinError 10060] timed out>", "YoutubeTransientError"),
+])
+def test_youtube_errors_are_classified(message, kind):
+    from apis.youtube import translate_youtube_error
+    assert type(translate_youtube_error(Exception(message))).__name__ == kind
+
+
+def test_unknown_errors_pass_through_unchanged():
+    from apis.youtube import translate_youtube_error
+    original = Exception("ERROR: something else entirely")
+    assert translate_youtube_error(original) is original
+
+
+class _Song:
+    def __init__(self, n): self.n = n
+    def get_filename(self): return f"s{self.n}"
+
+
+def _run(outcomes, workers, capsys):
+    """outcomes[n] is None (success) or an exception that song n raises."""
+    import threading
+    from downloader import SpotifyDownloader
+
+    attempts = []
+    lock = threading.Lock()
+
+    def fake(self, url, track, i, n, out, sub, filename=None):
+        with lock:
+            attempts.append(track.n)
+        if outcomes[track.n] is not None:
+            raise outcomes[track.n]
+        return True
+
+    d = SpotifyDownloader(None, None, workers=workers)
+    orig = SpotifyDownloader.download_track
+    SpotifyDownloader.download_track = fake
+    try:
+        skipped = d.download_tracks("out/", [_Song(n) for n in range(len(outcomes))])
+    finally:
+        SpotifyDownloader.download_track = orig
+    return d, attempts, skipped, capsys.readouterr().out
+
+
+def test_five_blocked_songs_in_a_row_stop_the_run(capsys):
+    from exceptions import YoutubeBlocked
+    d, attempts, skipped, out = _run([YoutubeBlocked("bot")] * 40, workers=1, capsys=capsys)
+    assert d.blocked
+    assert len(attempts) == 5            # it stopped asking YouTube after the fifth refusal
+    assert "te está bloqueando" in out and "mismo enlace" in out
+
+
+def test_with_parallel_workers_the_brake_still_limits_the_damage(capsys):
+    from exceptions import YoutubeBlocked
+    d, attempts, skipped, out = _run([YoutubeBlocked("bot")] * 200, workers=5, capsys=capsys)
+    assert d.blocked
+    assert len(attempts) < 20            # not all 200
+
+
+def test_a_success_in_between_resets_the_streak(capsys):
+    from exceptions import YoutubeBlocked
+    b = YoutubeBlocked("bot")
+    outcomes = [b, b, b, b, None, b, b, b, b, None, b, b, b, b]     # never 5 in a row
+    d, attempts, skipped, out = _run(outcomes, workers=1, capsys=capsys)
+    assert not d.blocked
+    assert len(attempts) == len(outcomes)
+
+
+def test_other_failures_do_not_trigger_the_brake(capsys):
+    from exceptions import YoutubeItemNotFound
+    d, attempts, skipped, out = _run([YoutubeItemNotFound("x")] * 12, workers=1, capsys=capsys)
+    assert not d.blocked and len(attempts) == 12
+
+
 # --- Token only goes to Spotify ----------------------------------------------------------
 
 def test_token_is_never_sent_to_another_host():
@@ -459,6 +541,66 @@ def test_download_tracks_downloads_a_repeated_song_once_and_reports_it(capsys):
     assert sorted(calls) == ["X - One", "X - Two", "X - Two (2)"]
     out = capsys.readouterr().out
     assert "repeated song" in out and "X - Two (2)" in out and d.planned == 3
+
+
+# --- Retrying with another video -------------------------------------------------------------
+
+class _Audio:
+    """A fake YouTube whose download() follows a script: one outcome per call (an exception or a result)."""
+    def __init__(self, script): self.script, self.calls = list(script), []
+    def download(self, link, quality):
+        self.calls.append(link)
+        outcome = self.script.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _downloader(script, monkeypatch):
+    import downloader
+    monkeypatch.setattr(downloader, "RETRY_DELAY_SECONDS", 0)
+    yt = _Audio(script)
+    d = downloader.SpotifyDownloader(None, yt, 128000)
+    track = type("T", (), {"get_title": lambda self, sanitize=False: "Song"})()
+    return d, yt, track
+
+
+def test_a_temporary_error_moves_on_to_the_next_video(monkeypatch):
+    from exceptions import YoutubeTransientError
+    d, yt, track = _downloader([YoutubeTransientError("403"), ("file.m4a", 130)], monkeypatch)
+    assert d._download_audio("[1/1]", track, ["A", "B", "C"]) == ("file.m4a", 130)
+    assert yt.calls == ["A", "B"]
+
+
+def test_when_every_video_fails_temporarily_everything_is_tried_once_more(monkeypatch):
+    from exceptions import YoutubeTransientError
+    script = [YoutubeTransientError("403")] * 2 + [("ok.m4a", 130)]
+    d, yt, track = _downloader(script, monkeypatch)
+    assert d._download_audio("[1/1]", track, ["A", "B"]) == ("ok.m4a", 130)
+    assert yt.calls == ["A", "B", "A"]                    # second round started over
+
+
+def test_it_gives_up_after_the_second_round(monkeypatch):
+    from exceptions import YoutubeTransientError
+    d, yt, track = _downloader([YoutubeTransientError("403")] * 10, monkeypatch)
+    with pytest.raises(YoutubeTransientError):
+        d._download_audio("[1/1]", track, ["A", "B"])
+    assert len(yt.calls) == 4                              # 2 videos x 2 rounds, not an endless loop
+
+
+def test_restricted_videos_do_not_trigger_a_second_round(monkeypatch):
+    from exceptions import YoutubeVideoUnavailable
+    d, yt, track = _downloader([YoutubeVideoUnavailable("age")] * 10, monkeypatch)
+    with pytest.raises(YoutubeVideoUnavailable):
+        d._download_audio("[1/1]", track, ["A", "B"])
+    assert len(yt.calls) == 2                              # a restricted video will not get better in 3 seconds
+
+
+def test_unknown_errors_are_not_retried(monkeypatch):
+    d, yt, track = _downloader([RuntimeError("disk full")], monkeypatch)
+    with pytest.raises(RuntimeError):
+        d._download_audio("[1/1]", track, ["A", "B"])
+    assert yt.calls == ["A"]
 
 
 # --- Config location ------------------------------------------------------------------------
@@ -562,3 +704,16 @@ def test_a_track_without_release_date_still_gets_tagged(tmp_path, monkeypatch):
     assert "TYER" not in ID3(str(out)) and str(ID3(str(out))["TIT2"]) == "T"
 
 
+def test_songs_that_keep_failing_with_403_also_stop_the_run(capsys):
+    """Regression: persistent 403s used to reset the brake, so a 300-song list was attempted to the end."""
+    from exceptions import YoutubeTransientError
+    d, attempts, skipped, out = _run([YoutubeTransientError("HTTP Error 403")] * 40, workers=1, capsys=capsys)
+    assert d.blocked and len(attempts) == 5
+    assert "te está bloqueando" in out
+
+
+def test_an_occasional_403_does_not_stop_the_run(capsys):
+    from exceptions import YoutubeTransientError
+    t = YoutubeTransientError("HTTP Error 403")
+    d, attempts, skipped, out = _run([t, None, t, None, t, t, None, t, None, t, None, t], workers=1, capsys=capsys)
+    assert not d.blocked and len(attempts) == 12

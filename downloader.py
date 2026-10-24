@@ -1,6 +1,6 @@
 from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
-                        InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable)
+                        InvalidSpotifyURL, ConfigVideoMaxLength, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube
 from pathutils import sanitize_filename, long_path, is_hard_to_open
@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pathlib import Path
 import re
+import time
 
 DEFAULT_SHORT_MAX_SECONDS = 50           # any track this short, whatever its name
 DEFAULT_INTERLUDE_MAX_SECONDS = 70       # interlude / skit / prelude
@@ -21,6 +22,9 @@ INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b"
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
+BLOCK_STREAK_LIMIT = 5   # songs in a row that YouTube refuses before we stop asking
+RETRY_DELAY_SECONDS = 3  # pause before the second round of attempts after a temporary error
+_NOT_STARTED = object()  # returned by a song that was dropped because the run was aborted
 
 MP3_BITRATES = (48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
 
@@ -95,6 +99,7 @@ class SpotifyDownloader():
         self.intro_outro_max_seconds = intro_outro_max_seconds
         self.short_max_seconds = short_max_seconds
         self._print_lock = threading.Lock()
+        self.blocked = False   # set when YouTube made us stop mid-run
         self.planned = 0       # songs actually attempted in the last download_tracks call
         self.last_output_path = None   # folder where the songs of the last request were saved
 
@@ -133,7 +138,7 @@ class SpotifyDownloader():
         self.prep_folder(output_path)
         skipped = self.download_tracks(output_path, tracks)
 
-        return len(skipped) < self.planned
+        return not self.blocked and len(skipped) < self.planned
 
     def download_album(self, album_url):
         return self._download_collection(
@@ -156,10 +161,42 @@ class SpotifyDownloader():
 
     def download_tracks(self, output_path, tracks):
         """Download `tracks` with up to `self.workers` songs in flight at once.
-        As soon as one finishes, the next waiting song starts. Returns [(track, reason)] of skipped ones."""
+        As soon as one finishes, the next waiting song starts. Returns [(track, reason)] of skipped ones.
+
+        If YouTube rejects BLOCK_STREAK_LIMIT songs in a row it is blocking this connection: carrying on
+        would fail every remaining song too (and make the block worse). So the worker that sees the
+        limit reached raises a flag, songs that have not started yet do not start, `self.blocked` is
+        set, and the unfinished songs are left for the next run."""
 
         skipped_tracks = []
         idx_max = len(tracks)
+        self.blocked = False
+        abort = threading.Event()
+        streak_lock = threading.Lock()
+        streak = [0]
+
+        def run_one(i, track, filename):
+            if abort.is_set():
+                return _NOT_STARTED
+            try:
+                self.download_track(None, track, i, idx_max, output_path, True, filename)
+            except (YoutubeBlocked, YoutubeTransientError):
+                # A song that kept failing with temporary errors (403...) after trying every match twice is
+                # how an IP flagged by YouTube looks too; counting it stops the run instead of hammering on.
+                with streak_lock:
+                    streak[0] += 1
+                    if streak[0] >= BLOCK_STREAK_LIMIT:
+                        abort.set()
+                raise
+            except Exception:
+                with streak_lock:
+                    streak[0] = 0
+                raise
+            with streak_lock:
+                streak[0] = 0
+            return True
+
+        not_started = 0
         plan, repeated, renamed = plan_filenames(tracks)
         self.planned = len(plan)
         if repeated:
@@ -170,8 +207,7 @@ class SpotifyDownloader():
 
         executor = ThreadPoolExecutor(max_workers=self.workers)
         try:
-            futures = {executor.submit(self.download_track, None, track, i, idx_max, output_path, True, filename): (i, track)
-                       for i, track, filename in plan}
+            futures = {executor.submit(run_one, i, track, name): (i, track) for i, track, name in plan}
 
             for future in as_completed(futures):
                 i, track = futures[future]
@@ -179,12 +215,17 @@ class SpotifyDownloader():
                 if error is not None:
                     self._log(f"[{i + 1}/{idx_max}]", self._describe_error(error))
                     skipped_tracks.append((track, error))
+                elif future.result() is _NOT_STARTED:
+                    not_started += 1
         except KeyboardInterrupt:
             print(f"\n{colours.WARNING}[!] Cancelled. Finishing the songs already in progress...{colours.ENDC}")
+            abort.set()
             executor.shutdown(wait=True, cancel_futures=True)
             raise
         else:
-            executor.shutdown()
+            executor.shutdown(wait=True)
+
+        self.blocked = abort.is_set()
 
         if len(skipped_tracks) > 0:
 
@@ -192,6 +233,12 @@ class SpotifyDownloader():
 
             for (track, reason) in skipped_tracks:
                 print(f"    {track.get_filename()} {colours.WARNING}[{reason}]{colours.ENDC}")
+
+        if self.blocked:
+            print(f"\n{colours.FAIL}YouTube te está bloqueando{colours.ENDC} ({BLOCK_STREAK_LIMIT} canciones seguidas rechazadas). "
+                  f"Paré para no empeorarlo: faltan {not_started} canciones por intentar.\n"
+                  f"Espera un rato (a veces hasta una hora) o cambia de red, y vuelve a ejecutar el {colours.BOLD}mismo enlace{colours.ENDC}: "
+                  f"lo que ya se descargó se salta y continúa donde quedó.\n")
 
         return skipped_tracks
 
@@ -203,11 +250,43 @@ class SpotifyDownloader():
             return f"{colours.WARNING}[!] Skipped - video longer than the max length (use --max-length)."
         if isinstance(error, ConfigVideoLowViewCount):
             return f"{colours.WARNING}[!] Skipped - video has fewer views than the minimum (use --min-views)."
+        if isinstance(error, YoutubeBlocked):
+            return f"{colours.FAIL}[!] YouTube rejected the request (bot check / too many requests)."
+        if isinstance(error, YoutubeTransientError):
+            return f"{colours.WARNING}[!] Skipped - temporary YouTube error that kept happening. Run the same link again to retry it."
         if isinstance(error, YoutubeVideoUnavailable):
             return f"{colours.FAIL}[!] Skipped - every matching video is restricted or unavailable (age restricted? see README: --cookies-from-browser)."
         if isinstance(error, SpotifyTrackNotFound):
             return f"{colours.WARNING}[!] Skipped - song not found on Spotify. {error}"
         return f"{colours.FAIL}[!] Skipped - something went wrong. {type(error).__name__}: {error}"
+
+    def _download_audio(self, tag, track, links):
+        """Try the matching videos best first. A video that is restricted or fails for a temporary reason
+        (403, dropped connection) is replaced by the next one; if every video failed at least once for a
+        temporary reason, everything is tried one more time after a short pause."""
+        last_error = None
+        had_temporary_error = False
+
+        for round_number in (1, 2):
+            for link in links:
+                self._log(tag, f"Downloading: {track.get_title()}")
+                try:
+                    return self.youtube_client.download(link, self.audio_quality)
+                except YoutubeVideoUnavailable as e:
+                    last_error = e
+                    self._log(tag, f"{colours.WARNING}Video not available, trying another match...")
+                except YoutubeTransientError as e:
+                    last_error = e
+                    had_temporary_error = True
+                    self._log(tag, f"{colours.WARNING}Temporary YouTube error, trying another match...")
+
+            if round_number == 1 and had_temporary_error:
+                self._log(tag, f"{colours.WARNING}Every match failed; trying again in {RETRY_DELAY_SECONDS}s...")
+                time.sleep(RETRY_DELAY_SECONDS)
+            else:
+                break
+
+        raise last_error
 
     def download_track(self, track_url = None, track = None, idx = 0, idx_max = 1, output_path = None, as_sub_function = False, filename = None):
         """Download one track. Returns True on success (or if the file already exists).
@@ -241,16 +320,7 @@ class SpotifyDownloader():
             links = self.youtube_client.search(metadata["title"], metadata["artist"], round(metadata["duration_ms"] / 1000),
                                                self.max_length, self.min_view_count)
 
-            # Best match first; if a video can't be downloaded (age restricted, private...) try the next one.
-            for attempt, link in enumerate(links, start=1):
-                self._log(tag, f"Downloading: {track.get_title()}")
-                try:
-                    video_downloaded_path, source_kbps = self.youtube_client.download(link, self.audio_quality)
-                    break
-                except YoutubeVideoUnavailable:
-                    if attempt == len(links):
-                        raise
-                    self._log(tag, f"{colours.WARNING}Video not available, trying another match...")
+            video_downloaded_path, source_kbps = self._download_audio(tag, track, links)
 
             self._log(tag, f"Converting and tagging: {track.get_title()}")
 

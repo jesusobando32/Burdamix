@@ -25,3 +25,13 @@ class SpotifyRetrievalError(Exception):
 class YoutubeVideoUnavailable(Exception):
     """The video exists but cannot be downloaded (age restricted, private, region locked...)."""
     pass
+
+
+class YoutubeBlocked(Exception):
+    """YouTube is refusing our requests (bot check, rate limit). Retrying immediately makes it worse."""
+    pass
+
+
+class YoutubeTransientError(Exception):
+    """A download failed in a way that usually works on another try (403, dropped connection...)."""
+    pass

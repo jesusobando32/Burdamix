@@ -3,7 +3,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from exceptions import ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable
+from exceptions import ConfigVideoLowViewCount, YoutubeBlocked, YoutubeItemNotFound, YoutubeTransientError, YoutubeVideoUnavailable
 
 SEARCH_RESULTS = 8          # videos looked at per song
 MAX_FALLBACKS = 3           # best-ranked videos tried if one can't be downloaded
@@ -14,8 +14,29 @@ RELAXED_TOLERANCE = 20      # only accepted if the video title contains the song
 UNWANTED_WORDS = ("live", "cover", "remix", "slowed", "sped up", "speed up", "reverb", "instrumental",
                   "karaoke", "8d", "nightcore", "acoustic", "reaction", "tutorial", "mashup", "loop", "hour")
 
+# What YouTube says when it flags the IP. Checked in lower case, with both kinds of apostrophe.
+BLOCKED_MARKERS = ("not a bot", "rate-limited", "rate limited", "too many requests", "http error 429",
+                   "try again later")
+
+# Failures that usually disappear on another attempt (an expired link, a dropped connection).
+TRANSIENT_MARKERS = ("http error 403", "http error 500", "http error 502", "http error 503", "http error 504",
+                     "unable to download video data", "timed out", "connection reset", "connection aborted",
+                     "incompleteread", "remote end closed", "unexpected eof", "temporary failure")
+
 UNAVAILABLE_MARKERS = ("confirm your age", "age-restricted", "video unavailable", "private video",
                        "not available in your country", "members-only", "has been removed")
+
+
+def translate_youtube_error(error):
+    """Turn a yt-dlp DownloadError into our own exceptions when we know what it means; otherwise return it."""
+    text = str(error).lower().replace("’", "'")
+    if any(marker in text for marker in BLOCKED_MARKERS):
+        return YoutubeBlocked(str(error).splitlines()[0][:160])
+    if any(marker in text for marker in UNAVAILABLE_MARKERS):
+        return YoutubeVideoUnavailable(str(error).splitlines()[0][:160])
+    if any(marker in text for marker in TRANSIENT_MARKERS):
+        return YoutubeTransientError(str(error).splitlines()[0][:160])
+    return error
 
 
 @dataclass
@@ -98,8 +119,11 @@ class YouTube:
 
     def _search(self, query, count=SEARCH_RESULTS):
         import yt_dlp
-        with yt_dlp.YoutubeDL(self._options(extract_flat=True, skip_download=True)) as ydl:
-            result = ydl.extract_info(f"ytsearch{count}:{query}", download=False)
+        try:
+            with yt_dlp.YoutubeDL(self._options(extract_flat=True, skip_download=True)) as ydl:
+                result = ydl.extract_info(f"ytsearch{count}:{query}", download=False)
+        except yt_dlp.utils.DownloadError as e:
+            raise translate_youtube_error(e) from None
 
         for entry in result.get('entries') or []:
             duration = entry.get('duration')
@@ -150,8 +174,6 @@ class YouTube:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=True)
         except yt_dlp.utils.DownloadError as e:
-            if any(marker in str(e).lower() for marker in UNAVAILABLE_MARKERS):
-                raise YoutubeVideoUnavailable(str(e).splitlines()[0][:160])
-            raise
+            raise translate_youtube_error(e) from None
 
         return info['requested_downloads'][0]['filepath'], int(info.get('abr') or target_kbps)

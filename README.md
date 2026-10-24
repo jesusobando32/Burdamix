@@ -102,6 +102,7 @@ python spotify2mp3.py -l                                              # tus canc
 | Muchas canciones saltadas con “No YouTube video matches…” | Normal en temas muy nuevos o raros; el programa prefiere saltar antes que bajar una versión equivocada. |
 | Dejó de funcionar de golpe | YouTube cambia seguido. Actualiza el descargador: `.venv\Scripts\pip install -U yt-dlp` (o `pip install -U yt-dlp` si no usas `iniciar.bat`). |
 | Dos canciones con el mismo nombre | Si la misma canción está repetida en la lista, se baja una sola vez. Si son versiones distintas con el mismo nombre (por ejemplo la original y la *Remastered*), la segunda se guarda como `Artista - Título (2).mp3` y el programa te avisa. |
+| “YouTube te está bloqueando” | Tras 5 canciones seguidas rechazadas el programa se detiene para no empeorarlo. Espera un rato (a veces hasta una hora) o cambia de red y ejecuta **el mismo enlace**: lo ya descargado se salta. |
 
 ## Para desarrolladores
 
