@@ -49,6 +49,16 @@ def get_bitrate_from_quality(quality):
     return value * 1000 if value <= 1000 else value
 
 
+def positive_int(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{text}' is not a number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return value
+
+
 def validate_quality(quality):
     if quality in QUALITY_PRESETS:
         return quality
@@ -108,7 +118,8 @@ def get_user_input():
 def main(authtype=None, playlist=None, song=None, album=None, liked=False, quality=None, min_views=None,
          max_length=None, workers=DEFAULT_WORKERS, cookies_from_browser=None,
          skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
-         intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
+         intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
+         last=None, dry_run=False):
 
     url = song or playlist or album
 
@@ -121,6 +132,14 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
 
     if (song and url_type != 'song') or (playlist and url_type != 'playlist') or (album and url_type != 'album'):
         print(f"{colours.FAIL}Error: that link is a {url_type}, not what the option expects.{colours.ENDC}")
+        sys.exit(1)
+
+    if last and not liked:
+        print(f"{colours.FAIL}Error: --last only works with your liked songs (-l): Spotify lists those newest first.{colours.ENDC}")
+        sys.exit(1)
+
+    if dry_run and song:
+        print(f"{colours.FAIL}Error: --dry-run previews a list; use it with a playlist, an album or -l.{colours.ENDC}")
         sys.exit(1)
 
     # Spotify only returns playlist contents and liked songs to a logged-in user.
@@ -137,7 +156,9 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
             print(f"{colours.OKGREEN}{label}{colours.ENDC}: {value}")
 
     if liked:
-        print(f"{colours.OKGREEN}Liked Songs{colours.ENDC}")
+        print(f"{colours.OKGREEN}Liked Songs{colours.ENDC}" + (f": the {last} most recent" if last else ": all of them"))
+    if dry_run:
+        print(f"{colours.OKGREEN}Preview only{colours.ENDC}: nothing will be downloaded")
 
     quality = quality or "high"
     print(f"{colours.OKGREEN}Quality{colours.ENDC}: {describe_quality(quality)}")
@@ -163,7 +184,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     tempdirs.clean_stale()   # leftovers of runs that were closed by force
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
-                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds)
+                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run)
 
     success = False
 
@@ -176,11 +197,13 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
         elif album:
             success = downloader.download_album(album)
         elif liked:
-            success = downloader.download_liked_songs()
+            success = downloader.download_liked_songs(last)
     finally:
         downloader.rm_tmp_folder()
 
-    if success:
+    if success and dry_run:
+        print(f"\n{colours.OKGREEN}Listo.{colours.ENDC} Nada se descargó; quita --dry-run para bajar estas canciones.\n")
+    elif success:
         print(f"\n{colours.OKGREEN}Download complete!{colours.ENDC} Your songs are in:\n  {os.path.abspath(downloader.last_output_path)}\n")
     else:
         print(f"\n{colours.FAIL}Download failed!{colours.ENDC} If you need help, please visit {HELP_URL}\n\n")
@@ -209,6 +232,9 @@ def build_parser():
                         help=f"A track named interlude/skit is skipped if it lasts this many seconds or less (default {DEFAULT_INTERLUDE_MAX_SECONDS})")
     parser.add_argument("--intro-outro-max", metavar="SECONDS", type=int, default=DEFAULT_INTRO_OUTRO_MAX_SECONDS,
                         help=f"A track named intro/outro is skipped if it lasts this many seconds or less; longer ones are kept as songs (default {DEFAULT_INTRO_OUTRO_MAX_SECONDS})")
+    parser.add_argument("--last", metavar="N", type=positive_int,
+                        help="With -l: only your N most recently liked songs (Spotify lists them newest first)")
+    parser.add_argument("--dry-run", help="Only list what would be downloaded (and how much you already have); download nothing", action="store_true")
     parser.add_argument("--no-update", help="Do not check for a newer yt-dlp (it is checked once a day)", action="store_true")
     parser.add_argument("--cookies-from-browser", metavar="BROWSER", choices=["firefox", "chrome", "edge", "brave", "opera", "chromium"],
                         help="Use your YouTube login from this browser, to download age-restricted videos")
@@ -261,7 +287,8 @@ def run():
         main(playlist=args.playlist, song=args.song, album=args.album, liked=args.liked, quality=args.quality,
              min_views=args.min_views, max_length=args.max_length * 60, workers=args.workers,
              cookies_from_browser=args.cookies_from_browser,
-             skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max)
+             skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max,
+             last=args.last, dry_run=args.dry_run)
     else:
         run_guided()
 

@@ -62,6 +62,8 @@ python spotify2mp3.py -s "https://open.spotify.com/track/..."        # una canci
 python spotify2mp3.py -a "https://open.spotify.com/album/..."        # un álbum
 python spotify2mp3.py -p "https://open.spotify.com/playlist/..."     # una playlist TUYA
 python spotify2mp3.py -l                                              # tus canciones con “Me gusta”
+python spotify2mp3.py -l --last 50 --dry-run                         # ver tus 50 más recientes, sin descargar
+python spotify2mp3.py -l --last 50                                   # bajar solo esas 50
 ```
 
 | Opción | Para qué |
@@ -71,6 +73,8 @@ python spotify2mp3.py -l                                              # tus canc
 | `--max-length 30` | Descarta videos más largos que esto (minutos). |
 | `--min-views N` | Descarta videos con menos reproducciones (apagado por defecto). |
 | `--keep-interludes` | Descarga también los interludios (por defecto se saltan). |
+| `--last 50` | Con `-l`: solo tus **50 canciones más recientes** de “Me gusta” (Spotify las ordena de la más nueva a la más vieja). Si tienes miles, no hace falta bajarlas todas. |
+| `--dry-run` | Solo **muestra la lista** (con la fecha en que la guardaste y cuántas ya tienes) y no descarga nada. Sirve para ver cuántas detecta antes de bajar. |
 | `--short-max 50` | Se salta cualquier tema de esta duración o menos, se llame como se llame (segundos). |
 | `--interlude-max 70` | Se salta un tema llamado *interlude*, *interludio*, *skit* o *prelude* si dura esto o menos. |
 | `--intro-outro-max 95` | Se salta un tema llamado *intro* u *outro* si dura esto o menos; si dura más, es una canción y se baja. |
@@ -86,6 +90,7 @@ python spotify2mp3.py -l                                              # tus canc
 - **Velocidad.** Medido con un álbum de 14 canciones: 2 a la vez = 70 s, 4 = 41 s, 8 = 32 s. Por eso el valor por defecto es 5: subir más rinde poco y aumenta el riesgo de que YouTube te limite.
 - **Cancelar.** Mientras se descarga (una playlist, un álbum o una canción), pulsa **Ctrl+C tres veces**: una o dos solo avisan y la descarga sigue (probado con pulsaciones reales de consola). Al cancelar se conserva lo ya descargado. En las preguntas del modo guiado, un Ctrl+C te despide al instante.
 - **Dónde quedan los MP3.** Siempre en la carpeta `downloads` **dentro del proyecto**, sin importar desde dónde lo ejecutes. Al terminar, el programa muestra la ruta completa.
+- **“Me gusta” con muchas canciones.** Usa `-l --last 50` para bajar solo las más recientes: pide a Spotify únicamente esas (una petición en lugar de veinte). Más adelante puedes repetirlo con otro número y las que ya tienes se saltan, así que sirve para ir actualizando.
 - **Se puede cortar y reanudar.** Si ya existe `Artista - Título.mp3`, se salta. Vuelve a ejecutar el mismo enlace y sigue donde quedó.
 - **Videos con restricción de edad.** El programa prueba automáticamente otra coincidencia (casi siempre hay una versión sin restricción).
   Si no la hay, puedes dejar que use tu sesión de YouTube con `--cookies-from-browser firefox` (o `chrome`, `edge`…): tienes que haber iniciado

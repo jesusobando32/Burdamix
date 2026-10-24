@@ -24,6 +24,7 @@ INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b"
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
+PREVIEW_LINES = 100        # --dry-run lists at most this many songs
 CANCEL_PRESSES = 3       # Ctrl+C presses needed to cancel a download in progress
 CTRL_C_POLL_SECONDS = 0.05  # how often the waiting main thread looks for a Ctrl+C
 BLOCK_STREAK_LIMIT = 5   # songs in a row that YouTube refuses before we stop asking
@@ -117,7 +118,9 @@ def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECO
 class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
-                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
+                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
+                 dry_run=False):
+        self.dry_run = dry_run   # list what would be downloaded and stop
         self.spotify_client = spotify
         self.youtube_client = youtube
         self.audio_quality = audio_quality  # requested bitrate in bps; never modified after construction
@@ -151,7 +154,9 @@ class SpotifyDownloader:
             print(f"\n{colours.FAIL}Error: {colours.ENDC}Could not read the {kind} from Spotify. {e}{colours.ENDC}\n")
             sys.exit(1)
 
-        print(f"\n{colours.OKBLUE}[!] Found {len(tracks)} downloadable tracks in {kind}.")
+        total = getattr(collection, "total", None)
+        recent = f" (the {len(tracks)} most recent of the {total} you have)" if getattr(collection, "limit", None) and total and total > len(tracks) else ""
+        print(f"\n{colours.OKBLUE}[!] Found {len(tracks)} downloadable tracks in {kind}{recent}.")
 
         if self.skip_interludes:
             interludes = [t for t in tracks if is_interlude(t.get_title(), t.get_metadata()["duration_ms"] / 1000,
@@ -164,6 +169,10 @@ class SpotifyDownloader:
         if not tracks:
             return False
 
+        if self.dry_run:
+            self._show_plan(tracks, output_path, total)
+            return True
+
         self.last_output_path = output_path
         self.prep_folder(output_path)
         skipped = self.download_tracks(output_path, tracks)
@@ -175,10 +184,32 @@ class SpotifyDownloader:
             "album", "albums", lambda: self.spotify_client.album(album_url),
             "It's probably that this album does not exist.")
 
-    def download_liked_songs(self):
+    def download_liked_songs(self, last=None):
+        """`last`: only the N most recently liked songs (Spotify lists them newest first)."""
         return self._download_collection(
-            "liked songs", "liked", self.spotify_client.likedSongs,
+            "liked songs", "liked", lambda: self.spotify_client.likedSongs(last),
             "Could not load your liked songs.")
+
+    def _show_plan(self, tracks, output_path, total=None):
+        """Preview for --dry-run: what would be downloaded, and how much of it is already on disk."""
+        plan, repeated, renamed = plan_filenames(tracks)
+        already = sum(1 for _, _, name in plan if self.file_exists(output_path + name + ".mp3"))
+
+        print(f"\n{colours.HEADER}=== Vista previa (no se descarga nada) ==={colours.ENDC}")
+        for number, track in enumerate(tracks[:PREVIEW_LINES], start=1):
+            seconds = round(track.get_metadata()["duration_ms"] / 1000)
+            saved = f"  (guardada {track.added_at[:10]})" if getattr(track, "added_at", None) else ""
+            print(f"{number:4}. {', '.join(track.get_metadata()['artist'])} - {track.get_title()}  [{seconds // 60}:{seconds % 60:02d}]{saved}")
+        if len(tracks) > PREVIEW_LINES:
+            print(f"      ... y {len(tracks) - PREVIEW_LINES} más")
+
+        header = f"Canciones en la lista: {len(tracks)}"
+        if total and total > len(tracks):
+            header += f" (de {total} en total)"
+        print(f"\n{header} | ya descargadas: {already} | por descargar: {len(plan) - already}")
+        if repeated:
+            print(f"Repetidas en la lista (se bajarían una sola vez): {len(repeated)}")
+        print(f"Carpeta: {os.path.abspath(output_path)}")
 
     def download_playlist(self, playlist_url):
         return self._download_collection(

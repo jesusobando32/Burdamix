@@ -957,6 +957,121 @@ def test_require_title_only_filters_when_asked():
     assert not rank_candidates([other], "Wanted", ["Artist"], 200, require_title=True)
 
 
+# --- Liked songs: last N, preview ---------------------------------------------------------------------
+
+class _LikedApi:
+    """Stands in for SpotifyAPI: serves 'me/tracks' in pages of up to 50, newest first, and counts requests."""
+    def __init__(self, total):
+        import apis.spotify as sp
+        self.total, self.requests, self.first_limit = total, [], None
+        self._real = sp.SpotifyAPI("t")
+        self._real.get = self.get              # so SpotifyAPI.paginate follows our 'next' links
+
+    def get(self, path, **params):
+        self.requests.append(path)
+        if len(self.requests) == 1:
+            self.first_limit = params.get("limit")   # page size asked for in the first request
+        offset = int(path.split("offset=")[1].split("&")[0]) if "offset=" in path else 0
+        size = int(path.split("limit=")[1]) if "limit=" in path else params.get("limit", 50)
+        items = [{"added_at": f"2026-10-{(i % 28) + 1:02d}T10:00:00Z", "track": _api_track(id=f"id{i}", name=f"Song {i}")}
+                 for i in range(offset, min(offset + size, self.total))]
+        more = offset + size < self.total
+        return {"items": items, "total": self.total,
+                "next": f"https://api.spotify.com/v1/me/tracks?offset={offset + size}&limit={size}" if more else None}
+
+    def paginate(self, first):
+        return self._real.paginate(first)
+
+
+def _liked(total, limit):
+    from apis.spotify import SpotifyLikedSongs
+    base = type("Base", (), {})()
+    base.api = _LikedApi(total)
+    liked = SpotifyLikedSongs(base, limit)
+    return liked, base.api
+
+
+def test_the_last_50_liked_songs_cost_a_single_request():
+    liked, api = _liked(total=1036, limit=50)
+    tracks = liked.get_tracks()
+    assert len(tracks) == 50 and len(api.requests) == 1 and api.first_limit == 50
+    assert tracks[0].get_title() == "Song 0" and tracks[-1].get_title() == "Song 49"     # newest first
+    assert liked.total == 1036                                                           # still reports how many there are
+
+
+def test_a_limit_in_the_middle_of_a_page_stops_there():
+    liked, api = _liked(total=1036, limit=70)
+    assert len(liked.get_tracks()) == 70 and len(api.requests) == 2
+
+
+def test_a_small_limit_asks_for_a_small_page():
+    liked, api = _liked(total=1036, limit=10)
+    assert len(liked.get_tracks()) == 10
+    assert api.first_limit == 10 and len(api.requests) == 1       # no need to ask for 50 to keep 10
+
+
+def test_without_a_limit_every_liked_song_is_fetched_in_pages_of_50():
+    liked, api = _liked(total=120, limit=None)
+    assert len(liked.get_tracks()) == 120 and len(api.requests) == 3
+
+
+def test_liked_songs_remember_when_they_were_saved():
+    liked, _ = _liked(total=5, limit=None)
+    assert liked.get_tracks()[0].added_at.startswith("2026-10-")
+
+
+def test_asking_for_more_than_you_have_just_returns_everything():
+    liked, _ = _liked(total=30, limit=500)
+    assert len(liked.get_tracks()) == 30
+
+
+def test_last_must_be_a_positive_number():
+    import spotify2mp3 as app
+    assert app.positive_int("50") == 50
+    for bad in ("0", "-3", "abc", "1.5"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            app.positive_int(bad)
+
+
+def test_last_without_liked_songs_is_refused_before_touching_spotify(capsys):
+    import spotify2mp3 as app
+    with pytest.raises(SystemExit):
+        app.main(playlist="https://open.spotify.com/playlist/abc", last=5)
+    assert "--last only works with your liked songs" in capsys.readouterr().out
+
+
+def test_dry_run_with_a_single_song_is_refused(capsys):
+    import spotify2mp3 as app
+    with pytest.raises(SystemExit):
+        app.main(song="https://open.spotify.com/track/abc", dry_run=True)
+    assert "--dry-run previews a list" in capsys.readouterr().out
+
+
+def test_dry_run_lists_the_songs_and_downloads_nothing(tmp_path, capsys, monkeypatch):
+    import downloader
+    from downloader import SpotifyDownloader
+    monkeypatch.setattr(downloader, "DOWNLOADS_DIR", str(tmp_path))     # never look at the real downloads folder
+    liked, _ = _liked(total=3, limit=None)
+    liked.limit = 2                                              # "the 2 most recent of 3"
+    d = SpotifyDownloader(type("S", (), {"likedSongs": lambda self, last=None: liked})(), None, dry_run=True)
+    monkeypatch.setattr(SpotifyDownloader, "download_tracks", lambda *a, **k: pytest.fail("a dry run must not download"))
+    assert d.download_liked_songs(2) is True
+    out = capsys.readouterr().out
+    assert "Vista previa" in out and "   1. " in out and "(guardada 2026-10-" in out
+    assert "por descargar: 2" in out and "ya descargadas: 0" in out
+    assert not (tmp_path / "liked").exists()                      # not even the folder was created
+
+
+def test_dry_run_counts_what_is_already_on_disk(tmp_path, capsys):
+    from downloader import SpotifyDownloader
+    liked, _ = _liked(total=3, limit=None)
+    tracks = liked.get_tracks()
+    d = SpotifyDownloader(None, None, dry_run=True)
+    (tmp_path / f"{tracks[0].get_filename()}.mp3").write_bytes(b"x")
+    d._show_plan(tracks, str(tmp_path) + os.sep, total=3)
+    assert "ya descargadas: 1 | por descargar: 2" in capsys.readouterr().out
+
+
 
 def test_the_quality_question_shows_what_youtube_really_offers_not_320(monkeypatch):
     """Regression: the question kept saying '(48-320)' although YouTube never gives more than ~130 kbps."""

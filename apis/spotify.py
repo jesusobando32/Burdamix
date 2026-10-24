@@ -113,8 +113,8 @@ class Spotify:
 
         self.api = SpotifyAPI(access_token)
 
-    def likedSongs(self):
-        return SpotifyLikedSongs(self)
+    def likedSongs(self, limit=None):
+        return SpotifyLikedSongs(self, limit)
 
     def playlist(self, playlist_url):
         if 'playlist/' not in playlist_url:
@@ -132,7 +132,7 @@ class Spotify:
         return SpotifyAlbum(self, album_url)
 
 
-def track_from_data(base, data, album=None):
+def track_from_data(base, data, album=None, added_at=None):
     """Build a loaded SpotifyTrack from API JSON, or None if it can't be downloaded
     (removed track, local file, podcast episode)."""
     if not data or data.get("is_local") or not data.get("id") or data.get("type", "track") != "track":
@@ -144,6 +144,7 @@ def track_from_data(base, data, album=None):
 
     track = SpotifyTrack(base, f"https://open.spotify.com/track/{data['id']}")
     track.load(data, album)
+    track.added_at = added_at   # when the user saved it (liked songs only)
     return track
 
 
@@ -236,13 +237,26 @@ class SpotifyAlbum(_Collection):
 class SpotifyLikedSongs(_Collection):
     default_title = "Liked Songs"
 
+    def __init__(self, base, limit=None):
+        super().__init__(base)
+        self.limit = limit   # only the N most recently liked songs (None = all of them)
+        self.total = None    # how many liked songs the account has, as reported by Spotify
+
     def load(self):
         api = self.base.api
+        wanted = self.limit
+        first = api.get("me/tracks", limit=min(50, wanted) if wanted else 50)
+        self.total = first.get("total")
+
         tracks = []
-        for entry in api.paginate(api.get("me/tracks", limit=50)):
-            track = track_from_data(self.base, entry.get("track"))
+        # Spotify returns them newest first, and pages are only requested as they are consumed, so
+        # stopping as soon as there are enough means a "last 50" costs one request, not twenty.
+        for entry in api.paginate(first):
+            track = track_from_data(self.base, entry.get("track"), added_at=entry.get("added_at"))
             if track is not None:
                 tracks.append(track)
+                if wanted and len(tracks) >= wanted:
+                    break
 
         self.metadata = {"title": "Liked Songs", "image_url": const.UNKNOWN_ALBUM_COVER_URL, "tracks": tracks}
 
@@ -253,6 +267,7 @@ class SpotifyTrack:
         self.resource_url = resource_url
         self.resource_id = _extract_id("track", resource_url)
         self.track_metadata = {}
+        self.added_at = None
 
     def load(self, track_data=None, album_data=None):
         if track_data is None:
