@@ -12,6 +12,7 @@ import utils
 from apis.spotify import Spotify
 from apis.youtube import YouTube
 from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
+import updater
 from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
 
 DEFAULT_WORKERS = 5  # songs downloaded at the same time
@@ -204,6 +205,7 @@ def build_parser():
                         help=f"A track named interlude/skit is skipped if it lasts this many seconds or less (default {DEFAULT_INTERLUDE_MAX_SECONDS})")
     parser.add_argument("--intro-outro-max", metavar="SECONDS", type=int, default=DEFAULT_INTRO_OUTRO_MAX_SECONDS,
                         help=f"A track named intro/outro is skipped if it lasts this many seconds or less; longer ones are kept as songs (default {DEFAULT_INTRO_OUTRO_MAX_SECONDS})")
+    parser.add_argument("--no-update", help="Do not check for a newer yt-dlp (it is checked once a day)", action="store_true")
     parser.add_argument("--cookies-from-browser", metavar="BROWSER", choices=["firefox", "chrome", "edge", "brave", "opera", "chromium"],
                         help="Use your YouTube login from this browser, to download age-restricted videos")
     return parser
@@ -211,6 +213,7 @@ def build_parser():
 
 def run_guided():
     utils.print_splash_screen()
+    updater.update_ytdlp_if_due()
 
     if not login.is_client_configured():
         print(f"{colours.OKCYAN}Es la primera vez que lo usas: hay que conectar el programa con Spotify.{colours.ENDC}")
@@ -238,6 +241,8 @@ if __name__ == "__main__":
         login.do_client_login()
     elif len(sys.argv) > 1:
         args = build_parser().parse_args()
+        if not args.no_update:
+            updater.update_ytdlp_if_due()   # before anything imports yt_dlp
         main(playlist=args.playlist, song=args.song, album=args.album, liked=args.liked, quality=args.quality,
              min_views=args.min_views, max_length=args.max_length * 60, workers=args.workers,
              cookies_from_browser=args.cookies_from_browser,

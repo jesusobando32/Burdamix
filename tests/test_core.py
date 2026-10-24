@@ -543,6 +543,47 @@ def test_download_tracks_downloads_a_repeated_song_once_and_reports_it(capsys):
     assert "repeated song" in out and "X - Two (2)" in out and d.planned == 3
 
 
+# --- yt-dlp updates -----------------------------------------------------------------------
+
+def test_update_check_is_due_only_after_a_day(tmp_path):
+    import time
+    import updater
+    marker = tmp_path / "m"
+    assert updater.is_due(str(marker))                          # never checked
+    marker.write_text("x")
+    assert not updater.is_due(str(marker))                      # just checked
+    assert updater.is_due(str(marker), now=time.time() + 25 * 3600)
+
+
+def test_update_runs_pip_once_and_then_waits_a_day(tmp_path):
+    import subprocess
+    import updater
+    marker = str(tmp_path / "m")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    updater.update_ytdlp_if_due(marker, run=fake_run)
+    updater.update_ytdlp_if_due(marker, run=fake_run)           # same day: nothing to do
+    assert len(calls) == 1 and "yt-dlp" in calls[0] and "--upgrade" in calls[0]
+
+
+def test_failed_update_does_not_start_the_day_and_never_crashes(tmp_path, capsys):
+    import subprocess
+    import updater
+    marker = tmp_path / "m"
+    updater.update_ytdlp_if_due(str(marker), run=lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "no internet"))
+    assert not marker.exists()                                  # tries again next time
+    assert "sigo con la versión que tienes" in capsys.readouterr().out
+
+    def boom(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 1)
+    updater.update_ytdlp_if_due(str(marker), run=boom)          # a hung pip is also survived
+    assert not marker.exists()
+
+
 # --- Retrying with another video -------------------------------------------------------------
 
 class _Audio:
