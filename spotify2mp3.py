@@ -94,15 +94,14 @@ def get_user_input():
             print(f"{colours.FAIL}{e}{colours.ENDC}\n")
 
     while True:
-        quality = input(f"\n{colours.OKGREEN}¿Qué calidad?{colours.ENDC} low / medium / high, o un número en kbps (48-320). "
-                        f"Enter = high: ").strip() or "high"
+        quality = input(f"\n{colours.OKGREEN}¿Qué calidad?{colours.ENDC} low / medium / {colours.BOLD}high{colours.ENDC} "
+                        f"(high = la mejor que da YouTube, ~{YOUTUBE_MAX_KBPS} kbps; pedir más no mejora nada). Enter = high: ").strip() or "high"
         try:
             validate_quality(quality)
             break
         except argparse.ArgumentTypeError as e:
             print(f"{colours.WARNING}{e}{colours.ENDC}")
 
-    print(f"\n{colours.OKBLUE}Nota:{colours.ENDC} YouTube entrega audio de ~128 kbps como máximo, así que 'high' no mejora la calidad real; solo ocupa más espacio.")
     return choice, url, quality
 
 

@@ -957,3 +957,14 @@ def test_require_title_only_filters_when_asked():
     assert not rank_candidates([other], "Wanted", ["Artist"], 200, require_title=True)
 
 
+
+def test_the_quality_question_shows_what_youtube_really_offers_not_320(monkeypatch):
+    """Regression: the question kept saying '(48-320)' although YouTube never gives more than ~130 kbps."""
+    import spotify2mp3 as app
+    prompts, answers = [], iter(["https://open.spotify.com/track/abc", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt) or next(answers))
+    assert app.get_user_input() == ("song", "https://open.spotify.com/track/abc", "high")
+    quality_question = prompts[1]
+    assert "320" not in quality_question and "48" not in quality_question
+    assert f"~{app.YOUTUBE_MAX_KBPS} kbps" in quality_question
+
