@@ -1,0 +1,8 @@
+# Direct dependencies only; pip resolves the rest.
+eyed3>=0.9.6
+flask>=2.2.5
+imageio-ffmpeg>=0.4.7
+moviepy>=1.0.3,<2     # 2.x removed moviepy.editor, which utils.py imports
+requests>=2.27.1
+tekore>=5.0.1         # only used for the Spotify login (token refresh)
+yt-dlp>=2025.1.1
