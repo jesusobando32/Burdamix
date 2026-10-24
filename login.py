@@ -19,16 +19,7 @@ from const import colours
 auths = {}  # Auth attempts. Stores data across spotify login
 
 def _config_dir():
-    """Private folder of the user, outside the project: it is not inside Documents (so OneDrive does not
-    sync it) and it is not included when the project folder is zipped to share it.
-    The portable version is the exception: it keeps it in a "datos" folder next to the .exe."""
-    if const.is_portable():
-        return os.path.join(const.app_dir(), "datos")
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    else:
-        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return os.path.join(base, "Burdamix")
+    return const.data_dir()
 
 
 cfg_filename = os.path.join(_config_dir(), 'tekore_cfg.ini')

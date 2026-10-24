@@ -1415,3 +1415,143 @@ def test_a_lone_adult_only_song_without_a_browser_answer_is_just_explained(monke
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
     d = downloader.SpotifyDownloader(None, None, offer_browser_login=True)
     assert d._explain_single_failure(YoutubeVideoUnavailable(RAW_AGE)) is False
+
+
+# --- yt-dlp updates inside the compiled program ------------------------------------------------------------------
+
+def _fake_pypi(version="2099.01.01", extra_files=None, tamper=False, host="https://files.pythonhosted.org/x/yt_dlp.whl"):
+    """A `get` that behaves like PyPI: a JSON answer and a wheel (a zip) with a yt_dlp package."""
+    import hashlib
+    import io
+    import zipfile
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as z:
+        z.writestr("yt_dlp/__init__.py", "")
+        z.writestr("yt_dlp/version.py", f"__version__ = '{version}'\n")
+        for name, content in (extra_files or {}).items():
+            z.writestr(name, content)
+    wheel = buffer.getvalue()
+    digest = hashlib.sha256(wheel).hexdigest()
+    if tamper:
+        digest = "0" * 64
+    data = {"info": {"version": version},
+            "urls": [{"filename": "yt_dlp-x-py3-none-any.whl", "url": host, "digests": {"sha256": digest}}]}
+
+    class Response:
+        def __init__(self, payload=None, content=b""):
+            self._payload, self.content = payload, content
+
+        def json(self):
+            return self._payload
+
+    return lambda url, timeout=None: Response(data) if "pypi.org" in url else Response(content=wheel)
+
+
+def test_the_newest_ytdlp_is_downloaded_checked_and_saved(tmp_path):
+    import updater
+    lib = tmp_path / "yt-dlp"
+    assert updater.download_latest_ytdlp(str(lib), _fake_pypi(), current="2025.01.01") == ("2025.01.01", "2099.01.01")
+    assert updater._version_in(str(lib)) == "2099.01.01"
+    assert not (tmp_path / "yt-dlp.new").exists()
+
+
+def test_nothing_is_downloaded_when_ytdlp_is_already_the_newest(tmp_path):
+    import updater
+    assert updater.download_latest_ytdlp(str(tmp_path / "lib"), _fake_pypi("2025.01.01"), current="2025.01.01") is None
+    assert not (tmp_path / "lib").exists()
+
+
+def test_a_download_that_does_not_match_its_pypi_hash_is_rejected(tmp_path):
+    import updater
+    with pytest.raises(updater.UpdateError, match="firma"):
+        updater.download_latest_ytdlp(str(tmp_path / "lib"), _fake_pypi(tamper=True), current="2025.01.01")
+    assert not (tmp_path / "lib").exists()
+
+
+def test_a_download_from_an_unofficial_host_is_rejected(tmp_path):
+    import updater
+    with pytest.raises(updater.UpdateError, match="oficial"):
+        updater.download_latest_ytdlp(str(tmp_path / "lib"), _fake_pypi(host="https://evil.example/yt.whl"), current="2025.01.01")
+
+
+def test_files_outside_the_yt_dlp_package_are_never_written(tmp_path):
+    import updater
+    lib = tmp_path / "sub" / "yt-dlp"
+    get = _fake_pypi(extra_files={"yt_dlp/../../escape.txt": "x", "other/file.py": "x", "/abs.txt": "x"})
+    updater.download_latest_ytdlp(str(lib), get, current="2025.01.01")
+    assert not (tmp_path / "escape.txt").exists() and not (tmp_path / "sub" / "escape.txt").exists()
+    assert not (lib / "other").exists() and not (lib / "abs.txt").exists()
+
+
+def test_no_internet_gives_a_clear_error_and_keeps_the_old_update(tmp_path):
+    import updater
+    lib = tmp_path / "lib"
+    (lib / "yt_dlp").mkdir(parents=True)
+    (lib / "yt_dlp" / "version.py").write_text("__version__ = '2030.01.01'\n")
+
+    def offline(url, timeout=None):
+        raise ConnectionError("offline")
+
+    with pytest.raises(updater.UpdateError, match="No pude descargar"):
+        updater.download_latest_ytdlp(str(lib), offline, current="2025.01.01")
+    assert updater._version_in(str(lib)) == "2030.01.01"
+
+
+def test_a_downloaded_ytdlp_is_used_only_when_newer_than_the_bundled_one(tmp_path, monkeypatch):
+    import sys
+    import updater
+    lib = tmp_path / "lib"
+    (lib / "yt_dlp").mkdir(parents=True)
+    version_file = lib / "yt_dlp" / "version.py"
+    monkeypatch.setattr(updater, "bundled_ytdlp_version", lambda: "2026.10.21")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    version_file.write_text("__version__ = '2026.10.30'\n")
+    assert updater.use_downloaded_ytdlp(str(lib)) is False          # not compiled: scripts use pip instead
+    monkeypatch.setattr(updater.const, "IS_FROZEN", True)
+    assert updater.use_downloaded_ytdlp(str(lib)) is True and sys.path[0] == str(lib)
+    sys.path.pop(0)
+    version_file.write_text("__version__ = '2026.09.01'\n")         # the program was updated later: its own is newer
+    assert updater.use_downloaded_ytdlp(str(lib)) is False
+    assert updater.use_downloaded_ytdlp(str(tmp_path / "missing")) is False
+
+
+def test_only_unexplained_extraction_errors_suggest_an_outdated_ytdlp():
+    from downloader import suggests_outdated_ytdlp
+    from exceptions import YoutubeBlocked, YoutubeVideoUnavailable
+    assert suggests_outdated_ytdlp(RuntimeError("ERROR: [youtube] abc: Unable to extract player response"))
+    assert suggests_outdated_ytdlp(RuntimeError("Requested format is not available"))
+    assert not suggests_outdated_ytdlp(RuntimeError("disk full"))
+    assert not suggests_outdated_ytdlp(YoutubeBlocked("Unable to extract"))          # a block is not fixed by updating
+    assert not suggests_outdated_ytdlp(YoutubeVideoUnavailable("Private video"))
+
+
+def _update_offer(monkeypatch, answer, frozen=True, guided=True, error=None):
+    import downloader
+    monkeypatch.setattr(downloader.const, "IS_FROZEN", frozen)
+    monkeypatch.setattr("builtins.input", lambda prompt="": answer)
+    calls = []
+
+    def fake_download():
+        calls.append(1)
+        return ("2026.10.21", "2026.11.02")
+
+    monkeypatch.setattr(downloader.updater, "download_latest_ytdlp", fake_download)
+    d = downloader.SpotifyDownloader(None, None, offer_browser_login=guided)
+    d._offer_ytdlp_update([(object(), error or RuntimeError("Unable to extract player response"))])
+    return calls
+
+
+def test_the_update_is_offered_and_done_when_the_user_says_yes(monkeypatch, capsys):
+    assert _update_offer(monkeypatch, "yes") == [1]
+    assert "2026.10.21 -> 2026.11.02" in capsys.readouterr().out
+
+
+def test_the_update_is_not_done_when_the_user_says_no(monkeypatch):
+    assert _update_offer(monkeypatch, "no") == []
+
+
+def test_the_update_is_never_offered_outside_the_compiled_guided_mode(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("must not ask"))
+    assert _update_offer(monkeypatch, "yes", frozen=False) == []
+    assert _update_offer(monkeypatch, "yes", guided=False) == []
+    assert _update_offer(monkeypatch, "yes", error=RuntimeError("disk full")) == []

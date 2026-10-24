@@ -42,6 +42,19 @@ def is_portable():
     return IS_FROZEN and os.path.exists(os.path.join(app_dir(), PORTABLE_MARKER))
 
 
+def data_dir():
+    """Private folder of the user for settings and the yt-dlp updates. It is outside the project: it is not
+    inside Documents (so OneDrive does not sync it) and it is not included when the project folder is zipped
+    to share it. The portable version keeps it in a "datos" folder next to the .exe."""
+    if is_portable():
+        return os.path.join(app_dir(), "datos")
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "Burdamix")
+
+
 def _downloads_dir():
     """Songs go inside the project when run as a script, next to the .exe when portable,
     and in the user's Music folder when installed (Program Files cannot be written to)."""

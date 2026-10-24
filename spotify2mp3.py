@@ -314,7 +314,10 @@ def say_goodbye_and_exit(code=130):
 
 
 def run():
-    if sys.argv[1:] == ["--setup"]:
+    updater.use_downloaded_ytdlp()   # compiled program: use the yt-dlp the user downloaded, before anything imports it
+    if sys.argv[1:] == ["--version"]:
+        print(f"Burdamix (yt-dlp {updater.current_ytdlp_version()})")
+    elif sys.argv[1:] == ["--setup"]:
         login.do_client_login()
     elif len(sys.argv) > 1:
         args = build_parser().parse_args()

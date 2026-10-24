@@ -10,6 +10,8 @@ if not exist .venv\Scripts\python.exe (
 .venv\Scripts\python -m PyInstaller Burdamix.spec --noconfirm --distpath build_out\dist --workpath build_out\work || exit /b 1
 rem Version portable: un archivo portable.txt junto al .exe hace que todo se guarde en su carpeta.
 type nul > build_out\dist\Burdamix\portable.txt
-powershell -NoProfile -Command "Compress-Archive -Path build_out\dist\Burdamix -DestinationPath build_out\Burdamix-portable.zip -Force" || exit /b 1
+rem El tar de Windows (bsdtar) escribe rutas con "/"; Compress-Archive de PowerShell 5.1 usa "\" y rompe el zip fuera del Explorador.
+del build_out\Burdamix-portable.zip 2>nul
+"%SystemRoot%\System32\tar.exe" -a -c -f build_out\Burdamix-portable.zip -C build_out\dist Burdamix || exit /b 1
 echo.
 echo Listo: build_out\dist\Burdamix\Burdamix.exe  y  build_out\Burdamix-portable.zip

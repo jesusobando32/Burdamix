@@ -1,3 +1,5 @@
+import const
+import updater
 from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
@@ -86,6 +88,17 @@ def reason_category(error):
     if "cookie" in text:
         return "cookies"
     return "otro"
+
+
+OUTDATED_YTDLP_MARKERS = ("unable to extract", "requested format is not available", "nsig", "signature",
+                          "please report this issue", "player response")
+
+
+def suggests_outdated_ytdlp(error):
+    """Errors yt-dlp itself cannot explain (not a block, not a private video) usually mean YouTube changed."""
+    if reason_category(error) != "otro":
+        return False
+    return any(marker in str(error).lower() for marker in OUTDATED_YTDLP_MARKERS)
 
 
 def friendly_reason(error):
@@ -404,7 +417,29 @@ class SpotifyDownloader:
                   f"Espera un rato (a veces hasta una hora) o cambia de red, y vuelve a ejecutar el {colours.BOLD}mismo enlace{colours.ENDC}: "
                   f"lo que ya se descargó se salta y continúa donde quedó.\n")
 
+        self._offer_ytdlp_update(skipped_tracks)
         return skipped_tracks
+
+    def _offer_ytdlp_update(self, skipped_tracks):
+        """Compiled program, guided mode: when songs failed in a way that looks like an out-of-date yt-dlp
+        (YouTube changed something), offer to download the newest one. It is used the next time the program starts."""
+        if not (const.IS_FROZEN and self.offer_browser_login):
+            return
+        if not any(suggests_outdated_ytdlp(error) for _, error in skipped_tracks):
+            return
+        print(f"\n{colours.WARNING}[!] Algunas fallas parecen de un yt-dlp desactualizado (YouTube cambió algo).{colours.ENDC}")
+        if not ask_yes_no("¿Buscar y descargar la versión nueva ahora? (yes/no): "):
+            return
+        try:
+            result = updater.download_latest_ytdlp()
+        except updater.UpdateError as error:
+            print(f"{colours.FAIL}{error}{colours.ENDC} Tu versión actual sigue igual.")
+            return
+        if result is None:
+            print(f"{colours.OKBLUE}Ya tienes la versión más nueva de yt-dlp; el problema es otro.{colours.ENDC}")
+        else:
+            print(f"{colours.OKGREEN}yt-dlp actualizado: {result[0]} -> {result[1]}.{colours.ENDC} "
+                  f"Cierra Burdamix, ábrelo otra vez y ejecuta el mismo enlace: solo bajará las que faltan.")
 
     def _retry_tracks(self, pairs, info, idx_max, output_path, skipped_tracks):
         """Download each (track, error) of `pairs` again, one at a time. Songs that now work leave
