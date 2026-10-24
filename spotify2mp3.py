@@ -11,7 +11,7 @@ import utils
 from apis.spotify import Spotify
 from apis.youtube import YouTube
 from const import colours, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
-from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS
+from downloader import SpotifyDownloader, DEFAULT_INTERLUDE_MAX_SECONDS, DEFAULT_INTRO_OUTRO_MAX_SECONDS, DEFAULT_SHORT_MAX_SECONDS
 
 DEFAULT_WORKERS = 5  # songs downloaded at the same time
 MAX_WORKERS = 8
@@ -90,7 +90,7 @@ def get_user_input():
 def main(authtype=None, playlist=None, song=None, album=None, liked=False, quality=None, min_views=None,
          max_length=None, workers=DEFAULT_WORKERS, cookies_from_browser=None,
          skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
-         intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS):
+         intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
 
     url = song or playlist or album
 
@@ -133,7 +133,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     print(f"{colours.OKGREEN}Songs at the same time{colours.ENDC}: {workers}")
 
     if not song:
-        print(f"{colours.OKGREEN}Interludes{colours.ENDC}: " + (f"skipped: interlude/skit <= {interlude_max_seconds}s, intro/outro <= {intro_outro_max_seconds}s" if skip_interludes else "kept"))
+        print(f"{colours.OKGREEN}Interludes{colours.ENDC}: " + (f"skipped: any track <= {short_max_seconds}s, interlude/skit <= {interlude_max_seconds}s, intro/outro <= {intro_outro_max_seconds}s" if skip_interludes else "kept"))
 
     try:
         spotify = Spotify(authtype)
@@ -144,7 +144,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
 
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
-                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds)
+                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds)
 
     success = False
 
@@ -183,6 +183,8 @@ def build_parser():
     parser.add_argument("--min-views", help="Minimum view count on YouTube (default: off)", type=int, default=DEFAULT_MIN_VIEWS_FOR_DOWNLOAD)
     parser.add_argument("--max-length", help="Maximum video length on YouTube in minutes", type=int, default=DEFAULT_MAX_LENGTH_FOR_DOWNLOAD // 60)
     parser.add_argument("--keep-interludes", help="Also download short interludes/skits/intros (skipped by default)", action="store_true")
+    parser.add_argument("--short-max", metavar="SECONDS", type=int, default=DEFAULT_SHORT_MAX_SECONDS,
+                        help=f"Any track this many seconds or shorter is skipped, whatever its name (default {DEFAULT_SHORT_MAX_SECONDS})")
     parser.add_argument("--interlude-max", metavar="SECONDS", type=int, default=DEFAULT_INTERLUDE_MAX_SECONDS,
                         help=f"A track named interlude/skit is skipped if it lasts this many seconds or less (default {DEFAULT_INTERLUDE_MAX_SECONDS})")
     parser.add_argument("--intro-outro-max", metavar="SECONDS", type=int, default=DEFAULT_INTRO_OUTRO_MAX_SECONDS,
@@ -224,6 +226,6 @@ if __name__ == "__main__":
         main(playlist=args.playlist, song=args.song, album=args.album, liked=args.liked, quality=args.quality,
              min_views=args.min_views, max_length=args.max_length * 60, workers=args.workers,
              cookies_from_browser=args.cookies_from_browser,
-             skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max)
+             skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max)
     else:
         run_guided()

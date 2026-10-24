@@ -70,6 +70,10 @@ python spotify2mp3.py -l                                              # tus canc
 | `--workers 5` | Canciones que se bajan a la vez (1–8). Por defecto 5. |
 | `--max-length 30` | Descarta videos más largos que esto (minutos). |
 | `--min-views N` | Descarta videos con menos reproducciones (apagado por defecto). |
+| `--keep-interludes` | Descarga también los interludios (por defecto se saltan). |
+| `--short-max 50` | Se salta cualquier tema de esta duración o menos, se llame como se llame (segundos). |
+| `--interlude-max 70` | Se salta un tema llamado *interlude*, *interludio*, *skit* o *prelude* si dura esto o menos. |
+| `--intro-outro-max 95` | Se salta un tema llamado *intro* u *outro* si dura esto o menos; si dura más, es una canción y se baja. |
 | `--cookies-from-browser firefox` | Para videos con restricción de edad (ver abajo). |
 | `--setup` | Repetir la conexión con Spotify. |
 

@@ -13,19 +13,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import re
 
-DEFAULT_INTERLUDE_MAX_SECONDS = 60       # interlude / skit / prelude
-DEFAULT_INTRO_OUTRO_MAX_SECONDS = 90     # intro / outro: above this it is a real song and is kept
+DEFAULT_SHORT_MAX_SECONDS = 50           # any track this short, whatever its name
+DEFAULT_INTERLUDE_MAX_SECONDS = 70       # interlude / skit / prelude
+DEFAULT_INTRO_OUTRO_MAX_SECONDS = 95     # intro / outro: above this it is a real song and is kept
 INTERLUDE_WORDS = re.compile(r"\b(interlude|interludio|skit|prelude|preludio)\b", re.IGNORECASE)
 INTRO_OUTRO_WORDS = re.compile(r"\b(intro|outro)\b", re.IGNORECASE)
 
 
 def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
-                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS):
-    """A short track whose name says it is an interlude/skit (up to `max_seconds`) or an intro/outro
-    (up to `intro_outro_max_seconds`).
+                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
+    """True for tracks that are not really songs:
+    - anything up to `short_max_seconds`, whatever its name (a 12-second track is never a song);
+    - an interlude/skit up to `max_seconds`;
+    - an intro/outro up to `intro_outro_max_seconds`.
 
-    Both the name and the length must match: a 3-minute song called "Intro" is a real song, and a
-    45-second song with a normal name is not guessed to be an interlude."""
+    The name only matters between those limits: a 3-minute song called "Intro" is a real song."""
+    if duration_seconds <= short_max_seconds:
+        return True
     if INTERLUDE_WORDS.search(title) and duration_seconds <= max_seconds:
         return True
     return bool(INTRO_OUTRO_WORDS.search(title)) and duration_seconds <= intro_outro_max_seconds
@@ -34,7 +38,7 @@ def is_interlude(title, duration_seconds, max_seconds=DEFAULT_INTERLUDE_MAX_SECO
 class SpotifyDownloader():
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
-                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS):
+                 intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS):
         self.spotify_client = spotify
         self.youtube_client = youtube
         self.audio_quality = audio_quality  # requested bitrate in bps; never modified after construction
@@ -44,6 +48,7 @@ class SpotifyDownloader():
         self.skip_interludes = skip_interludes
         self.interlude_max_seconds = interlude_max_seconds
         self.intro_outro_max_seconds = intro_outro_max_seconds
+        self.short_max_seconds = short_max_seconds
         self._print_lock = threading.Lock()
 
     def _download_collection(self, kind, folder, retrieve, not_found_message):
@@ -65,10 +70,10 @@ class SpotifyDownloader():
 
         if self.skip_interludes:
             interludes = [t for t in tracks if is_interlude(t.get_title(), t.get_metadata()["duration_ms"] / 1000,
-                                                     self.interlude_max_seconds, self.intro_outro_max_seconds)]
+                                                     self.interlude_max_seconds, self.intro_outro_max_seconds, self.short_max_seconds)]
             if interludes:
                 tracks = [t for t in tracks if t not in interludes]
-                print(f"{colours.OKBLUE}[!] Skipping {len(interludes)} short interlude(s) (use --keep-interludes to keep them): "
+                print(f"{colours.OKBLUE}[!] Skipping {len(interludes)} short track(s) (use --keep-interludes to keep them): "
                       f"{', '.join(t.get_title() for t in interludes)}{colours.ENDC}")
 
         if not tracks:

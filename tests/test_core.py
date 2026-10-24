@@ -142,18 +142,21 @@ def test_download_tracks_runs_in_parallel_and_collects_failures(monkeypatch):
 # --- Interludes ------------------------------------------------------------------
 
 @pytest.mark.parametrize("title,seconds,expected", [
-    ("Repeat After Me (Interlude)", 40, True),
+    ("EUROPA :)", 12, True),                      # regression: 12s track with a normal name
+    ("Blinding Lights", 50, True),                # <= 50s is never a song, whatever the name
+    ("Blinding Lights", 51, False),               # just over the limit: kept
+    ("Blinding Lights", 65, False),
     ("Repeat After Me (Interlude)", 196, False),  # named interlude but a real 3-minute piece
     ("Skit: la llamada", 50, True),
-    ("Interludio", 60, True),                     # exactly at the limit still counts
-    ("Interlude", 75, False),                     # interludes: 60s limit
+    ("Interludio", 61, True),                     # a 60s interlude measured as 61 is still caught
+    ("Interlude", 70, True),                      # interludes: 70s limit
+    ("Interlude", 71, False),
     ("Intro", 35, True),
-    ("Outro", 85, True),                          # intro/outro: 90s limit
-    ("Intro", 90, True),
-    ("Intro", 100, False),                        # over a minute and a half: it is a song, keep it
+    ("Outro", 85, True),
+    ("Intro", 95, True),                          # intro/outro: 95s limit
+    ("Intro", 96, False),                         # over that it is a song, keep it
     ("Canción con Intro", 200, False),
-    ("Blinding Lights", 40, False),               # short but not named like an interlude
-    ("Introspection", 30, False),                 # 'intro' only as part of another word
+    ("Introspection", 60, False),                 # 'intro' only as part of another word
 ])
 def test_is_interlude(title, seconds, expected):
     from downloader import is_interlude
@@ -164,3 +167,5 @@ def test_limits_are_configurable():
     from downloader import is_interlude
     assert is_interlude("Interlude", 90, max_seconds=120)
     assert not is_interlude("Intro", 90, intro_outro_max_seconds=30)
+    assert is_interlude("Song", 55, short_max_seconds=60)
+    assert not is_interlude("Song", 12, short_max_seconds=5)
