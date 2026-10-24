@@ -923,3 +923,37 @@ def test_search_wordings_have_no_repeats():
     assert len(search_queries("Song", ["A"])) == len(set(search_queries("Song", ["A"])))
 
 
+# --- Words YouTube refuses to search ----------------------------------------------------------------
+
+def test_reduced_queries_drop_one_word_at_a_time_longest_first():
+    from apis.youtube import reduced_queries
+    assert reduced_queries("Graxxx & QSJM", ["JHAYCO"]) == ["JHAYCO QSJM", "JHAYCO Graxxx"]
+    assert reduced_queries("Una sola", ["A"]) == ["A Una", "A sola"]      # drops the longer word first
+    assert reduced_queries("Graxxx", ["JHAYCO"]) == []            # one word: nothing left to search with
+
+
+def test_a_song_whose_title_has_a_word_youtube_will_not_search_is_found_without_it():
+    """Regression: any query containing 'Graxxx' returns zero results, so the song was always skipped."""
+    from apis.youtube import search_queries, reduced_queries
+    title, artists = "Graxxx & QSJM", ["JHAYCO"]
+    yt, asked = _searching({reduced_queries(title, artists)[0]: [cand("JHAYCO - Graxxx & QSJM (Visualizer)", 215, "JHAYCO", 1_000_000, "song")]})
+    assert yt.search(title, artists, 214, 1800, 0) == ["song"]
+    assert asked == search_queries(title, artists) + [reduced_queries(title, artists)[0]]
+
+
+def test_last_resort_results_must_contain_the_title_so_another_song_is_never_chosen():
+    from apis.youtube import search_queries, reduced_queries
+    title, artists = "Graxxx & QSJM", ["JHAYCO"]
+    other = cand("JHAYCO - Quimik (Visualizer)", 214, "JHAYCO", 9_000_000, "other-song")   # same length, different song
+    yt, _ = _searching({q: [other] for q in reduced_queries(title, artists)})
+    with pytest.raises(YoutubeItemNotFound):
+        yt.search(title, artists, 214, 1800, 0)
+
+
+def test_require_title_only_filters_when_asked():
+    from apis.youtube import rank_candidates
+    other = cand("Artist - Something else", 200, "Artist", 10, "x")
+    assert rank_candidates([other], "Wanted", ["Artist"], 200)                      # normal search: duration is enough
+    assert not rank_candidates([other], "Wanted", ["Artist"], 200, require_title=True)
+
+

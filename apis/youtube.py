@@ -103,13 +103,30 @@ def search_queries(title, artists):
     return list(dict.fromkeys(wordings))   # no repeats, order kept
 
 
-def rank_candidates(candidates, title, artists, duration_seconds, max_length=None):
-    """Best-first list of videos that plausibly are this song, judged against Spotify's data."""
+def reduced_queries(title, artists, limit=4):
+    """Last-resort wordings: the title with one word removed at a time, longest words first.
+
+    YouTube's search silently returns nothing for some words (for example 'Graxxx', which its adult-content
+    filter seems to catch), so a song whose title has one of them can only be found without it."""
+    words = [w for w in clean_song_title(title).split() if len(normalize(w)) >= 2]
+    if len(words) < 2:
+        return []
+    longest_first = sorted(range(len(words)), key=lambda i: -len(words[i]))[:limit]
+    return [f"{artists[0]} {' '.join(w for j, w in enumerate(words) if j != i)}" for i in longest_first]
+
+
+def rank_candidates(candidates, title, artists, duration_seconds, max_length=None, require_title=False):
+    """Best-first list of videos that plausibly are this song, judged against Spotify's data.
+
+    With `require_title` a video is only accepted if its name contains the song's title: used for the
+    last-resort searches, where the duration alone could match a different song."""
     scored = []
     for candidate in candidates:
         if candidate.duration is None or (max_length and candidate.duration > max_length):
             continue
         score, title_matches, difference = score_candidate(candidate, title, artists, duration_seconds)
+        if require_title and not title_matches:
+            continue
         if difference <= STRICT_TOLERANCE or (difference <= RELAXED_TOLERANCE and title_matches):
             scored.append((score, candidate))
 
@@ -164,6 +181,14 @@ class YouTube:
             ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length)
             if ranked:
                 break
+
+        if not ranked:
+            for query in reduced_queries(title, artists):
+                for candidate in self._search(query):
+                    candidates.setdefault(candidate.url, candidate)
+                ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length, require_title=True)
+                if ranked:
+                    break
 
         candidates = list(candidates.values())
         if not candidates:
