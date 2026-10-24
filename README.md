@@ -42,7 +42,7 @@ El programa te lo pide y te guía, pero estos son los pasos:
 4. Marca **Web API**, acepta los términos y pulsa **Save**.
 5. Abre tu app > **Settings**. Copia el **Client ID** y el **Client secret** (*View client secret*) y pégalos cuando el programa los pida.
 
-Tu usuario y contraseña de Spotify **nunca** se piden. Los datos se guardan en `tekore_cfg.ini` (en tu computador, no se sube a Git).
+Tu usuario y contraseña de Spotify **nunca** se piden. El Client ID, el Client secret y tu sesión se guardan en una carpeta privada de tu usuario (`%LOCALAPPDATA%\Burdamix\` en Windows), **fuera del proyecto**: así no se sincronizan con OneDrive ni viajan dentro de la carpeta si se la pasas a alguien.
 
 La primera vez que uses una **playlist** se abrirá el navegador para que pulses **Aceptar**. Tienes 3 minutos.
 
@@ -75,7 +75,7 @@ python spotify2mp3.py -l                                              # tus canc
 | `--interlude-max 70` | Se salta un tema llamado *interlude*, *interludio*, *skit* o *prelude* si dura esto o menos. |
 | `--intro-outro-max 95` | Se salta un tema llamado *intro* u *outro* si dura esto o menos; si dura más, es una canción y se baja. |
 | `--cookies-from-browser firefox` | Para videos con restricción de edad (ver abajo). |
-| `--setup` | Repetir la conexión con Spotify. |
+| `--setup` | Repetir la conexión con Spotify (también cierra la sesión anterior). |
 
 ## Cosas que conviene saber
 

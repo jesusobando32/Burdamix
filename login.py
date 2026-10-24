@@ -1,6 +1,8 @@
+import contextlib
 import getpass
 import multiprocessing
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -16,8 +18,19 @@ from const import colours
 auths = {}  # Auth attempts. Stores data across spotify login
 flask_process = None
 
-# Next to the code, so the program finds it no matter which folder it is started from.
-cfg_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tekore_cfg.ini')
+def _config_dir():
+    """Private folder of the user, outside the project: it is not inside Documents (so OneDrive does not
+    sync it) and it is not included when the project folder is zipped to share it."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "Burdamix")
+
+
+cfg_filename = os.path.join(_config_dir(), 'tekore_cfg.ini')
+# Where older versions kept it: next to the code.
+legacy_cfg_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tekore_cfg.ini')
 app_host = "127.0.0.1"
 app_port = 5000
 app_url = f'http://{app_host}:{app_port}'
@@ -60,6 +73,7 @@ Pulsa {colours.OKGREEN}Enter{colours.ENDC} para continuar"""
 
 # Token in the context of a user, can access user resources such as liked songs
 def get_user_token():
+    migrate_legacy_config()
     (spotifyClientId, spotifyClientSecret, spotifyReturnUri,
         refreshToken) = tk.config_from_file(cfg_filename, return_refresh=True)
     cred = tk.Credentials(
@@ -77,6 +91,7 @@ def _request_client_token(client_id, client_secret):
 
 # Token for the app itself (no user). Enough for single tracks and albums.
 def get_client_token():
+    migrate_legacy_config()
     if not is_client_configured():
         do_client_login()
 
@@ -100,7 +115,42 @@ def is_client_configured():
     return spotifyClientId is not None and spotifyClientSecret is not None and spotifyReturnUri is not None
 
 
+def migrate_legacy_config():
+    """Move the config an older version left next to the code into the private folder.
+
+    Copies, checks the copy, and only then deletes the original, so a failure can never lose it."""
+    if os.path.exists(cfg_filename) or not os.path.exists(legacy_cfg_filename):
+        return
+    partial = cfg_filename + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(cfg_filename), exist_ok=True)
+        shutil.copy2(legacy_cfg_filename, partial)
+        with open(legacy_cfg_filename, "rb") as old, open(partial, "rb") as copy:
+            identical = old.read() == copy.read()
+        if not identical:
+            os.remove(partial)
+            return
+        os.replace(partial, cfg_filename)       # the new file only ever appears complete and verified
+        os.remove(legacy_cfg_filename)
+        _restrict_permissions()
+        print(f"{colours.OKBLUE}[i] Tu configuración de Spotify ahora se guarda en una carpeta privada: {os.path.dirname(cfg_filename)}{colours.ENDC}")
+    except OSError:
+        pass   # keep using whatever is there; the original is only deleted after everything above worked
+
+
+def _restrict_permissions():
+    with contextlib.suppress(OSError):
+        os.chmod(cfg_filename, 0o600)   # owner only (no effect on Windows, whose folder already is per-user)
+
+
+def _write_config(values):
+    os.makedirs(os.path.dirname(cfg_filename), exist_ok=True)
+    tk.config_to_file(cfg_filename, values)
+    _restrict_permissions()
+
+
 def does_config_exist():
+    migrate_legacy_config()
     return os.path.exists(cfg_filename)
 
 
@@ -172,8 +222,13 @@ def do_client_login():
         except Exception:
             print(f"{colours.FAIL}Spotify no aceptó esos datos.{colours.ENDC} Revisa que copiaste el Client ID y el Client secret completos, sin espacios.")
 
-    tk.config_to_file(cfg_filename, (client_id, client_secret, login_redirect_url, None))
-    print(f'{colours.OKGREEN}Guardado.{colours.ENDC} No tendrás que repetir esto.')
+    # tekore keeps the old refresh token when it is given None, and that token belongs to the previous
+    # Spotify app: it would fail with the new credentials forever. Start from an empty file instead,
+    # so the next playlist asks you to log in again.
+    if os.path.exists(cfg_filename):
+        os.remove(cfg_filename)
+    _write_config((client_id, client_secret, login_redirect_url, None))
+    print(f'{colours.OKGREEN}Guardado.{colours.ENDC} No tendrás que repetir esto. (Se guarda en una carpeta privada: {os.path.dirname(cfg_filename)})')
 
 
 def start_flask():
@@ -215,7 +270,7 @@ def app_factory() -> Flask:
 
         # Store refresh token
         new_conf = (None, None, None, userToken.refresh_token)
-        tk.config_to_file(cfg_filename, new_conf)
+        _write_config(new_conf)
 
         return redirect('/complete')
 

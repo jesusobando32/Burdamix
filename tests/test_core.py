@@ -195,3 +195,77 @@ def test_high_means_best_available_and_is_described_honestly():
     assert "up to 80" in app.describe_quality("medium")
 
 
+# --- Spotify setup ---------------------------------------------------------------
+
+def test_setup_with_a_new_app_forgets_the_old_login(tmp_path, monkeypatch):
+    """Regression: --setup used to keep the refresh token of the previous Spotify app, which then failed forever."""
+    import login
+    import tekore as tk
+
+    cfg = tmp_path / "tekore_cfg.ini"
+    monkeypatch.setattr(login, "cfg_filename", str(cfg))
+    monkeypatch.setattr(login, "legacy_cfg_filename", str(tmp_path / "no_legacy.ini"))   # never touch the real file
+    tk.config_to_file(str(cfg), ("OLD_ID", "OLD_SECRET", login.login_redirect_url, "OLD_REFRESH"))
+    assert login.is_user_logged_in()
+
+    monkeypatch.setattr("builtins.input", lambda *_: "NEW_ID")
+    monkeypatch.setattr(login.getpass, "getpass", lambda *_: "NEW_SECRET")
+    monkeypatch.setattr(login.webbrowser, "open", lambda *_: True)
+    monkeypatch.setattr(login, "_request_client_token", lambda *_: "token")
+
+    login.do_client_login()
+
+    assert tk.config_from_file(str(cfg), return_refresh=True)[:2] == ("NEW_ID", "NEW_SECRET")
+    assert not login.is_user_logged_in()   # the old refresh token is gone, so a fresh login will be requested
+    assert login.is_client_configured()
+
+
+# --- Config location ------------------------------------------------------------------------
+
+def test_config_lives_outside_the_project_folder():
+    import login
+    project = os.path.dirname(os.path.abspath(login.__file__))
+    assert not os.path.abspath(login.cfg_filename).startswith(project)
+    assert os.path.dirname(login.cfg_filename).endswith("Burdamix")
+
+
+def test_old_config_is_moved_to_the_private_folder_without_losing_it(tmp_path, monkeypatch):
+    import login
+    import tekore as tk
+    old, new = tmp_path / "project" / "tekore_cfg.ini", tmp_path / "private" / "Burdamix" / "tekore_cfg.ini"
+    old.parent.mkdir()
+    tk.config_to_file(str(old), ("ID", "SECRET", login.login_redirect_url, "REFRESH"))
+    original = old.read_bytes()
+    monkeypatch.setattr(login, "cfg_filename", str(new))
+    monkeypatch.setattr(login, "legacy_cfg_filename", str(old))
+
+    assert login.is_user_logged_in()                      # first use triggers the move
+    assert new.read_bytes() == original and not old.exists()
+    assert tk.config_from_file(str(new), return_refresh=True)[3] == "REFRESH"
+
+
+def test_nothing_is_deleted_if_the_copy_cannot_be_verified(tmp_path, monkeypatch):
+    import login
+    old, new = tmp_path / "old.ini", tmp_path / "private" / "new.ini"
+    old.write_text("[DEFAULT]\nx = 1\n")
+    monkeypatch.setattr(login, "cfg_filename", str(new))
+    monkeypatch.setattr(login, "legacy_cfg_filename", str(old))
+    def bad_copy(src, dst):
+        with open(dst, "wb") as f:
+            f.write(b"corrupted")
+    monkeypatch.setattr(login.shutil, "copy2", bad_copy)
+    login.migrate_legacy_config()
+    assert old.exists() and not new.exists()              # the original survived and no bad copy was left behind
+    assert not (tmp_path / "private" / "new.ini.tmp").exists()
+
+
+def test_an_existing_new_config_is_never_overwritten_by_the_old_one(tmp_path, monkeypatch):
+    import login
+    old, new = tmp_path / "old.ini", tmp_path / "new.ini"
+    old.write_text("OLD"); new.write_text("NEW")
+    monkeypatch.setattr(login, "cfg_filename", str(new))
+    monkeypatch.setattr(login, "legacy_cfg_filename", str(old))
+    login.migrate_legacy_config()
+    assert new.read_text() == "NEW" and old.exists()
+
+
