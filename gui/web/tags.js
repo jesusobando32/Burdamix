@@ -75,7 +75,9 @@ function bodyHTML(f) {
   if ((f.status === "sure" || f.status === "review") && f.candidates.length) return f.prepared ? diffHTML(f) : candidatesHTML(f);
   if (f.status === "applied") {
     const d = f.done || {};
-    return `<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ` <span class="warn-note">${esc(d.problem || "No encontré portada para esta canción.")}${d.problem ? " La portada quedó sin poner: vuelve a buscar esta canción cuando se resuelva." : ""}</span>`}</p>`;
+    return `<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ` <span class="warn-note">${esc(d.problem || "No encontré portada para esta canción.")}</span>`}</p>
+      ${d.cover ? "" : `<div class="btn-row"><button class="btn" data-act="pickcover">Elegir una imagen…</button></div>
+        <p class="muted small">${d.problem ? "También puedes volver a buscar esta canción cuando se resuelva. " : ""}La imagen se reduce a 1000 × 1000 y se escribe en el archivo.</p>`}`;
   }
   if (f.status === "failed") return retryHTML(f, f.error || "No se pudo escribir el archivo.");
   if (f.status === "notfound") return retryHTML(f, f.error || "No encontré esta canción.");
@@ -163,7 +165,14 @@ async function onTagsClick(ev) {
     if (!r.ok) { el.disabled = false; return toast(r.error || "No se pudo preparar.", true); }
     f.prepared = r; updateCard(f);
   } else if (act === "cancel1") { f.prepared = null; updateCard(f); }
-  else if (act === "confirm1") {
+  else if (act === "pickcover") {
+    const image = await call("tags_pick_image");
+    if (!image) return;
+    const r = await call("tags_set_cover", f.path, image);
+    if (!r.ok) return toast(r.error || "No se pudo poner la portada.", true);
+    f.done = { ...f.done, cover: true, problem: null }; if (r.tags) f.tags = r.tags;
+    toast("Portada puesta."); updateCard(f);
+  } else if (act === "confirm1") {
     const r = await call("tags_apply", [{ path: f.path, candidate: f.prepared.candidate }], $("#tags-rename").checked);
     if (!r.ok) return toast(r.error || "No se pudo escribir.", true);
     T.applying = true; T.jobTotal = 1; T.jobDone = 0; f.status = "writing"; updateCard(f);

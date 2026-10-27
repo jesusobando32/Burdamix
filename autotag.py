@@ -233,8 +233,8 @@ class AutoTagger:
         return self.fetch_cover_checked(info)[0]
 
     def fetch_cover_checked(self, info):
-        """(cover bytes or None, problem or None). The candidate's own urls first, then Deezer's and iTunes' picture of the
-        same album. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
+        """(cover bytes or None, problem or None). The candidate's own urls first, then the same album on iTunes,
+        on the Cover Art Archive and on Deezer. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
         cover", and the user needs to know which one it was."""
         problem = []
 
@@ -252,7 +252,7 @@ class AutoTagger:
             if data:
                 return data, None
         if info.album and info.artist:
-            for source in (self.deezer, self.itunes):
+            for source in (self.itunes, self.musicbrainz, self.deezer):   # Deezer last: it is the one whose pictures get refused
                 try:
                     urls = source.find_cover(info.album, info.artist)
                 except MetadataError as error:

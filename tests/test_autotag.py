@@ -853,3 +853,76 @@ def test_a_403_from_a_service_suggests_trying_without_a_vpn():
     c, _ = client(lambda url, params: FakeResponse(403), name="Deezer")
     with pytest.raises(MetadataNetworkError, match="403.*VPN"):
         c.get_json("https://x.test/a")
+
+
+# --- Covers: the album search on the Cover Art Archive, the fallback order, and a cover chosen by the user ---------
+
+def test_musicbrainz_finds_cover_art_archive_urls_by_album_and_artist():
+    payload = {"releases": [{"id": "r1"}, {"id": "r2"}, {"id": "r3"}, {"title": "no id"}]}
+    c, session = client(lambda url, params: FakeResponse(payload=payload), name="MusicBrainz")
+    urls = MusicBrainz(c).find_cover('After "Hours"', "The Weeknd")
+    assert [u.rsplit("/", 2)[-2:] for u in urls] == [["r1", "front-1200"], ["r1", "front-500"], ["r1", "front"],
+                                                      ["r2", "front-1200"], ["r2", "front-500"], ["r2", "front"]]   # only the first two releases
+    url, params = session.calls[0]
+    assert url.endswith("/ws/2/release") and params["query"] == 'release:"After \\"Hours\\"" AND artist:"The Weeknd"'
+    assert MusicBrainz(client(lambda u, p: FakeResponse(payload={}))[0]).find_cover("x", "y") == ()
+
+
+def test_the_cover_is_looked_up_on_itunes_then_the_cover_archive_then_deezer():
+    order = []
+
+    class Source(FakeSource):
+        def __init__(self, name, urls):
+            super().__init__()
+            self.name, self.urls = name, urls
+
+        def find_cover(self, album, artist):
+            order.append(self.name)
+            return self.urls
+
+    fetched = []
+
+    def get_image(self, url):
+        fetched.append(url)
+        if url == "https://caa/ok.jpg":
+            return b"IMG"
+        raise MetadataNotFound("404")
+
+    t = autotag.AutoTagger(musicbrainz=Source("caa", ("https://caa/ok.jpg",)), deezer=Source("deezer", ("https://dz/x.jpg",)),
+                           itunes=Source("itunes", ("https://it/x.jpg",)), images=type("Img", (), {"get_image": get_image})())
+    assert t.fetch_cover(info(cover_urls=("https://dz/own.jpg",))) == b"IMG"
+    assert order == ["itunes", "caa"]                                                  # Deezer, the refused one, is not even asked
+    assert fetched == ["https://dz/own.jpg", "https://it/x.jpg", "https://caa/ok.jpg"]
+
+
+@pytest.mark.skipif(ffmpeg() is None, reason="needs the bundled ffmpeg")
+def test_a_cover_chosen_by_the_user_is_written_and_nothing_else_changes(tmp_path):
+    from gui.tags_jobs import TagJobs
+    song = make_audio(tmp_path, "a.mp3")
+    tagwriter.write_tags(song, SongInfo(title="Keep me", artist="Same Artist", year="2021"))
+    image = tmp_path / "cover.png"
+    image.write_bytes(png(2400, 2400))
+    result = TagJobs().set_cover(song, str(image))
+    assert result["ok"] and result["tags"]["has_cover"] is True
+    t = tagwriter.read_tags(song)
+    assert (t.title, t.artist, t.year, t.has_cover) == ("Keep me", "Same Artist", "2021", True)
+    from mutagen.id3 import ID3
+    apic = [frame for key, frame in ID3(song).items() if key.startswith("APIC")][0]
+    from PIL import Image
+    assert max(Image.open(io.BytesIO(apic.data)).size) == 1000                          # shrunk like any other cover
+
+
+def test_a_chosen_cover_is_checked_before_anything_is_written(tmp_path):
+    from gui.tags_jobs import TagJobs
+    jobs = TagJobs()
+    song, text, image = tmp_path / "a.mp3", tmp_path / "notes.txt", tmp_path / "fake.png"
+    song.write_bytes(b"audio")
+    text.write_text("hi")
+    image.write_bytes(b"this is not a png")
+    assert "JPG, PNG" in jobs.set_cover(str(song), str(text))["error"]
+    assert "no es una imagen" in jobs.set_cover(str(song), str(image))["error"]
+    assert "no es compatible" in jobs.set_cover(str(tmp_path / "a.wav"), str(image))["error"]
+    assert "No pude abrir" in jobs.set_cover(str(song), str(tmp_path / "missing.png"))["error"]
+    assert song.read_bytes() == b"audio"                                                  # nothing was written
+    jobs._busy = True
+    assert "Espera" in jobs.set_cover(str(song), str(image))["error"]

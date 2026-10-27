@@ -10,6 +10,10 @@ import autotag
 import tagwriter
 from apis.song_info import SongInfo
 from exceptions import MetadataError, MetadataNetworkError, MetadataRateLimited
+from pathutils import long_path
+
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 class TagJobs:
@@ -123,6 +127,29 @@ class TagJobs:
             return {"ok": True, "candidate": info.to_dict(), "changes": self.tagger.changes(tags, info)}
         except MetadataError as error:
             return {"ok": False, "error": str(error)}
+
+    # --- a cover the user picked themselves ---
+
+    def set_cover(self, path, image_path):
+        """Put an image file the user chose as the cover of `path`, leaving every other tag as it is. Quick and local: no internet."""
+        if self._busy:
+            return {"ok": False, "error": "Espera a que termine el proceso de etiquetas."}
+        if not isinstance(path, str) or not tagwriter.is_supported(path):
+            return {"ok": False, "error": "Ese archivo de audio no es compatible."}
+        if not isinstance(image_path, str) or os.path.splitext(image_path)[1].lower() not in IMAGE_EXTENSIONS:
+            return {"ok": False, "error": "Elige una imagen JPG, PNG, WEBP o BMP."}
+        try:
+            if os.path.getsize(long_path(image_path)) > MAX_IMAGE_BYTES:
+                return {"ok": False, "error": "La imagen es demasiado grande (más de 15 MB)."}
+            with open(long_path(image_path), "rb") as f:
+                data = f.read()
+        except OSError:
+            return {"ok": False, "error": "No pude abrir esa imagen."}
+        try:
+            tagwriter.write_tags(path, SongInfo(), data)
+        except MetadataError as error:
+            return {"ok": False, "error": str(error)}
+        return {"ok": True, "tags": self._safe_tags(path)}
 
     # --- writing ---
 

@@ -134,7 +134,7 @@ def prepare_cover(data):
         image = Image.open(io.BytesIO(data))
         image.load()
     except (UnidentifiedImageError, OSError):
-        raise MetadataError("La portada descargada no es una imagen válida.") from None
+        raise MetadataError("El archivo de la portada no es una imagen válida o está dañado.") from None
     if image.format == "JPEG" and max(image.size) <= MAX_COVER_PIXELS:
         return data, image.size
     image = image.convert("RGB")

@@ -331,6 +331,17 @@ class Api:
         chosen = self.choose_folder()
         return [chosen] if chosen else []
 
+    def tags_pick_image(self):
+        if self._window is None:
+            return None
+        import webview
+        kind = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        chosen = self._window.create_file_dialog(kind, file_types=("Imágenes (*.jpg;*.jpeg;*.png;*.webp;*.bmp)", "Todos los archivos (*.*)"))
+        return chosen[0] if chosen else None
+
+    def tags_set_cover(self, path, image_path):
+        return self._tags.set_cover(path, image_path)
+
     def tags_scan(self, paths):
         return self._tags.scan(paths if isinstance(paths, list) else [])
 

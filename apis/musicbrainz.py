@@ -66,6 +66,17 @@ class MusicBrainz:
             found.extend(self._infos(recording))
         return found
 
+    def find_cover(self, album, artist, releases=2):
+        """Cover Art Archive urls (biggest first) of the first releases that match this album and artist, or ().
+        For songs another service identified, so the cover can still come from here."""
+        query = f'release:"{_lucene(album)}" AND artist:"{_lucene(artist)}"'
+        data = self.client.get_json(f"{BASE}/release", {"query": query, "fmt": "json", "limit": releases})
+        urls = []
+        for release in (data.get("releases") or [])[:releases]:
+            if release.get("id"):
+                urls += [f"{COVERS}/{release['id']}/{name}" for name in ("front-1200", "front-500", "front")]
+        return tuple(urls)
+
     def _infos(self, recording):
         releases = sorted(recording.get("releases") or [], key=_release_rank)
         if not releases:

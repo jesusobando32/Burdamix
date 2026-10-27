@@ -530,6 +530,8 @@ function demoTagsApi(art) {
       return { ok: true, count: items.length };
     },
     tags_cancel: async () => busy,
+    tags_pick_image: async () => "C:/Imagenes/portada.jpg",
+    tags_set_cover: async () => ({ ok: true, tags: { ...emptyTags, has_cover: true } }),
     get_tag_events: async () => { const e = queue; queue = []; return e; },
   };
 }
