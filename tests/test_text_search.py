@@ -226,3 +226,15 @@ def test_a_searched_song_is_tagged_from_what_the_service_said(tmp_path):
     assert calls == [("x.mp3", "MICRODOSIS")]
     d._tagger = type("T", (), {"apply": lambda self, path, info: (_ for _ in ()).throw(MetadataNetworkError("sin internet"))})()
     d._tag_from_song_info("[1/1]", "x.mp3", song())                                  # a failed tagging never fails the download
+
+
+def test_a_guest_the_song_does_not_have_marks_another_recording():
+    from apis.youtube import unknown_guests
+    assert unknown_guests("Luis Fonsi - Despacito (Audio) ft. Justin Bieber", "Despacito Luis Fonsi") == ["justin bieber"]
+    assert unknown_guests("Song (feat. A & B)", "Song X") == ["a", "b"]
+    assert unknown_guests("Despacito ft. Daddy Yankee", "Despacito Luis Fonsi Daddy Yankee") == []     # a guest the song does have
+    assert unknown_guests("Dancing with Myself", "Dancing with Myself Billy Idol") == []                # "with" is not a guest marker
+    remix = Candidate("remix", "Luis Fonsi - Despacito (Audio) ft. Justin Bieber", "Luis Fonsi", 229, 0)
+    plain = Candidate("plain", "Despacito", "Luis Fonsi", 228, 0)
+    assert rank_candidates([remix, plain], "Despacito", ["Luis Fonsi"], 228)[0].url == "plain"
+    assert rank_candidates([remix, plain], "Despacito", ["Luis Fonsi"], 228, asked="despacito justin bieber")[0].url == "remix"   # unless the user asked for it

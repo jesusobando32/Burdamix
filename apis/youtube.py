@@ -23,6 +23,7 @@ OFFICIAL_CHANNEL_POINTS = 35       # the channel is exactly the artist, or "Arti
 ARTIST_IN_CHANNEL_POINTS = 15      # the channel only contains the artist's name
 TITLE_POINTS = 15
 UNWANTED_POINTS = -40              # per word nobody asked for
+GUEST_POINTS = -20                 # the video names a guest artist ('ft. Justin Bieber') the song does not have: another recording
 # (seconds apart at most, points): the closer the duration is to the official one, the surer it is the same recording.
 # Nobody knows what the extra minute of a longer video holds, so duration weighs more than the channel.
 DURATION_POINTS = ((1, 51), (2, 42.5), (3, 34), (5, 21.25), (8, 8.5), (15, 1.7))   # further apart: DURATION_FAR_POINTS
@@ -101,6 +102,22 @@ def title_in(song_title, video_title):
     return len(compact) >= 5 and compact in video.replace(" ", "")
 
 
+GUEST = re.compile(r"\b(?:ft|feat|featuring)\b\.?\s*([^()\[\]|\-–—]+)", re.I)
+
+
+def unknown_guests(video_title, known_text):
+    """Guest artists named in the video's title ('... ft. Justin Bieber') that are not in `known_text` (the song's own title and
+    artists, and what the user typed). 'Despacito ft. Justin Bieber' is the remix: the duration is the same, the recording is not."""
+    known = normalize(known_text)
+    found = []
+    for match in GUEST.finditer(video_title or ""):
+        for name in COLLABORATION.split(match.group(1)):
+            name = normalize(name)
+            if name and name not in known:
+                found.append(name)
+    return found
+
+
 def channel_points(channel, artists):
     """+50 when the channel is the artist or 'Artist - Topic', +25 when it only contains the name."""
     channel = normalize(channel)
@@ -143,6 +160,8 @@ def score_candidate(candidate, title, artists, duration_seconds, asked=""):
         pattern = rf"\b{word}\b"
         if re.search(pattern, video_title) and not re.search(pattern, wanted):
             score += UNWANTED_POINTS
+    if unknown_guests(candidate.title, f"{title} {' '.join(artists)} {asked}"):
+        score += GUEST_POINTS
 
     score += math.log10(candidate.views + 1)  # tie-breaker only
     return score, title_matches, difference
