@@ -46,6 +46,10 @@ class FakeSession:
         self.calls.append((url, params))
         return self.answer(url, params)
 
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.calls.append((url, json))
+        return self.answer(url, json)
+
 
 def client(answer, name="Servicio", interval=0):
     session = FakeSession(answer)
@@ -352,6 +356,7 @@ class FakeSource:
 def tagger(mb_results=(), deezer_results=(), itunes_results=(), tags=None, **sources):
     t = autotag.AutoTagger(musicbrainz=sources.get("mb") or FakeSource(mb_results), deezer=sources.get("deezer") or FakeSource(deezer_results),
                            itunes=sources.get("itunes") or FakeSource(itunes_results), images=sources.get("images"),
+                           ytmusic=sources.get("ytmusic") or FakeSource(),
                            reader=lambda path: tags or tagwriter.TagInfo(path=path, duration=200.0),
                            writer=sources.get("writer"), renamer=sources.get("renamer"))
     return t
@@ -888,11 +893,12 @@ def test_the_cover_is_looked_up_on_itunes_then_the_cover_archive_then_deezer():
             return b"IMG"
         raise MetadataNotFound("404")
 
-    t = autotag.AutoTagger(musicbrainz=Source("caa", ("https://caa/ok.jpg",)), deezer=Source("deezer", ("https://dz/x.jpg",)),
-                           itunes=Source("itunes", ("https://it/x.jpg",)), images=type("Img", (), {"get_image": get_image})())
+    t = autotag.AutoTagger(musicbrainz=Source("caa", ("https://caa/none.jpg",)), deezer=Source("deezer", ("https://dz/x.jpg",)),
+                           itunes=Source("itunes", ("https://it/x.jpg",)), ytmusic=Source("ytmusic", ("https://caa/ok.jpg",)),
+                           images=type("Img", (), {"get_image": get_image})())
     assert t.fetch_cover(info(cover_urls=("https://dz/own.jpg",))) == b"IMG"
-    assert order == ["itunes", "caa"]                                                  # Deezer, the refused one, is not even asked
-    assert fetched == ["https://dz/own.jpg", "https://it/x.jpg", "https://caa/ok.jpg"]
+    assert order == ["itunes", "caa", "ytmusic"]                                       # Deezer, the refused one, is not even asked
+    assert fetched == ["https://dz/own.jpg", "https://it/x.jpg", "https://caa/none.jpg", "https://caa/ok.jpg"]
 
 
 @pytest.mark.skipif(ffmpeg() is None, reason="needs the bundled ffmpeg")
@@ -926,3 +932,55 @@ def test_a_chosen_cover_is_checked_before_anything_is_written(tmp_path):
     assert song.read_bytes() == b"audio"                                                  # nothing was written
     jobs._busy = True
     assert "Espera" in jobs.set_cover(str(song), str(image))["error"]
+
+
+# --- YouTube Music as a source of covers -------------------------------------------------------------------------
+
+def yt_item(title, details, thumb="https://yt3.googleusercontent.com/abc=w120-h120-l90-rj"):
+    return {"musicResponsiveListItemRenderer": {
+        "thumbnail": {"musicThumbnailRenderer": {"thumbnail": {"thumbnails": [{"url": thumb, "width": 120, "height": 120}]}}},
+        "flexColumns": [{"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": title}]}}},
+                        {"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": details}]}}}]}}
+
+
+def yt_answer(*items):
+    return {"contents": {"tabbedSearchResultsRenderer": {"tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [
+        {"musicShelfRenderer": {"contents": list(items)}}]}}}}]}}}
+
+
+def ytmusic(answer):
+    from apis.ytmusic import YouTubeMusic
+    return YouTubeMusic(client(lambda url, params: FakeResponse(payload=answer), name="YouTube Music")[0])
+
+
+def test_youtube_music_gives_the_square_cover_of_the_matching_song_at_1000_pixels():
+    from apis.ytmusic import parse_songs, square
+    answer = yt_answer(yt_item("an$i3dad", "paopao • Otro álbum • 0:40", "https://yt3.googleusercontent.com/other=w120-h120-l90-rj"),
+                       yt_item("fre3styl3", "paopao • fre3styl3 • 1:45"))
+    assert parse_songs(answer)[1] == ("fre3styl3", "paopao", "fre3styl3", "https://yt3.googleusercontent.com/abc=w120-h120-l90-rj")
+    urls = ytmusic(answer).find_cover("fre3styl3", "paopao")
+    assert urls == ("https://yt3.googleusercontent.com/abc=w1000-h1000-l90-rj", "https://yt3.googleusercontent.com/abc=w120-h120-l90-rj")
+    assert square("https://x.test/a=w60-h60-p-l90-rj", 500).startswith("https://x.test/a=w500-h500")
+
+
+def test_youtube_music_never_gives_the_cover_of_another_song_or_artist():
+    answer = yt_answer(yt_item("fre3styl3", "Someone Else • fre3styl3 • 1:45"), yt_item("Another song", "paopao • Another album • 2:00"))
+    assert ytmusic(answer).find_cover("fre3styl3", "paopao") == ()
+
+
+def test_youtube_music_changing_its_answer_gives_nothing_instead_of_an_error():
+    for answer in ({}, {"contents": []}, yt_answer({"musicResponsiveListItemRenderer": {"flexColumns": "broken"}}),
+                   yt_answer({"musicResponsiveListItemRenderer": {"flexColumns": [], "thumbnail": {}}})):
+        assert ytmusic(answer).find_cover("fre3styl3", "paopao") == ()
+
+
+def test_youtube_music_is_asked_with_a_post_and_the_songs_filter():
+    from apis.ytmusic import SEARCH_URL, SONGS_FILTER
+    c, session = client(lambda url, params: FakeResponse(payload={}), name="YouTube Music")
+    sent = []
+    session.post = lambda url, json=None, headers=None, timeout=None: sent.append((url, json, headers)) or FakeResponse(payload={})
+    from apis.ytmusic import YouTubeMusic
+    YouTubeMusic(c).find_cover("Album", "Artist")
+    url, body, headers = sent[0]
+    assert url == SEARCH_URL and body["query"] == "Artist Album" and body["params"] == SONGS_FILTER
+    assert headers["Origin"] == "https://music.youtube.com"

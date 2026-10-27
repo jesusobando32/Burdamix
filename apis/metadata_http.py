@@ -40,11 +40,14 @@ class MetadataClient:
         self.session.headers.update({"User-Agent": USER_AGENT})
         self._sleep = sleep
 
-    def _get(self, url, params=None, stream=False):
+    def _get(self, url, params=None, stream=False, body=None, headers=None):
         for attempt in (1, 2):
             self.limiter.wait()
             try:
-                response = self.session.get(url, params=params or None, timeout=20, stream=stream)
+                if body is None:
+                    response = self.session.get(url, params=params or None, timeout=20, stream=stream)
+                else:
+                    response = self.session.post(url, json=body, headers=headers or None, timeout=20)
             except requests.RequestException:
                 raise MetadataNetworkError(f"No pude conectar con {self.name}. Revisa tu conexión a internet.") from None
             if response.status_code in (429, 503) and attempt == 1:
@@ -66,7 +69,12 @@ class MetadataClient:
         return response
 
     def get_json(self, url, params=None):
-        response = self._get(url, params)
+        return self._json(self._get(url, params))
+
+    def post_json(self, url, body, headers=None):
+        return self._json(self._get(url, body=body, headers=headers))
+
+    def _json(self, response):
         try:
             data = response.json()
         except ValueError:   # a 200 that is not JSON, e.g. a Wi-Fi login page

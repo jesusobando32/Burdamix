@@ -47,7 +47,7 @@ en el reproductor. Se usa desde la ventana, en **Completar etiquetas**:
 | Qué | Servicio |
 |---|---|
 | Canción, álbum, año, número de pista | [MusicBrainz](https://musicbrainz.org). Se respeta su límite de 1 petición por segundo. |
-| Portada | La del propio resultado y, si falla, la del mismo álbum en iTunes, luego en [Cover Art Archive](https://coverartarchive.org) y por último en Deezer (siempre la de mayor resolución). |
+| Portada | La del propio resultado y, si falla, la del mismo álbum en iTunes, luego en [Cover Art Archive](https://coverartarchive.org), después en **YouTube Music** (su búsqueda pública, sin cuenta; no es una API oficial y puede cambiar) y por último en Deezer (siempre la de mayor resolución). |
 | Respaldo si MusicBrainz no la conoce, y género | Deezer e iTunes. |
 
 Si ningún servicio da la portada, la tarjeta de esa canción tiene el botón **Elegir una imagen…** para ponerla tú (JPG, PNG, WEBP o BMP). Si el motivo es un rechazo (el servidor de imágenes de Deezer, por ejemplo, bloquea algunas **VPN** con un error 403), la tarjeta lo dice.

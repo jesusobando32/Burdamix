@@ -14,6 +14,7 @@ from apis.deezer import Deezer
 from apis.itunes import ITunes
 from apis.metadata_http import MetadataClient
 from apis.musicbrainz import MusicBrainz
+from apis.ytmusic import YouTubeMusic
 from apis.song_info import SongInfo
 from apis.youtube import STRICT_TOLERANCE, UNWANTED_WORDS, clean_song_title, normalize
 from exceptions import MetadataError, MetadataNotFound
@@ -146,10 +147,11 @@ def rank(pairs, file_seconds, limit=MAX_CANDIDATES):
 # ---------- the tagger ----------
 
 class AutoTagger:
-    def __init__(self, musicbrainz=None, deezer=None, itunes=None, images=None, reader=None, writer=None, renamer=None):
+    def __init__(self, musicbrainz=None, deezer=None, itunes=None, images=None, reader=None, writer=None, renamer=None, ytmusic=None):
         self.musicbrainz = musicbrainz or MusicBrainz()
         self.deezer = deezer or Deezer()
         self.itunes = itunes or ITunes()
+        self.ytmusic = ytmusic or YouTubeMusic()
         self.images = images or MetadataClient("El servidor de portadas", 0.2)
         self.read = reader or tagwriter.read_tags
         self.write = writer or tagwriter.write_tags
@@ -234,7 +236,7 @@ class AutoTagger:
 
     def fetch_cover_checked(self, info):
         """(cover bytes or None, problem or None). The candidate's own urls first, then the same album on iTunes,
-        on the Cover Art Archive and on Deezer. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
+        on the Cover Art Archive, on YouTube Music and on Deezer. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
         cover", and the user needs to know which one it was."""
         problem = []
 
@@ -252,7 +254,7 @@ class AutoTagger:
             if data:
                 return data, None
         if info.album and info.artist:
-            for source in (self.itunes, self.musicbrainz, self.deezer):   # Deezer last: it is the one whose pictures get refused
+            for source in (self.itunes, self.musicbrainz, self.ytmusic, self.deezer):   # Deezer last: it is the one whose pictures get refused
                 try:
                     urls = source.find_cover(info.album, info.artist)
                 except MetadataError as error:
