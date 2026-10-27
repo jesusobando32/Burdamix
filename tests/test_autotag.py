@@ -488,7 +488,7 @@ def test_applying_enriches_the_genre_downloads_the_cover_writes_and_renames_in_t
 
     t = tagger(deezer_results=[info(source="deezer", genre="R&B")], images=images, writer=writer, renamer=renamer)
     result = t.apply("C:/music/x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=True)
-    assert log == [("cover", "https://c/a.jpg"), "write", ("rename", "Blinding Lights")]
+    assert log == [("cover", "https://c/a.jpg"), "write", ("rename", "The Weeknd - Blinding Lights")]       # the default name style
     assert written["song"].genre == "R&B" and written["cover"] == b"JPEG"
     assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None, "cover_source": "caa"}
 
@@ -685,12 +685,15 @@ class FakeTagger:
         info.genre = info.genre or "Pop"
         return info
 
-    def apply(self, path, info, rename=False):
+    def apply(self, path, info, rename=False, style=None):
+        from pathutils import song_filename
         self.applied.append((os.path.basename(path), rename))
+        self.styles = getattr(self, "styles", []) + [style]
         outcome = self.apply_plan.get(os.path.basename(path))
         if isinstance(outcome, Exception):
             raise outcome
-        return {"path": os.path.join(os.path.dirname(path), info.title + ".mp3") if rename else path, "cover": True, "genre": "Pop"}
+        return {"path": os.path.join(os.path.dirname(path), song_filename(info.title, info.artist, style or "artist_title") + ".mp3") if rename else path,
+                "cover": True, "genre": "Pop"}
 
 
 def ident(path, candidates=(), sure=False, error=None, complete=False):
@@ -819,7 +822,7 @@ def test_applying_writes_each_file_renames_on_request_and_keeps_going_after_a_fa
     wait_until_idle(tagger_jobs)
     events = tagger_jobs.get_events()
     applied = [e for e in events if e["kind"] == "applied"]
-    assert [os.path.basename(e["new_path"]) for e in applied] == ["Blinding Lights.mp3", "Blinding Lights.mp3"]
+    assert [os.path.basename(e["new_path"]) for e in applied] == ["The Weeknd - Blinding Lights.mp3"] * 2
     failed = [e for e in events if e["kind"] == "failed"]
     assert len(failed) == 1 and "abierto en otro programa" in failed[0]["error"]
     assert events[-1] == {**events[-1], "kind": "finished", "done": 2, "failed": 1, "error": None}
@@ -1197,3 +1200,46 @@ def test_the_window_saves_validates_and_offers_the_naming_styles(tmp_path, monke
     api.save_settings({"name_style": "title_artist"})
     assert _window_api(tmp_path, monkeypatch).get_settings()["name_style"] == "title_artist"           # remembered
     assert api._make_downloader(spotify=None, youtube=None).name_style == "title_artist"
+
+
+# --- Renaming follows the file-name style chosen in Configuración ----------------------------------------------------
+
+def test_one_function_names_a_song_in_every_style():
+    from pathutils import song_filename
+    assert song_filename("Blinding Lights", "The Weeknd") == "The Weeknd - Blinding Lights"
+    assert song_filename("Blinding Lights", "The Weeknd", "title_artist") == "Blinding Lights - The Weeknd"
+    assert song_filename("Blinding Lights", "The Weeknd", "title") == "Blinding Lights"
+    assert song_filename("Blinding Lights", "The Weeknd", "nonsense") == "The Weeknd - Blinding Lights"
+    assert song_filename("Song", "", "title_artist") == "Song" and song_filename("Song", None) == "Song"      # no artist: just the title
+    assert "/" not in song_filename("AC/DC", "x/y", "title_artist")
+
+
+def test_the_tagger_renames_in_the_chosen_style_and_never_without_being_asked():
+    names = []
+    t = tagger(images=Images({"https://c/a.jpg": b"IMG"}), writer=lambda p, s, c: None, renamer=lambda p, name: names.append(name) or p)
+    for style in ("artist_title", "title_artist", "title"):
+        t.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=True, style=style)
+    t.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=False, style="title")
+    assert names == ["The Weeknd - Blinding Lights", "Blinding Lights - The Weeknd", "Blinding Lights"]
+
+
+def test_the_window_renames_with_the_style_of_configuracion(tmp_path, monkeypatch):
+    api = _window_api(tmp_path, monkeypatch)
+    api.save_settings({"name_style": "title_artist"})
+    api._tags._tagger = FakeTagger()
+    folder = tmp_path / "music"
+    folder.mkdir()
+    song = folder / "x.mp3"
+    song.write_bytes(b"x")
+    assert api.tags_apply([{"path": str(song), "candidate": info().to_dict()}], True)["ok"]
+    wait_until_idle(api._tags)
+    assert api._tags.tagger.styles == ["title_artist"]
+    assert [os.path.basename(e["new_path"]) for e in api.get_tag_events() if e["kind"] == "applied"] == ["Blinding Lights - The Weeknd.mp3"]
+
+
+def test_preparing_tells_the_window_the_name_the_file_would_get(jobs):
+    tagger_jobs, folder = jobs
+    path = str(folder / "sure.mp3")
+    assert tagger_jobs.prepare(path, info().to_dict())["file_name"] == "The Weeknd - Blinding Lights.mp3"
+    assert tagger_jobs.prepare(path, info().to_dict(), "title")["file_name"] == "Blinding Lights.mp3"
+    assert tagger_jobs.prepare(path, info().to_dict(), "title_artist")["file_name"] == "Blinding Lights - The Weeknd.mp3"

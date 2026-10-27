@@ -7,10 +7,11 @@ import threading
 import time
 
 import autotag
+import const
 import tagwriter
 from apis.song_info import SongInfo
 from exceptions import MetadataError, MetadataNetworkError, MetadataRateLimited
-from pathutils import long_path
+from pathutils import long_path, song_filename
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
@@ -119,12 +120,14 @@ class TagJobs:
 
     # --- what exactly will change (asked for before writing) ---
 
-    def prepare(self, path, candidate):
-        """The chosen candidate with its genre filled in, and the list of changes it would make to this file."""
+    def prepare(self, path, candidate, name_style=const.DEFAULT_NAME_STYLE):
+        """The chosen candidate with its genre filled in, the list of changes it would make to this file, and the
+        name the file would get if the user asks to rename it."""
         try:
             tags = tagwriter.read_tags(path)
             info = self.tagger.enrich(SongInfo.from_dict(candidate))
-            return {"ok": True, "candidate": info.to_dict(), "changes": self.tagger.changes(tags, info)}
+            new_name = song_filename(info.title, info.artist, name_style) + os.path.splitext(path)[1]
+            return {"ok": True, "candidate": info.to_dict(), "changes": self.tagger.changes(tags, info), "file_name": new_name}
         except MetadataError as error:
             return {"ok": False, "error": str(error)}
 
@@ -153,7 +156,7 @@ class TagJobs:
 
     # --- writing ---
 
-    def apply(self, items, rename=False):
+    def apply(self, items, rename=False, name_style=const.DEFAULT_NAME_STYLE):
         clean = []
         for item in items or []:
             path = (item or {}).get("path")
@@ -161,9 +164,9 @@ class TagJobs:
                 clean.append((path, SongInfo.from_dict(item.get("candidate"))))
         if not clean:
             return {"ok": False, "error": "No hay nada que escribir."}
-        return self._start(self._run_apply, clean, bool(rename)) | {"count": len(clean)}
+        return self._start(self._run_apply, clean, bool(rename), name_style) | {"count": len(clean)}
 
-    def _run_apply(self, items, rename):
+    def _run_apply(self, items, rename, name_style):
         done = failed = 0
         stopped = None
         try:
@@ -172,7 +175,7 @@ class TagJobs:
                     break
                 self.push("applying", path=path)
                 try:
-                    result = self.tagger.apply(path, info, rename=rename)
+                    result = self.tagger.apply(path, info, rename=rename, style=name_style)
                 except (MetadataNetworkError, MetadataRateLimited) as error:
                     failed += 1
                     stopped = str(error)

@@ -60,7 +60,7 @@ function diffHTML(f) {
     ? `<tr><td class="lab">Portada</td><td class="old">${esc(r.old)}</td><td>→</td><td class="new"><img src="${esc(p.candidate.thumb_url)}" alt="" onerror="this.style.display='none'"></td></tr>`
     : `<tr><td class="lab">${esc(r.label)}</td><td class="old">${esc(r.old)}</td><td>→</td><td class="new">${esc(r.new)}</td></tr>`).join("");
   return `${p.changes.length ? `<table class="diff">${rows}</table>` : '<p class="muted">No hay nada que cambiar: el archivo ya tiene esos datos.</p>'}
-    <p class="warn-note">Los cambios se escriben en el archivo y no se pueden deshacer.${rename ? ` El archivo se renombrará a «${esc(p.candidate.title)}${esc(f.path.slice(f.path.lastIndexOf(".")))}».` : ""}</p>
+    <p class="warn-note">Los cambios se escriben en el archivo y no se pueden deshacer.${rename ? ` El archivo se renombrará a «${esc(p.file_name || "")}».` : ""}</p>
     <div class="btn-row"><button class="btn primary" data-act="confirm1">Confirmar y escribir</button><button class="btn" data-act="cancel1">Cancelar</button></div>`;
 }
 
@@ -124,7 +124,7 @@ function renderTagBar() {
   } else if (T.confirm) {
     const rename = $("#tags-rename").checked;
     bar.innerHTML = `<div class="grow"><b>Se escribirán etiquetas en ${plural(sure.length, "archivo", "archivos")}</b>
-      <div class="muted small">Se cambian los archivos de verdad y no se puede deshacer.${rename ? " Se renombran con el título." : ""}</div></div>
+      <div class="muted small">Se cambian los archivos de verdad y no se puede deshacer.${rename ? " Se renombran con el estilo de Configuración." : ""}</div></div>
       <button class="btn" data-act="confirm-no">Cancelar</button><button class="btn primary" data-act="confirm-yes">Confirmar y escribir</button>`;
   } else {
     const parts = [];
@@ -137,6 +137,15 @@ function renderTagBar() {
     bar.innerHTML = `<div class="grow"><b>${plural(T.files.length, "canción", "canciones")}</b>${parts.length ? `<div class="muted small">${esc(parts.join(" · "))}</div>` : ""}</div>
       ${sure.length ? `<button class="btn primary" data-act="apply-sure">Aplicar ${sure.length === 1 ? "la coincidencia clara" : "las " + sure.length + " coincidencias claras"}</button>` : ""}`;
   }
+}
+
+/* ---------- the rename option shows what the chosen file-name style looks like ---------- */
+async function refreshRenameExample() {
+  const s = await call("get_settings");
+  const label = $("#tags-rename-example");
+  if (!s || s.error || !label) return;
+  const style = (s.name_styles || []).find(n => n.id === s.name_style);
+  label.textContent = style ? `(ahora: ${style.label}, por ejemplo «${NAMING_EXAMPLES[s.name_style] || ""}»)` : "";
 }
 
 /* ---------- actions ---------- */

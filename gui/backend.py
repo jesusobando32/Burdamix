@@ -352,10 +352,10 @@ class Api:
         return self._tags.identify(paths, title, artist, skip_complete)
 
     def tags_prepare(self, path, candidate):
-        return self._tags.prepare(path, candidate)
+        return self._tags.prepare(path, candidate, self._settings["name_style"])
 
     def tags_apply(self, items, rename=False):
-        return self._tags.apply(items, rename)
+        return self._tags.apply(items, rename, self._settings["name_style"])
 
     def tags_cancel(self):
         return self._tags.cancel()

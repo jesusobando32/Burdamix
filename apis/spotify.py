@@ -7,7 +7,7 @@ import requests
 
 import login
 import const
-from pathutils import sanitize_filename
+from pathutils import sanitize_filename, song_filename
 
 API_BASE = "https://api.spotify.com/v1/"
 SPOTIFY_ORIGIN = "https://api.spotify.com"
@@ -315,9 +315,7 @@ class SpotifyTrack:
         """'Artist - Title' (the default: unique enough that two songs titled alike don't overwrite each other),
         'Title - Artist' or just 'Title' (see const.NAME_STYLES). An unknown style gives the default."""
         self._ensure_loaded()
-        artists, title = ", ".join(self.track_metadata['artist']), self.track_metadata['title']
-        name = {"title_artist": f"{title} - {artists}", "title": title}.get(style, f"{artists} - {title}")
-        return sanitize_filename(name)
+        return song_filename(self.track_metadata['title'], ", ".join(self.track_metadata['artist']), style)
 
     def get_artist(self, sanitize=False):
         self._ensure_loaded()

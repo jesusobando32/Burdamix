@@ -8,6 +8,7 @@ import os
 import re
 from dataclasses import dataclass, field
 
+import const
 import tagwriter
 from apis.deezer import Deezer
 from apis.itunes import ITunes
@@ -16,6 +17,7 @@ from apis.metadata_http import MetadataClient
 from apis.musicbrainz import MusicBrainz
 from apis.ytmusic import YouTubeMusic
 from covers import CoverFinder
+from pathutils import song_filename
 from apis.song_info import SongInfo
 from apis.youtube import STRICT_TOLERANCE, UNWANTED_WORDS, clean_song_title, normalize
 from exceptions import MetadataError, MetadataNotFound
@@ -251,12 +253,13 @@ class AutoTagger:
         found = self.covers.find(info)
         return found.data, found.problem
 
-    def apply(self, path, info, rename=False):
-        """Write `info` and its cover into the file. Returns {path, cover, genre, cover_problem}; raises TagWriteError on failure."""
+    def apply(self, path, info, rename=False, style=const.DEFAULT_NAME_STYLE):
+        """Write `info` and its cover into the file; with `rename`, also rename the file in the chosen style (const.NAME_STYLES).
+        Returns {path, cover, genre, cover_problem, cover_source}; raises TagWriteError on failure."""
         info = self.enrich(info)
         found = self.covers.find(info)
         self.write(path, info, found.data)
-        new_path = self.rename(path, info.title) if rename else path
+        new_path = self.rename(path, song_filename(info.title, info.artist, style)) if rename else path
         return {"path": new_path, "cover": found.data is not None, "genre": info.genre, "cover_problem": found.problem,
                 "cover_source": found.source}
 

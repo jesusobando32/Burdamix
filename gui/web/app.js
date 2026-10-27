@@ -31,6 +31,7 @@ function show(view) {
   $$(".nav").forEach(n => n.classList.toggle("active", n.dataset.view === view));
   if (view === "tutorial") refreshState();
   if (view === "settings") loadSettings();
+  if (view === "tags") refreshRenameExample();
   if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");
 }
 
@@ -526,7 +527,7 @@ function demoTagsApi(art) {
       setTimeout(() => { busy = false; push("finished", { job: "identify", total: paths.length, counts: {}, cancelled: false, error: null }); }, 1200 + paths.length * 900);
       return { ok: true };
     },
-    tags_prepare: async (path, c) => ({ ok: true, candidate: { ...c, genre: c.genre || "R&B" }, changes: [
+    tags_prepare: async (path, c) => ({ ok: true, candidate: { ...c, genre: c.genre || "R&B" }, file_name: c.artist + " - " + c.title + ".mp3", changes: [
       { field: "title", label: "Título", old: "", new: c.title }, { field: "artist", label: "Artista", old: "", new: c.artist },
       { field: "album", label: "Álbum", old: "", new: c.album }, { field: "year", label: "Año", old: "", new: c.year },
       { field: "genre", label: "Género", old: "", new: c.genre || "R&B" }, { field: "track", label: "Pista", old: "", new: c.track_number + "/" + c.track_total },

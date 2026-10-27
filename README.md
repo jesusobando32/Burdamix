@@ -38,7 +38,7 @@ en el reproductor. Se usa desde la ventana, en **Completar etiquetas**:
 2. Pulsa **Buscar etiquetas**. Burdamix averigua qué canción es a partir de sus etiquetas o de su nombre (`Artista - Título.mp3` o `Título - Artista.mp3`: prueba los dos órdenes y se queda con el que mejor coincide). Si el archivo no dice nada, puedes escribir el título y el artista tú.
 3. Si hay una **coincidencia clara** (mismo título, mismo artista y duración parecida), queda lista. Si hay dudas, te muestra de **3 a 5 opciones** (título, artista, álbum, año y tipo: álbum de estudio, sencillo, recopilatorio o en vivo) y tú eliges. El álbum de estudio original va primero.
 4. **Revisa los cambios** (qué había y qué quedará) y confirma. **Los cambios se escriben en el archivo y no se pueden deshacer**; por eso siempre se muestran antes.
-5. Opcional: **renombrar el archivo** con el título (`Título.mp3`; el artista queda en las etiquetas). Está apagado por defecto.
+5. Opcional: **renombrar el archivo** con el estilo que elegiste en *Configuración → Nombre de los archivos* (`Artista - Título`, `Título - Artista` o solo `Título`; el artista siempre queda en las etiquetas). La ventana muestra el nombre que tendrá antes de confirmar. Está apagado por defecto.
 
 **Con una carpeta entera** (modo por lotes): los archivos que ya tienen título, artista, álbum, año, número de pista y portada se **saltan**. Las coincidencias claras se aplican con **un solo botón** (después de una confirmación) y las dudosas quedan en la lista para que las revises una por una.
 

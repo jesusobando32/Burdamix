@@ -31,6 +31,19 @@ def sanitize_filename(name, fallback="Unknown"):
     return cleaned[:150].rstrip(". ")
 
 
+def song_filename(title, artist, style="artist_title"):
+    """The file name (without extension) of a song in one of the styles of const.NAME_STYLES: 'Artist - Title' (the default,
+    and what an unknown style gives), 'Title - Artist' or just 'Title'. Without an artist it is just the title."""
+    title, artist = (title or "").strip(), (artist or "").strip()
+    if not artist or style == "title":
+        name = title
+    elif style == "title_artist":
+        name = f"{title} - {artist}"
+    else:
+        name = f"{artist} - {title}"
+    return sanitize_filename(name)
+
+
 def long_path(path):
     """Path to use for creating, writing and checking files.
 
