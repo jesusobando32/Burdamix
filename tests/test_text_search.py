@@ -238,3 +238,26 @@ def test_a_guest_the_song_does_not_have_marks_another_recording():
     plain = Candidate("plain", "Despacito", "Luis Fonsi", 228, 0)
     assert rank_candidates([remix, plain], "Despacito", ["Luis Fonsi"], 228)[0].url == "plain"
     assert rank_candidates([remix, plain], "Despacito", ["Luis Fonsi"], 228, asked="despacito justin bieber")[0].url == "remix"   # unless the user asked for it
+
+
+def test_deezer_keeps_the_credited_artists_of_a_song():
+    from apis.deezer import Deezer
+    deezer = Deezer(client=object())
+    answers = {"track/1": {"track_position": 1, "release_date": "2017-01-12", "album": {"id": 9},
+                           "contributors": [{"name": "Luis Fonsi"}, {"name": "Daddy Yankee"}, {"name": "Daddy Yankee"}]},
+               "album/9": {"genres": {"data": []}, "record_type": "album", "nb_tracks": 1, "artist": {"name": "Luis Fonsi"}}}
+    deezer._get = lambda path, params=None: answers[path]
+    info = SongInfo(title="Despacito", artist="Luis Fonsi")
+    deezer._add_details(info, {"id": 1})
+    assert info.contributors == ("Luis Fonsi", "Daddy Yankee")                         # no repeats
+    assert SongInfo.from_dict(info.to_dict()).contributors == info.contributors      # survives the trip to the window and back
+
+
+def test_a_real_guest_is_not_taken_for_a_remix_but_a_stranger_still_is():
+    original = TextTrack(song("Despacito", "Luis Fonsi", "VIDA", contributors=("Luis Fonsi", "Daddy Yankee")))
+    names = original.get_metadata()["artist"]
+    assert names == ["Luis Fonsi", "Daddy Yankee"] and original.get_artist() == "Luis Fonsi" and original.get_filename() == "Luis Fonsi - Despacito"
+    yankee = Candidate("y", "Luis Fonsi - Despacito ft. Daddy Yankee (Audio)", "Luis Fonsi", 228, 0)
+    bieber = Candidate("b", "Luis Fonsi - Despacito (Audio) ft. Justin Bieber", "Luis Fonsi", 228, 0)
+    assert score_candidate(yankee, "Despacito", names, 228)[0] > score_candidate(bieber, "Despacito", names, 228)[0] + 15
+    assert rank_candidates([bieber, yankee], "Despacito", names, 228)[0].url == "y"

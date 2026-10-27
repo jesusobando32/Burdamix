@@ -21,6 +21,7 @@ class SongInfo:
     kind: str = "other"       # one of KINDS
     duration: float = 0.0     # seconds
     cover_urls: tuple = ()    # best first; the first that downloads is used
+    contributors: tuple = ()  # every artist credited on the song (guests included), when the service says; else just `artist`
     thumb_url: str = ""       # small picture for the window
     release_id: str = ""      # MusicBrainz release id, when there is one
     score: float = 0.0        # filled in when the results are ranked
@@ -32,6 +33,7 @@ class SongInfo:
     def to_dict(self):
         data = asdict(self)
         data["cover_urls"] = list(self.cover_urls)
+        data["contributors"] = list(self.contributors)
         data["kind_label"] = self.kind_label
         return data
 
@@ -41,6 +43,7 @@ class SongInfo:
         known = {f.name for f in fields(cls)}
         clean = {k: v for k, v in (data or {}).items() if k in known}
         clean["cover_urls"] = tuple(str(u) for u in clean.get("cover_urls") or () if isinstance(u, str) and u.startswith("https://"))
+        clean["contributors"] = tuple(str(n) for n in clean.get("contributors") or () if isinstance(n, str) and n)
         for key in ("track_number", "track_total", "disc_number"):
             try:
                 clean[key] = max(0, int(clean.get(key) or 0))

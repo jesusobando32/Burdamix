@@ -55,6 +55,8 @@ class Deezer:
             info.track_number = int(track.get("track_position") or 0)
             info.disc_number = int(track.get("disk_number") or 0)
             info.year = (track.get("release_date") or "")[:4]
+            names = [c.get("name") for c in track.get("contributors") or [] if isinstance(c, dict) and c.get("name")]
+            info.contributors = tuple(dict.fromkeys(names))   # "Luis Fonsi", "Daddy Yankee": the guests of the song
             album_id = (track.get("album") or item.get("album") or {}).get("id")
             if album_id:
                 album = self._get(f"album/{album_id}")

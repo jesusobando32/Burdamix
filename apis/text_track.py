@@ -17,7 +17,9 @@ class TextTrack:
         self.resource_id = "t" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
         self.track_metadata = {
             "title": info.title,
-            "artist": [info.artist],
+            # The main artist first (file name, window), then the guests credited on the song: the video search must know
+            # them, or a video that names a real guest ('ft. Daddy Yankee') would be taken for a remix.
+            "artist": [info.artist, *(n for n in info.contributors if n != info.artist)],
             "album": info.album,
             "release_date": info.year,
             "track_num": info.track_number,
