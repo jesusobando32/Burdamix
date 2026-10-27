@@ -126,21 +126,23 @@ REAL = [  # what YouTube gave for "Mora badtrip :(" (captured), plus the concert
 ]
 
 
-def test_the_official_channel_beats_a_reupload_with_a_closer_duration():
+def test_the_exact_duration_beats_the_official_channel_and_the_channel_decides_between_equals():
     ranked = rank_candidates(REAL, "badtrip :(", ["Mora"], 192, 1800, asked="badtrip mora")
-    assert ranked[0].url == "official"
     urls = [c.url for c in ranked]
-    assert urls.index("concert") > urls.index("official")        # the concert cut stays below the studio one...
-    assert score_candidate(REAL[-1], "badtrip :(", ["Mora"], 192)[0] < score_candidate(REAL[0], "badtrip :(", ["Mora"], 192)[0] - 25   # ...by the 40 points of "concert"
-    assert "festival" not in urls                                  # 331 s: far too long to be this song
+    assert urls[0] in ("audio", "lyrics") and urls.index("official") > 1       # 192 s on the dot beats the official video, 6 s off
+    assert urls.index("concert") > urls.index("official")            # "concert" costs 40 points
+    assert "festival" not in urls                                    # 331 s: far too long to be this song
+    same = [Candidate("a", "Mora - Bad Trip", "Mora", 192, 0), Candidate("b", "Mora - Bad Trip", "Reupload", 192, 0)]
+    assert rank_candidates(same, "Bad Trip", ["Mora"], 192)[0].url == "a"
 
 
 def test_the_points_follow_the_rules():
-    official = score_candidate(REAL[0], "badtrip :(", ["Mora"], 192)[0]
-    reupload = score_candidate(REAL[2], "badtrip :(", ["Mora"], 192)[0]
-    assert official - reupload > 20                       # 50 + 20 against 25-ish + 30: the channel decides
-    topic = Candidate("t", "Song", "Artist - Topic", 200, 0)
-    assert score_candidate(topic, "Song", ["Artist"], 200)[0] > score_candidate(Candidate("u", "Song", "Someone", 200, 0), "Song", ["Artist"], 200)[0] + 45
+    def pts(duration, channel="Someone", title="Song"):
+        return score_candidate(Candidate("v", title, channel, duration, 0), "Song", ["Artist"], 200)[0]
+    assert [pts(200 + d) - pts(200 + 16) for d in (0, 2, 3, 5, 8, 15)] == [60 + 30, 50 + 30, 40 + 30, 25 + 30, 10 + 30, 2 + 30]   # the bands
+    assert pts(200) - pts(201) == 0 and pts(200) > pts(202) > pts(203) > pts(205) > pts(208) > pts(215) > pts(216)
+    assert pts(200, "Artist - Topic") - pts(200) == 35 and pts(200, "Artist Fans") - pts(200) == 15      # official channel / name inside it
+    assert pts(208, "Artist") < pts(200, "Someone") and pts(205, "Artist") == pts(200, "Someone")   # 8 s off costs more than the channel gives
 
 
 def test_a_word_the_user_typed_is_not_held_against_a_video_but_otherwise_it_costs_40():
@@ -152,7 +154,7 @@ def test_a_word_the_user_typed_is_not_held_against_a_video_but_otherwise_it_cost
 
 def test_each_artist_of_a_collaboration_can_be_the_channel():
     video = Candidate("v", "Despacito", "Daddy Yankee", 229, 0)
-    assert score_candidate(video, "Despacito", ["Luis Fonsi & Daddy Yankee"], 229)[0] > score_candidate(video, "Despacito", ["Luis Fonsi"], 229)[0] + 40
+    assert score_candidate(video, "Despacito", ["Luis Fonsi & Daddy Yankee"], 229)[0] > score_candidate(video, "Despacito", ["Luis Fonsi"], 229)[0] + 30
 
 
 def test_an_unknown_duration_does_not_reject_every_video():

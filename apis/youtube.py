@@ -19,11 +19,13 @@ UNWANTED_WORDS = ("live", "en vivo", "concert", "concierto", "cover", "remix", "
                   "instrumental", "karaoke", "8d", "nightcore", "acoustic", "reaction", "tutorial", "mashup", "loop", "hour")
 
 # Points of a video (see score_candidate). A channel that IS the artist is the strongest sign of the studio audio.
-OFFICIAL_CHANNEL_POINTS = 50       # the channel is exactly the artist, or "Artist - Topic" (YouTube's own audio channel)
-ARTIST_IN_CHANNEL_POINTS = 25      # the channel only contains the artist's name
+OFFICIAL_CHANNEL_POINTS = 35       # the channel is exactly the artist, or "Artist - Topic" (YouTube's own audio channel)
+ARTIST_IN_CHANNEL_POINTS = 15      # the channel only contains the artist's name
 TITLE_POINTS = 15
 UNWANTED_POINTS = -40              # per word nobody asked for
-DURATION_POINTS = ((3, 30), (8, 20), (15, 5))   # (seconds apart at most, points); further apart: DURATION_FAR_POINTS
+# (seconds apart at most, points): the closer the duration is to the official one, the surer it is the same recording.
+# Nobody knows what the extra minute of a longer video holds, so duration weighs more than the channel.
+DURATION_POINTS = ((1, 60), (2, 50), (3, 40), (5, 25), (8, 10), (15, 2))   # further apart: DURATION_FAR_POINTS
 DURATION_FAR_POINTS = -30
 
 # What YouTube says when it flags the IP. Checked in lower case, with both kinds of apostrophe.
