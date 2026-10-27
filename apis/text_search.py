@@ -10,7 +10,7 @@ from apis.itunes import ITunes
 from apis.matching import similarity
 from apis.metadata_http import MetadataClient
 from apis.song_info import KINDS, SongInfo
-from apis.youtube import normalize
+from apis.youtube import UNWANTED_WORDS, normalize
 from apis.ytmusic import YouTubeMusic
 from exceptions import MetadataBadResponse, MetadataError, MetadataRefused
 
@@ -35,6 +35,19 @@ def coverage(query, info):
     words = text.split()
     found = sum(1 for w in long_enough if w in words or (len(w) >= 5 and w in compact))   # 'mora' is not inside 'Morandi'
     return found / len(long_enough)
+
+
+# A title with one of these is another version of the song, not the song itself. (Normalized: no accents, '8-bit' is '8 bit'.)
+ALTERNATE_WORDS = UNWANTED_WORDS + ("version", "acustica", "acustico", "8 bit", "mashup", "tribute", "rendition",
+                                    "originally performed", "made popular by", "edit")
+
+
+def is_alternate(info, query):
+    """A remix, live take, karaoke, 8D... of the song, unless the user typed that word. These are listed after the song itself."""
+    if info.kind == "live" and "live" not in normalize(query).split():
+        return True
+    title, wanted = f" {normalize(info.title)} ", f" {normalize(query)} "
+    return any(f" {word} " in title and f" {word} " not in wanted for word in ALTERNATE_WORDS)
 
 
 def _same_song(a, b):
@@ -77,7 +90,7 @@ class SongSearch:
     def lookup(self, query, limit=5):
         """([SongInfo], [problems]): the songs, best first, and why a service could not answer (for the user)."""
         query = " ".join((query or "").split())
-        problems = []
+        problems, found_songs = [], []
         if not query:
             return [], problems
         for name, service in self.services:
@@ -99,8 +112,12 @@ class SongSearch:
                 continue
             relevant = [i for i in found if coverage(query, i) >= MIN_COVERAGE]
             if relevant:
-                return _distinct(relevant)[:limit], problems
-        return [], problems
+                found_songs = _distinct(found_songs + relevant)
+                # Only remixes, live takes... here? The next service may have the song itself: ask it too before settling.
+                if any(not is_alternate(i, query) for i in found_songs):
+                    break
+        # Alternates go after the song itself, never instead of it: they are sorted down BEFORE the list is cut.
+        return sorted(found_songs, key=lambda i: is_alternate(i, query))[:limit], problems
 
 
 def to_dict(info):

@@ -261,3 +261,44 @@ def test_a_real_guest_is_not_taken_for_a_remix_but_a_stranger_still_is():
     bieber = Candidate("b", "Luis Fonsi - Despacito (Audio) ft. Justin Bieber", "Luis Fonsi", 228, 0)
     assert score_candidate(yankee, "Despacito", names, 228)[0] > score_candidate(bieber, "Despacito", names, 228)[0] + 15
     assert rank_candidates([bieber, yankee], "Despacito", names, 228)[0].url == "y"
+
+
+# --- remixes and other versions go after the song, never instead of it ------------------------------------------------
+
+def titles(found):
+    return [s.title for s in found]
+
+
+def test_a_remix_listed_first_goes_below_the_song_and_nothing_is_dropped():
+    deezer = Source([song("Mi Gente (Busta K Remix)", "J. Balvin", "Mi Gente"), song("Mi Gente", "J. Balvin", "Vibras"),
+                     song("Mi Gente (Live)", "J. Balvin", "Concierto"), song("Mi Gente (Acoustic)", "J. Balvin", "Acustico")])
+    found, _ = search_with(deezer=deezer).lookup("mi gente j balvin")
+    assert titles(found) == ["Mi Gente", "Mi Gente (Busta K Remix)", "Mi Gente (Live)", "Mi Gente (Acoustic)"]
+
+
+def test_the_cut_happens_after_the_sort_so_a_flood_of_remixes_cannot_push_the_song_out():
+    remixes = [song(f"Mi Gente (Remix {n})", "J Balvin", f"R{n}") for n in range(8)]
+    found, _ = search_with(deezer=Source(remixes + [song("Mi Gente", "J Balvin", "Original")])).lookup("mi gente j balvin", limit=3)
+    assert titles(found)[0] == "Mi Gente" and len(found) == 3
+
+
+def test_when_a_service_has_only_versions_the_next_one_is_asked_for_the_song_itself():
+    deezer = Source([song("Mi Gente (Busta K Remix)", "J. Balvin", "Mi Gente")])
+    itunes = Source([song("Mi Gente", "J Balvin & Willy William", "Vibras", source="itunes")])
+    found, _ = search_with(deezer=deezer, itunes=itunes).lookup("mi gente j balvin")
+    assert titles(found) == ["Mi Gente", "Mi Gente (Busta K Remix)"] and itunes.calls == 1
+
+
+def test_the_next_service_is_not_asked_when_the_song_itself_is_already_there():
+    itunes = Source([song()])
+    found, _ = search_with(deezer=Source([song("Mi Gente", "J. Balvin", "Vibras")]), itunes=itunes).lookup("mi gente j balvin")
+    assert itunes.calls == 0 and titles(found) == ["Mi Gente"]
+
+
+def test_a_version_the_user_asked_for_is_not_an_alternate():
+    from apis.text_search import is_alternate
+    assert is_alternate(song("Despacito (Versión Salsa)", "Luis Fonsi"), "despacito luis fonsi")
+    assert not is_alternate(song("Despacito (Versión Salsa)", "Luis Fonsi"), "despacito version salsa")
+    assert not is_alternate(song("Mi Gente (Busta K Remix)", "J Balvin"), "mi gente remix")
+    assert is_alternate(song("Song", "A", kind="live"), "song a") and not is_alternate(song("Song", "A", kind="album"), "song a")
+    assert not is_alternate(song("Calentón", "Mora"), "calenton mora")
