@@ -259,7 +259,11 @@ function initTags() {
   $("#tags-list").addEventListener("click", onTagsClick);
   $("#tags-list").addEventListener("change", ev => { if (ev.target.dataset.act === "pick" || ev.target.dataset.act === "include") onTagsClick(ev); });
   $("#tags-bar").addEventListener("click", onBarClick);
-  $("#tags-rename").onchange = () => $$("#tags-list .tcard").forEach(c => { const f = tagFile(c.dataset.path); if (f && f.prepared) updateCard(f); });
+  try { if (localStorage.getItem("tags-rename") === "0") $("#tags-rename").checked = false; } catch (e) { /* default: on */ }
+  $("#tags-rename").onchange = () => {
+    try { localStorage.setItem("tags-rename", $("#tags-rename").checked ? "1" : "0"); } catch (e) { /* not remembered */ }
+    $$("#tags-list .tcard").forEach(c => { const f = tagFile(c.dataset.path); if (f && f.prepared) updateCard(f); });
+  };
 
   // Files dropped onto the window are picked up by the program side (it knows their paths); the page only has to allow the drop.
   const drop = $("#tags-drop");

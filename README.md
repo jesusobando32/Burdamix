@@ -38,7 +38,7 @@ en el reproductor. Se usa desde la ventana, en **Completar etiquetas**:
 2. Pulsa **Buscar etiquetas**. Burdamix averigua qué canción es a partir de sus etiquetas o de su nombre (`Artista - Título.mp3` o `Título - Artista.mp3`: prueba los dos órdenes y se queda con el que mejor coincide). Si el archivo no dice nada, puedes escribir el título y el artista tú.
 3. Si hay una **coincidencia clara** (mismo título, mismo artista y duración parecida), queda lista. Si hay dudas, te muestra de **3 a 5 opciones** (título, artista, álbum, año y tipo: álbum de estudio, sencillo, recopilatorio o en vivo) y tú eliges. El álbum de estudio original va primero.
 4. **Revisa los cambios** (qué había y qué quedará) y confirma. **Los cambios se escriben en el archivo y no se pueden deshacer**; por eso siempre se muestran antes.
-5. Opcional: **renombrar el archivo** con el estilo que elegiste en *Configuración → Nombre de los archivos* (`Artista - Título`, `Título - Artista` o solo `Título`; el artista siempre queda en las etiquetas). La ventana muestra el nombre que tendrá antes de confirmar. Está apagado por defecto.
+5. Opcional: **renombrar el archivo** con el estilo que elegiste en *Configuración → Nombre de los archivos* (`Artista - Título`, `Título - Artista` o solo `Título`; el artista siempre queda en las etiquetas). La ventana muestra el nombre que tendrá antes de confirmar. Viene **encendido** (se puede apagar con su casilla y se recuerda).
 
 **Con una carpeta entera** (modo por lotes): los archivos que ya tienen título, artista, álbum, año, número de pista y portada se **saltan**. Las coincidencias claras se aplican con **un solo botón** (después de una confirmación) y las dudosas quedan en la lista para que las revises una por una.
 
@@ -52,7 +52,7 @@ en el reproductor. Se usa desde la ventana, en **Completar etiquetas**:
 
 Si ningún servicio da la portada, la tarjeta de esa canción tiene el botón **Elegir una imagen…** para ponerla tú (JPG, PNG, WEBP o BMP). Si el motivo es un rechazo (el servidor de imágenes de Deezer, por ejemplo, bloquea algunas **VPN** con un error 403), la tarjeta lo dice.
 
-Las portadas se guardan como JPG de **1000 × 1000 píxeles como máximo**. Si un archivo está abierto en otro programa (por ejemplo, en el reproductor), Burdamix avisa y no lo toca: las etiquetas se escriben en una copia que reemplaza al original solo cuando está completa.
+Las portadas se guardan como JPG de **1000 × 1000 píxeles como máximo**, en el formato que todos los reproductores muestran (baseline, color 4:2:0): una portada en otro formato se convierte. Si un archivo está abierto en otro programa (por ejemplo, en el reproductor), Burdamix avisa y no lo toca: las etiquetas se escriben en una copia que reemplaza al original solo cuando está completa.
 
 > **Todavía no incluido:** identificar una canción por su **huella acústica** (AcoustID), para archivos sin ningún dato. Necesitará
 > el programa `fpcalc` (Chromaprint) y una clave gratuita de AcoustID; se añadirá con sus instrucciones de instalación.

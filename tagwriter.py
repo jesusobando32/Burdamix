@@ -17,7 +17,7 @@ from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, JpegImagePlugin, UnidentifiedImageError
 
 from exceptions import MetadataError, TagWriteError, UnsupportedAudioFormat
 from pathutils import long_path, sanitize_filename
@@ -128,19 +128,27 @@ def read_tags(path):
     return info
 
 
+def _plays_everywhere(image):
+    """A JPEG every player can show: RGB, baseline (not progressive), 4:2:0 colour like the ones Spotify and Apple serve,
+    and small enough. Players that choke on the other kinds (4:4:4, progressive, CMYK) show no cover at all."""
+    return (image.format == "JPEG" and image.mode == "RGB" and max(image.size) <= MAX_COVER_PIXELS
+            and not image.info.get("progressive") and JpegImagePlugin.get_sampling(image) == 2)
+
+
 def prepare_cover(data):
-    """JPEG bytes no bigger than 1000x1000 px, and its size. A JPEG that already fits is kept as it is."""
+    """JPEG bytes that any player can show, no bigger than 1000x1000 px, and its size. A JPEG that already is such a
+    picture is kept byte for byte; anything else is re-encoded as baseline 4:2:0 RGB."""
     try:
         image = Image.open(io.BytesIO(data))
         image.load()
     except (UnidentifiedImageError, OSError):
         raise MetadataError("El archivo de la portada no es una imagen válida o está dañado.") from None
-    if image.format == "JPEG" and max(image.size) <= MAX_COVER_PIXELS:
+    if _plays_everywhere(image):
         return data, image.size
     image = image.convert("RGB")
     image.thumbnail((MAX_COVER_PIXELS, MAX_COVER_PIXELS), Image.LANCZOS)
     out = io.BytesIO()
-    image.save(out, "JPEG", quality=92, optimize=True)
+    image.save(out, "JPEG", quality=92, optimize=True, subsampling=2, progressive=False)
     return out.getvalue(), image.size
 
 

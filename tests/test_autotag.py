@@ -1243,3 +1243,35 @@ def test_preparing_tells_the_window_the_name_the_file_would_get(jobs):
     assert tagger_jobs.prepare(path, info().to_dict())["file_name"] == "The Weeknd - Blinding Lights.mp3"
     assert tagger_jobs.prepare(path, info().to_dict(), "title")["file_name"] == "Blinding Lights.mp3"
     assert tagger_jobs.prepare(path, info().to_dict(), "title_artist")["file_name"] == "Blinding Lights - The Weeknd.mp3"
+
+
+# --- Covers every player can show ---------------------------------------------------------------------------------
+
+def jpeg_bytes(size=(600, 600), mode="RGB", **options):
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new(mode, size, (200, 30, 90) if mode == "RGB" else 120).save(buffer, "JPEG", **options)
+    return buffer.getvalue()
+
+
+def test_a_baseline_420_jpeg_is_kept_byte_for_byte_and_the_other_kinds_are_re_encoded_to_it():
+    """Regression: covers with 4:4:4 colour or progressive scans were 'written' but some players showed none."""
+    from PIL import Image, JpegImagePlugin
+    good = jpeg_bytes(subsampling=2)
+    assert tagwriter.prepare_cover(good)[0] == good
+    for name, data in (("4:4:4", jpeg_bytes(subsampling=0)), ("4:2:2", jpeg_bytes(subsampling=1)), ("progressive", jpeg_bytes(progressive=True, subsampling=2)),
+                       ("grayscale", jpeg_bytes(mode="L")), ("cmyk", jpeg_bytes(mode="CMYK")), ("too big", jpeg_bytes((1600, 1600), subsampling=2))):
+        out, size = tagwriter.prepare_cover(data)
+        image = Image.open(io.BytesIO(out))
+        assert out != data, name
+        assert image.format == "JPEG" and image.mode == "RGB" and not image.info.get("progressive"), name
+        assert JpegImagePlugin.get_sampling(image) == 2 and max(image.size) <= 1000 and size == image.size, name
+
+
+@pytest.mark.skipif(ffmpeg() is None, reason="needs the bundled ffmpeg")
+def test_the_cover_inside_the_file_is_baseline_420_even_when_the_source_was_not(tmp_path):
+    song = make_audio(tmp_path, "a.mp3")
+    tagwriter.write_tags(song, SongInfo(title="T"), jpeg_bytes((900, 900), subsampling=0))
+    seen = subprocess.run([ffmpeg(), "-hide_banner", "-i", song], capture_output=True, text=True).stderr
+    picture = [line for line in seen.splitlines() if "attached pic" in line][0]
+    assert "Baseline" in picture and "yuvj420p" in picture and "900x900" in picture
