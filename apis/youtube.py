@@ -25,8 +25,8 @@ TITLE_POINTS = 15
 UNWANTED_POINTS = -40              # per word nobody asked for
 # (seconds apart at most, points): the closer the duration is to the official one, the surer it is the same recording.
 # Nobody knows what the extra minute of a longer video holds, so duration weighs more than the channel.
-DURATION_POINTS = ((1, 60), (2, 50), (3, 40), (5, 25), (8, 10), (15, 2))   # further apart: DURATION_FAR_POINTS
-DURATION_FAR_POINTS = -30
+DURATION_POINTS = ((1, 51), (2, 42.5), (3, 34), (5, 21.25), (8, 8.5), (15, 1.7))   # further apart: DURATION_FAR_POINTS
+DURATION_FAR_POINTS = -25.5
 
 # What YouTube says when it flags the IP. Checked in lower case, with both kinds of apostrophe.
 BLOCKED_MARKERS = ("not a bot", "rate-limited", "rate limited", "too many requests", "http error 429",

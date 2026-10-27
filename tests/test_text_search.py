@@ -139,10 +139,11 @@ def test_the_exact_duration_beats_the_official_channel_and_the_channel_decides_b
 def test_the_points_follow_the_rules():
     def pts(duration, channel="Someone", title="Song"):
         return score_candidate(Candidate("v", title, channel, duration, 0), "Song", ["Artist"], 200)[0]
-    assert [pts(200 + d) - pts(200 + 16) for d in (0, 2, 3, 5, 8, 15)] == [60 + 30, 50 + 30, 40 + 30, 25 + 30, 10 + 30, 2 + 30]   # the bands
-    assert pts(200) - pts(201) == 0 and pts(200) > pts(202) > pts(203) > pts(205) > pts(208) > pts(215) > pts(216)
+    far = pts(216)
+    assert [round(pts(200 + d) - far, 2) for d in (0, 2, 3, 5, 8, 15)] == [51 + 25.5, 42.5 + 25.5, 34 + 25.5, 21.25 + 25.5, 8.5 + 25.5, 1.7 + 25.5]   # the bands
+    assert pts(200) == pts(201) and pts(200) > pts(202) > pts(203) > pts(205) > pts(208) > pts(215) > pts(216)
     assert pts(200, "Artist - Topic") - pts(200) == 35 and pts(200, "Artist Fans") - pts(200) == 15      # official channel / name inside it
-    assert pts(208, "Artist") < pts(200, "Someone") and pts(205, "Artist") == pts(200, "Someone")   # 8 s off costs more than the channel gives
+    assert pts(208, "Artist") < pts(200, "Someone") < pts(205, "Artist")   # exact beats the official channel 8 s off, not 5 s off
 
 
 def test_a_word_the_user_typed_is_not_held_against_a_video_but_otherwise_it_costs_40():
