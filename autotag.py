@@ -150,7 +150,7 @@ class AutoTagger:
         self.musicbrainz = musicbrainz or MusicBrainz()
         self.deezer = deezer or Deezer()
         self.itunes = itunes or ITunes()
-        self.images = images or MetadataClient("las portadas", 0.2)
+        self.images = images or MetadataClient("El servidor de portadas", 0.2)
         self.read = reader or tagwriter.read_tags
         self.write = writer or tagwriter.write_tags
         self.rename = renamer or tagwriter.rename_to_title
@@ -229,32 +229,48 @@ class AutoTagger:
         return info
 
     def fetch_cover(self, info):
-        """The cover as bytes: the candidate's own urls first, then Deezer's and iTunes' picture of the same album."""
-        urls = list(info.cover_urls)
-        for url in urls:
+        """The cover as bytes, or None. See fetch_cover_checked for why there is none."""
+        return self.fetch_cover_checked(info)[0]
+
+    def fetch_cover_checked(self, info):
+        """(cover bytes or None, problem or None). The candidate's own urls first, then Deezer's and iTunes' picture of the
+        same album. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
+        cover", and the user needs to know which one it was."""
+        problem = []
+
+        def attempt(url):
             try:
                 return self.images.get_image(url)
-            except MetadataError:
-                continue                          # 404 for a size that does not exist, a dropped connection...
+            except MetadataNotFound:
+                return None                       # a size that does not exist, or no cover: nothing wrong
+            except MetadataError as error:
+                problem.append(str(error))        # refused, or the connection dropped
+                return None
+
+        for url in info.cover_urls:
+            data = attempt(url)
+            if data:
+                return data, None
         if info.album and info.artist:
             for source in (self.deezer, self.itunes):
                 try:
-                    for url in source.find_cover(info.album, info.artist):
-                        try:
-                            return self.images.get_image(url)
-                        except MetadataError:
-                            continue
-                except MetadataError:
+                    urls = source.find_cover(info.album, info.artist)
+                except MetadataError as error:
+                    problem.append(str(error))
                     continue
-        return None
+                for url in urls:
+                    data = attempt(url)
+                    if data:
+                        return data, None
+        return None, (problem[0] if problem else None)
 
     def apply(self, path, info, rename=False):
-        """Write `info` and its cover into the file. Returns {path, cover, genre}; raises TagWriteError on failure."""
+        """Write `info` and its cover into the file. Returns {path, cover, genre, cover_problem}; raises TagWriteError on failure."""
         info = self.enrich(info)
-        cover = self.fetch_cover(info)
+        cover, problem = self.fetch_cover_checked(info)
         self.write(path, info, cover)
         new_path = self.rename(path, info.title) if rename else path
-        return {"path": new_path, "cover": cover is not None, "genre": info.genre}
+        return {"path": new_path, "cover": cover is not None, "genre": info.genre, "cover_problem": problem}
 
 
 def collect_audio_files(paths):

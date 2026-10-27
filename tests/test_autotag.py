@@ -444,7 +444,7 @@ def test_applying_enriches_the_genre_downloads_the_cover_writes_and_renames_in_t
     result = t.apply("C:/music/x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=True)
     assert log == [("cover", "https://c/a.jpg"), "write", ("rename", "Blinding Lights")]
     assert written["song"].genre == "R&B" and written["cover"] == b"JPEG"
-    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B"}
+    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None}
 
 
 def test_apply_does_not_rename_unless_asked_and_survives_a_missing_cover():
@@ -825,3 +825,31 @@ def test_the_window_methods_for_tags_are_safe_with_bad_input(tmp_path, monkeypat
     api = _window_api(tmp_path, monkeypatch)
     assert api.tags_scan("not a list") == [] and api.tags_pick_files() == [] and api.tags_pick_folder() == []
     assert api.tags_cancel() is False and api.get_tag_events() == []
+
+
+def test_a_refused_cover_is_reported_as_a_problem_not_as_no_cover():
+    """Regression: Deezer's image server answers 403 to some VPN addresses; the window said 'no cover found'."""
+    def refuse(self, url):
+        raise MetadataNetworkError("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")
+
+    refused = type("Img", (), {"get_image": refuse})()
+    cover, problem = tagger(images=refused, deezer=FakeSource(error=MetadataNetworkError("x")),
+                            itunes=FakeSource(error=MetadataNetworkError("x"))).fetch_cover_checked(info(cover_urls=("https://cdn/a.jpg",)))
+    assert cover is None and "403" in problem and "VPN" in problem
+    missing = type("Img", (), {"get_image": lambda self, url: (_ for _ in ()).throw(MetadataNotFound("404"))})()
+    assert tagger(images=missing, deezer=FakeSource(), itunes=FakeSource()).fetch_cover_checked(info(cover_urls=("https://cdn/a.jpg",))) == (None, None)
+
+
+def test_apply_tells_the_window_why_the_cover_is_missing(tmp_path):
+    def refuse(self, url):
+        raise MetadataNetworkError("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")
+
+    t = tagger(images=type("Img", (), {"get_image": refuse})(), writer=lambda p, s, c: None, renamer=lambda p, title: p)
+    result = t.apply("x.mp3", info(cover_urls=("https://cdn/a.jpg",)))
+    assert result["cover"] is False and "VPN" in result["cover_problem"]
+
+
+def test_a_403_from_a_service_suggests_trying_without_a_vpn():
+    c, _ = client(lambda url, params: FakeResponse(403), name="Deezer")
+    with pytest.raises(MetadataNetworkError, match="403.*VPN"):
+        c.get_json("https://x.test/a")

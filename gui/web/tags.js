@@ -75,7 +75,7 @@ function bodyHTML(f) {
   if ((f.status === "sure" || f.status === "review") && f.candidates.length) return f.prepared ? diffHTML(f) : candidatesHTML(f);
   if (f.status === "applied") {
     const d = f.done || {};
-    return `<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ' <span class="warn-note">No encontré portada para esta canción.</span>'}</p>`;
+    return `<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ` <span class="warn-note">${esc(d.problem || "No encontré portada para esta canción.")}${d.problem ? " La portada quedó sin poner: vuelve a buscar esta canción cuando se resuelva." : ""}</span>`}</p>`;
   }
   if (f.status === "failed") return retryHTML(f, f.error || "No se pudo escribir el archivo.");
   if (f.status === "notfound") return retryHTML(f, f.error || "No encontré esta canción.");
@@ -212,7 +212,7 @@ function onTagEvent(e) {
   } else if (e.kind === "applying") f.status = "writing";
   else if (e.kind === "applied") {
     T.jobDone++;
-    f.status = "applied"; f.done = { cover: e.cover, genre: e.genre }; f.prepared = null;
+    f.status = "applied"; f.done = { cover: e.cover, genre: e.genre, problem: e.cover_problem }; f.prepared = null;
     if (e.tags) f.tags = e.tags;
     if (e.new_path && e.new_path !== f.path) { f.path = e.new_path; f.name = baseName(e.new_path); }
     return renderTags();   // the card's identity (its path) may have changed

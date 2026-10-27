@@ -59,6 +59,8 @@ class MetadataClient:
             raise MetadataRateLimited(f"{self.name} pide ir más despacio. Espera un minuto e inténtalo de nuevo.")
         if response.status_code == 404:
             raise MetadataNotFound(f"{self.name} no tiene lo que se buscó.")
+        if response.status_code == 403:   # some services refuse VPN and data-centre addresses
+            raise MetadataNetworkError(f"{self.name} negó el acceso (403). Si usas una VPN, prueba sin ella.")
         if response.status_code != 200:
             raise MetadataNetworkError(f"{self.name} respondió con un error ({response.status_code}).")
         return response

@@ -156,7 +156,7 @@ class TagJobs:
                     self.push("failed", path=path, error=str(error))
                     continue
                 done += 1
-                self.push("applied", path=path, new_path=result["path"], cover=result["cover"], genre=result["genre"],
+                self.push("applied", path=path, new_path=result["path"], cover=result["cover"], cover_problem=result.get("cover_problem"), genre=result["genre"],
                           tags=self._safe_tags(result["path"]))
         except Exception as error:
             stopped = f"Se detuvo la escritura ({type(error).__name__})."
