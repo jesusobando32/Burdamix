@@ -16,7 +16,7 @@ from apis.itunes import ITunes, artwork
 from apis.metadata_http import MetadataClient, RateLimiter
 from apis.musicbrainz import MusicBrainz
 from apis.song_info import SongInfo
-from exceptions import (MetadataNetworkError, MetadataNotFound, MetadataRateLimited, TagWriteError,
+from exceptions import (MetadataNetworkError, MetadataNotFound, MetadataRateLimited, MetadataRefused, TagWriteError,
                         UnsupportedAudioFormat)
 
 
@@ -243,9 +243,21 @@ def test_deezer_errors_inside_a_200_are_reported():
         Deezer(c2).search("x")
 
 
-def test_deezer_finds_a_cover_by_album():
-    c, _ = client(deezer_routes, name="Deezer")
-    assert Deezer(c).find_cover("After Hours", "The Weeknd") == ("https://cdn/album1000.jpg",)
+def test_deezer_gives_the_cover_of_the_album_it_really_is_and_never_another():
+    albums = {"data": [{"title": "Other Album", "artist": {"name": "The Weeknd"}, "cover_xl": "https://cdn/wrong.jpg"},
+                       {"title": "After Hours", "artist": {"name": "Someone Else"}, "cover_xl": "https://cdn/wrong2.jpg"},
+                       {"title": "After Hours", "artist": {"name": "The Weeknd"}, "cover_xl": "https://cdn/album1000.jpg", "cover_big": "https://cdn/album500.jpg"}]}
+    tracks = {"data": [{"title": "Blinding Lights", "artist": {"name": "The Weeknd"}, "album": {"cover_xl": "https://cdn/track1000.jpg"}}]}
+
+    def routes(url, params):
+        return FakeResponse(payload=albums if url.endswith("search/album") else tracks)
+
+    c, session = client(routes, name="Deezer")
+    deezer = Deezer(c)
+    assert deezer.cover_urls("Blinding Lights", "The Weeknd", "After Hours") == ("https://cdn/album1000.jpg", "https://cdn/album500.jpg")
+    assert session.calls[0][1]["q"] == "The Weeknd After Hours"
+    assert deezer.cover_urls("Blinding Lights", "The Weeknd", "No Such Album") == ("https://cdn/track1000.jpg",)    # the song's own album
+    assert deezer.cover_urls("Unrelated Song", "The Weeknd", "No Such Album") == ()
 
 
 def test_itunes_asks_for_a_1000_pixel_cover_and_understands_singles():
@@ -338,8 +350,8 @@ def test_only_clear_matches_are_applied_without_asking(candidate, query, seconds
 # --- identifying a file ------------------------------------------------------------------------------------------
 
 class FakeSource:
-    def __init__(self, results=(), error=None):
-        self.results, self.error, self.calls = list(results), error, []
+    def __init__(self, results=(), error=None, covers=()):
+        self.results, self.error, self.covers, self.calls, self.cover_calls = list(results), error, tuple(covers), [], []
 
     def search(self, title, artist=None, limit=5):
         self.calls.append((title, artist))
@@ -347,10 +359,11 @@ class FakeSource:
             raise self.error
         return [r for r in self.results]
 
-    def find_cover(self, album, artist):
+    def cover_urls(self, title, artist, album):
+        self.cover_calls.append((title, artist, album))
         if self.error:
             raise self.error
-        return ("https://cdn/fallback.jpg",)
+        return self.covers
 
 
 def tagger(mb_results=(), deezer_results=(), itunes_results=(), tags=None, **sources):
@@ -396,11 +409,39 @@ def test_nothing_found_anywhere_is_an_answer_not_a_crash():
     assert result.candidates == [] and "No encontré" in result.error and not result.sure
 
 
-def test_a_failing_backup_is_ignored_when_there_are_candidates_and_reported_when_there_are_none():
+def test_when_musicbrainz_is_down_deezer_and_itunes_still_identify_the_song():
+    """Regression: MusicBrainz answered 503 and the whole search failed although Deezer had the song."""
+    down = FakeSource(error=MetadataRateLimited("MusicBrainz pide ir más despacio. Espera un minuto e inténtalo de nuevo."))
+    t = tagger(mb=down, deezer_results=[info(source="deezer")])
+    result = t.identify("The Weeknd - Blinding Lights.mp3")
+    assert result.sure and result.candidates[0].source == "deezer" and result.error is None
+    assert len(down.calls) == 1                                    # not asked again for the other word order
+
+
+def test_when_musicbrainz_is_down_every_reading_of_the_file_name_is_tried_on_the_backups():
+    """'Title - Artist': the wrong order comes first, and only the right one finds the song on Deezer."""
+    def only_the_right_order(title, artist=None, limit=5):
+        return [info(source="deezer")] if (title, artist) == ("Blinding Lights", "The Weeknd") else []
+
+    deezer = FakeSource()
+    deezer.search = only_the_right_order
+    result = tagger(mb=FakeSource(error=MetadataNetworkError("sin conexión")), deezer=deezer).identify("Blinding Lights - The Weeknd.mp3")
+    assert result.sure and result.candidates[0].title == "Blinding Lights"
+
+
+def test_when_every_service_fails_the_user_hears_why_and_not_that_the_song_does_not_exist():
+    with pytest.raises(MetadataRateLimited, match="MusicBrainz"):
+        tagger(mb=FakeSource(error=MetadataRateLimited("MusicBrainz pide ir más despacio.")),
+               deezer=FakeSource(error=MetadataNetworkError("x")), itunes=FakeSource(error=MetadataNetworkError("y"))).identify("A - B.mp3")
+    result = tagger(mb=FakeSource(error=MetadataNetworkError("x")), deezer=FakeSource(), itunes=FakeSource()).identify("A - B.mp3")
+    assert result.candidates == [] and "No encontré" in result.error      # the services answered: there really is nothing
+
+
+def test_a_failing_backup_is_ignored_when_there_are_candidates_and_mentioned_when_there_are_none():
     broken = FakeSource(error=MetadataNetworkError("sin conexión"))
     assert tagger(mb_results=[info(kind="live")], deezer=broken, itunes=FakeSource()).identify("A - B.mp3").candidates
-    with pytest.raises(MetadataNetworkError):
-        tagger(deezer=broken).identify("A - B.mp3")
+    result = tagger(deezer=broken).identify("A - B.mp3")              # the others answered "nothing": not found, but say a service failed
+    assert result.candidates == [] and "No encontré" in result.error and "sin conexión" in result.error
 
 
 def test_a_file_without_title_or_artist_to_go_on_explains_what_to_do():
@@ -449,7 +490,7 @@ def test_applying_enriches_the_genre_downloads_the_cover_writes_and_renames_in_t
     result = t.apply("C:/music/x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=True)
     assert log == [("cover", "https://c/a.jpg"), "write", ("rename", "Blinding Lights")]
     assert written["song"].genre == "R&B" and written["cover"] == b"JPEG"
-    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None}
+    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None, "cover_source": "caa"}
 
 
 def test_apply_does_not_rename_unless_asked_and_survives_a_missing_cover():
@@ -459,21 +500,6 @@ def test_apply_does_not_rename_unless_asked_and_survives_a_missing_cover():
                writer=lambda p, s, c: calls.append(c), renamer=lambda p, title: calls.append("renamed"))
     result = t.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)))
     assert calls == [None] and result["cover"] is False and result["path"] == "x.mp3"
-
-
-def test_the_cover_falls_back_to_deezer_when_the_cover_archive_has_none():
-    fetched = []
-
-    def get_image(self, url):
-        fetched.append(url)
-        if "coverartarchive" in url:
-            raise MetadataNotFound("404")
-        return b"IMG"
-
-    images = type("Img", (), {"get_image": get_image})()
-    t = tagger(images=images)
-    assert t.fetch_cover(info(cover_urls=("https://coverartarchive.org/release/a/front-1200",))) == b"IMG"
-    assert fetched[-1] == "https://cdn/fallback.jpg"
 
 
 def test_folders_are_searched_for_supported_audio_only(tmp_path):
@@ -832,28 +858,6 @@ def test_the_window_methods_for_tags_are_safe_with_bad_input(tmp_path, monkeypat
     assert api.tags_cancel() is False and api.get_tag_events() == []
 
 
-def test_a_refused_cover_is_reported_as_a_problem_not_as_no_cover():
-    """Regression: Deezer's image server answers 403 to some VPN addresses; the window said 'no cover found'."""
-    def refuse(self, url):
-        raise MetadataNetworkError("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")
-
-    refused = type("Img", (), {"get_image": refuse})()
-    cover, problem = tagger(images=refused, deezer=FakeSource(error=MetadataNetworkError("x")),
-                            itunes=FakeSource(error=MetadataNetworkError("x"))).fetch_cover_checked(info(cover_urls=("https://cdn/a.jpg",)))
-    assert cover is None and "403" in problem and "VPN" in problem
-    missing = type("Img", (), {"get_image": lambda self, url: (_ for _ in ()).throw(MetadataNotFound("404"))})()
-    assert tagger(images=missing, deezer=FakeSource(), itunes=FakeSource()).fetch_cover_checked(info(cover_urls=("https://cdn/a.jpg",))) == (None, None)
-
-
-def test_apply_tells_the_window_why_the_cover_is_missing(tmp_path):
-    def refuse(self, url):
-        raise MetadataNetworkError("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")
-
-    t = tagger(images=type("Img", (), {"get_image": refuse})(), writer=lambda p, s, c: None, renamer=lambda p, title: p)
-    result = t.apply("x.mp3", info(cover_urls=("https://cdn/a.jpg",)))
-    assert result["cover"] is False and "VPN" in result["cover_problem"]
-
-
 def test_a_403_from_a_service_suggests_trying_without_a_vpn():
     c, _ = client(lambda url, params: FakeResponse(403), name="Deezer")
     with pytest.raises(MetadataNetworkError, match="403.*VPN"):
@@ -861,45 +865,6 @@ def test_a_403_from_a_service_suggests_trying_without_a_vpn():
 
 
 # --- Covers: the album search on the Cover Art Archive, the fallback order, and a cover chosen by the user ---------
-
-def test_musicbrainz_finds_cover_art_archive_urls_by_album_and_artist():
-    payload = {"releases": [{"id": "r1"}, {"id": "r2"}, {"id": "r3"}, {"title": "no id"}]}
-    c, session = client(lambda url, params: FakeResponse(payload=payload), name="MusicBrainz")
-    urls = MusicBrainz(c).find_cover('After "Hours"', "The Weeknd")
-    assert [u.rsplit("/", 2)[-2:] for u in urls] == [["r1", "front-1200"], ["r1", "front-500"], ["r1", "front"],
-                                                      ["r2", "front-1200"], ["r2", "front-500"], ["r2", "front"]]   # only the first two releases
-    url, params = session.calls[0]
-    assert url.endswith("/ws/2/release") and params["query"] == 'release:"After \\"Hours\\"" AND artist:"The Weeknd"'
-    assert MusicBrainz(client(lambda u, p: FakeResponse(payload={}))[0]).find_cover("x", "y") == ()
-
-
-def test_the_cover_is_looked_up_on_itunes_then_the_cover_archive_then_deezer():
-    order = []
-
-    class Source(FakeSource):
-        def __init__(self, name, urls):
-            super().__init__()
-            self.name, self.urls = name, urls
-
-        def find_cover(self, album, artist):
-            order.append(self.name)
-            return self.urls
-
-    fetched = []
-
-    def get_image(self, url):
-        fetched.append(url)
-        if url == "https://caa/ok.jpg":
-            return b"IMG"
-        raise MetadataNotFound("404")
-
-    t = autotag.AutoTagger(musicbrainz=Source("caa", ("https://caa/none.jpg",)), deezer=Source("deezer", ("https://dz/x.jpg",)),
-                           itunes=Source("itunes", ("https://it/x.jpg",)), ytmusic=Source("ytmusic", ("https://caa/ok.jpg",)),
-                           images=type("Img", (), {"get_image": get_image})())
-    assert t.fetch_cover(info(cover_urls=("https://dz/own.jpg",))) == b"IMG"
-    assert order == ["itunes", "caa", "ytmusic"]                                       # Deezer, the refused one, is not even asked
-    assert fetched == ["https://dz/own.jpg", "https://it/x.jpg", "https://caa/none.jpg", "https://caa/ok.jpg"]
-
 
 @pytest.mark.skipif(ffmpeg() is None, reason="needs the bundled ffmpeg")
 def test_a_cover_chosen_by_the_user_is_written_and_nothing_else_changes(tmp_path):
@@ -953,34 +918,186 @@ def ytmusic(answer):
     return YouTubeMusic(client(lambda url, params: FakeResponse(payload=answer), name="YouTube Music")[0])
 
 
+def yt_album(title, artist, thumb):
+    return yt_item(title, f"Álbum • {artist} • 2024", thumb)
+
+
+def test_a_song_on_an_album_gets_the_album_cover_and_a_single_gets_its_own():
+    """Regression found measuring real songs: the song search returns the SINGLE's artwork, the tags say ALBUM."""
+    from apis.ytmusic import YouTubeMusic
+    sent = []
+
+    def answer(url, body):
+        sent.append(body["query"])
+        if body["params"].endswith("CAUQCRAF") or "IYAW" in body["params"]:       # the albums filter
+            return FakeResponse(payload=yt_answer(yt_album("Otro Album", "Otro", "https://yt3.googleusercontent.com/no=w120-h120-l90-rj"),
+                                                  yt_album("la nena de un gang$ter", "paopao", "https://yt3.googleusercontent.com/album=w120-h120-l90-rj")))
+        return FakeResponse(payload=yt_answer(yt_item("en guerra", "paopao, Dei V • en guerra • 2:30", "https://yt3.googleusercontent.com/single=w120-h120-l90-rj")))
+
+    c, _ = client(answer, name="YouTube Music")
+    yt = YouTubeMusic(c)
+    assert yt.cover_urls("en guerra", "paopao", "la nena de un gang$ter")[0] == "https://yt3.googleusercontent.com/album=w1000-h1000-l90-rj"
+    assert sent == ["paopao la nena de un gang$ter"]                              # found in the albums: no second search
+    sent.clear()
+    assert yt.cover_urls("en guerra", "paopao", "en guerra")[0] == "https://yt3.googleusercontent.com/single=w1000-h1000-l90-rj"   # a single: the song's cover
+    assert sent == ["paopao en guerra"]
+    sent.clear()
+    assert yt.cover_urls("en guerra", "paopao", "Album that YouTube does not have")[0].startswith("https://yt3.googleusercontent.com/single")
+    assert len(sent) == 2                                                          # album not found: falls back to the song
+
+
 def test_youtube_music_gives_the_square_cover_of_the_matching_song_at_1000_pixels():
     from apis.ytmusic import parse_songs, square
     answer = yt_answer(yt_item("an$i3dad", "paopao • Otro álbum • 0:40", "https://yt3.googleusercontent.com/other=w120-h120-l90-rj"),
                        yt_item("fre3styl3", "paopao • fre3styl3 • 1:45"))
     assert parse_songs(answer)[1] == ("fre3styl3", "paopao", "fre3styl3", "https://yt3.googleusercontent.com/abc=w120-h120-l90-rj")
-    urls = ytmusic(answer).find_cover("fre3styl3", "paopao")
+    urls = ytmusic(answer).cover_urls("fre3styl3", "paopao", "fre3styl3")
     assert urls == ("https://yt3.googleusercontent.com/abc=w1000-h1000-l90-rj", "https://yt3.googleusercontent.com/abc=w120-h120-l90-rj")
     assert square("https://x.test/a=w60-h60-p-l90-rj", 500).startswith("https://x.test/a=w500-h500")
 
 
 def test_youtube_music_never_gives_the_cover_of_another_song_or_artist():
     answer = yt_answer(yt_item("fre3styl3", "Someone Else • fre3styl3 • 1:45"), yt_item("Another song", "paopao • Another album • 2:00"))
-    assert ytmusic(answer).find_cover("fre3styl3", "paopao") == ()
+    assert ytmusic(answer).cover_urls("fre3styl3", "paopao", "fre3styl3") == ()
 
 
 def test_youtube_music_changing_its_answer_gives_nothing_instead_of_an_error():
     for answer in ({}, {"contents": []}, yt_answer({"musicResponsiveListItemRenderer": {"flexColumns": "broken"}}),
                    yt_answer({"musicResponsiveListItemRenderer": {"flexColumns": [], "thumbnail": {}}})):
-        assert ytmusic(answer).find_cover("fre3styl3", "paopao") == ()
+        assert ytmusic(answer).cover_urls("fre3styl3", "paopao", "fre3styl3") == ()
 
 
 def test_youtube_music_is_asked_with_a_post_and_the_songs_filter():
-    from apis.ytmusic import SEARCH_URL, SONGS_FILTER
+    from apis.ytmusic import ALBUMS_FILTER, SEARCH_URL, SONGS_FILTER
     c, session = client(lambda url, params: FakeResponse(payload={}), name="YouTube Music")
     sent = []
     session.post = lambda url, json=None, headers=None, timeout=None: sent.append((url, json, headers)) or FakeResponse(payload={})
     from apis.ytmusic import YouTubeMusic
-    YouTubeMusic(c).find_cover("Album", "Artist")
-    url, body, headers = sent[0]
-    assert url == SEARCH_URL and body["query"] == "Artist Album" and body["params"] == SONGS_FILTER
+    YouTubeMusic(c).cover_urls("Song", "Artist", "Album")
+    (url, album_body, headers), (_url, song_body, _headers) = sent[0], sent[1]
+    assert url == SEARCH_URL and album_body["query"] == "Artist Album" and album_body["params"] == ALBUMS_FILTER    # the album first...
+    assert song_body["query"] == "Artist Song" and song_body["params"] == SONGS_FILTER                              # ...then the song
     assert headers["Origin"] == "https://music.youtube.com"
+
+
+# --- Covers as a step of their own: found with the tags, whichever service gave them -----------------------------
+
+def test_musicbrainz_gives_cover_art_archive_urls_only_for_the_release_that_really_is_the_album():
+    def release_row(rid, title, artist):
+        return {"id": rid, "title": title, "artist-credit": [{"name": artist}]}
+
+    payload = {"releases": [release_row("r0", "Other", "The Weeknd"), release_row("r1", "After Hours", "The Weeknd"),
+                            release_row("r2", "After Hours", "Imposter"), release_row("r3", "After Hours (Deluxe)", "The Weeknd"),
+                            release_row("r4", "After Hours", "The Weeknd")]}
+    c, session = client(lambda url, params: FakeResponse(payload=payload), name="MusicBrainz")
+    urls = MusicBrainz(c).cover_urls("Blinding Lights", 'The "Weeknd"', "After Hours")
+    assert [u.rsplit("/", 2)[-2:] for u in urls] == [["r1", "front-1200"], ["r1", "front-500"], ["r1", "front"],
+                                                      ["r4", "front-1200"], ["r4", "front-500"], ["r4", "front"]]     # not the imposter, not the deluxe
+    url, params = session.calls[0]
+    assert url.endswith("/ws/2/release") and params["query"] == 'release:"After Hours" AND artist:"The \\"Weeknd\\""'
+    assert MusicBrainz(client(lambda u, p: FakeResponse(payload={}))[0]).cover_urls("x", "y", "z") == ()
+    assert MusicBrainz(c).cover_urls("A song with no album", "The Weeknd", "") == ()                                  # nothing to look for
+
+
+def test_itunes_gives_the_cover_of_the_album_or_the_song_it_really_is():
+    albums = {"results": [{"collectionName": "Other - Single", "artistName": "The Weeknd", "artworkUrl100": "https://is1.test/other/100x100bb.jpg"},
+                          {"collectionName": "After Hours", "artistName": "Someone Else", "artworkUrl100": "https://is1.test/wrong/100x100bb.jpg"},
+                          {"collectionName": "After Hours", "artistName": "The Weeknd", "artworkUrl100": "https://is1.test/ah/100x100bb.jpg"}]}
+    songs = {"results": [{"trackName": "Blinding Lights", "artistName": "The Weeknd", "artworkUrl100": "https://is1.test/bl/100x100bb.jpg"}]}
+    c, session = client(lambda url, params: FakeResponse(payload=albums if params["entity"] == "album" else songs), name="iTunes")
+    it = ITunes(c)
+    assert it.cover_urls("Blinding Lights", "The Weeknd", "After Hours") == ("https://is1.test/ah/1000x1000bb.jpg",)
+    assert it.cover_urls("Blinding Lights", "The Weeknd", "An Album Apple Lacks") == ("https://is1.test/bl/1000x1000bb.jpg",)   # the song's cover
+    assert it.cover_urls("Unrelated Song", "The Weeknd", "An Album Apple Lacks") == ()
+
+
+class Images:
+    """Stands in for the picture downloader: `table` maps a url to bytes or to the error it raises."""
+
+    def __init__(self, table):
+        self.table, self.asked = table, []
+
+    def get_image(self, url):
+        self.asked.append(url)
+        outcome = self.table.get(url, MetadataNotFound("404"))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def chain(*providers, images, clock=lambda: 0):
+    from covers import CoverFinder
+    return CoverFinder(list(providers), images, clock)
+
+
+def test_the_chain_is_asked_in_order_and_stops_at_the_first_picture():
+    first, second, third = FakeSource(covers=("https://a/1.jpg",)), FakeSource(covers=("https://b/1.jpg",)), FakeSource(covers=("https://c/1.jpg",))
+    images = Images({"https://b/1.jpg": b"SECOND", "https://c/1.jpg": b"THIRD"})
+    found = chain(("one", first), ("two", second), ("three", third), images=images).find(info(source=""))
+    assert (found.data, found.source, found.problem) == (b"SECOND", "two", None)
+    assert images.asked == ["https://a/1.jpg", "https://b/1.jpg"] and third.cover_calls == []          # the third was never asked
+    assert second.cover_calls == [("Blinding Lights", "The Weeknd", "After Hours")]                    # searched with the song's tags
+
+
+def test_the_cover_does_not_depend_on_which_service_gave_the_tags():
+    """The tags came from Deezer, whose pictures are refused: the cover still comes from another service."""
+    deezer_own = ("https://deezer.test/own.jpg",)
+    images = Images({"https://deezer.test/own.jpg": MetadataRefused("Deezer negó el acceso (403)."), "https://it/x.jpg": b"FROM ITUNES"})
+    deezer, itunes = FakeSource(covers=deezer_own), FakeSource(covers=("https://it/x.jpg",))
+    found = chain(("deezer", deezer), ("itunes", itunes), images=images).find(info(source="deezer", cover_urls=deezer_own))
+    assert (found.data, found.source, found.problem) == (b"FROM ITUNES", "itunes", None)
+
+
+def test_the_pictures_a_candidate_already_carries_are_used_at_its_turn_without_searching_again():
+    own = ("https://caa/own.jpg",)
+    searched = FakeSource(covers=("https://never/asked.jpg",))
+    images = Images({"https://caa/own.jpg": b"EXACT"})
+    found = chain(("itunes", FakeSource()), ("caa", searched), images=images).find(info(source="musicbrainz", cover_urls=own))
+    assert found.data == b"EXACT" and found.source == "caa" and searched.cover_calls == []      # the exact release cover: no extra request
+
+
+def test_a_service_that_refuses_is_left_alone_for_ten_minutes():
+    from covers import PAUSE_SECONDS
+    now = [0]
+    blocked = FakeSource(covers=("https://blocked.test/a.jpg",))
+    images = Images({"https://blocked.test/a.jpg": MetadataRefused("El servidor negó el acceso (403)."), "https://ok/b.jpg": b"OK"})
+    finder = chain(("blocked", blocked), ("ok", FakeSource(covers=("https://ok/b.jpg",))), images=images, clock=lambda: now[0])
+    assert finder.find(info(source="")).data == b"OK"
+    assert finder.find(info(source="")).data == b"OK"
+    assert len(blocked.cover_calls) == 1 and images.asked.count("https://blocked.test/a.jpg") == 1      # the second song did not even try it
+    now[0] = PAUSE_SECONDS + 1
+    finder.find(info(source=""))
+    assert len(blocked.cover_calls) == 2                                                                  # asked again after the pause
+
+
+def test_a_service_that_is_rate_limited_or_refuses_its_search_is_paused_too():
+    limited = FakeSource(error=MetadataRateLimited("Deezer pide ir más despacio."))
+    finder = chain(("deezer", limited), ("ok", FakeSource(covers=("https://ok/b.jpg",))), images=Images({"https://ok/b.jpg": b"OK"}))
+    assert finder.find(info(source="")).data == b"OK" and finder.find(info(source="")).data == b"OK"
+    assert len(limited.cover_calls) == 1
+
+
+def test_the_problem_is_reported_only_when_a_service_refused_and_nobody_else_has_it():
+    refused = MetadataRefused("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")
+    images = Images({"https://blocked.test/a.jpg": refused})
+    nothing = chain(("blocked", FakeSource(covers=("https://blocked.test/a.jpg",))), ("empty", FakeSource()), images=images).find(info(source=""))
+    assert nothing.data is None and "403" in nothing.problem and "VPN" in nothing.problem
+    nobody = chain(("a", FakeSource()), ("b", FakeSource(covers=("https://b/none.jpg",))), images=Images({})).find(info(source=""))
+    assert (nobody.data, nobody.problem) == (None, None)                                                 # genuinely no cover: nothing wrong
+    broken = chain(("a", FakeSource(error=MetadataNetworkError("sin conexión"))), images=Images({})).find(info(source=""))
+    assert broken.data is None and broken.problem == "sin conexión"
+
+
+def test_the_default_chain_asks_every_service_in_the_declared_order():
+    t = tagger()
+    assert [name for name, _provider in t.covers.providers] == list(autotag.COVER_ORDER)
+    assert sorted(autotag.COVER_ORDER) == ["caa", "deezer", "itunes", "ytmusic"]
+
+
+def test_apply_tells_the_window_why_the_cover_is_missing_and_where_it_came_from():
+    images = Images({"https://c/a.jpg": MetadataRefused("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")})
+    t = tagger(images=images, writer=lambda p, s, c: None, renamer=lambda p, title: p)
+    result = t.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)))
+    assert result["cover"] is False and "VPN" in result["cover_problem"] and result["cover_source"] == ""
+    good = tagger(images=Images({"https://c/a.jpg": b"IMG"}), writer=lambda p, s, c: None, renamer=lambda p, title: p)
+    assert good.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)))["cover_source"] == "caa"

@@ -2,6 +2,7 @@
 MusicBrainz asks for at most one request per second and a User-Agent that says who is asking."""
 import re
 
+from apis.matching import same_artist, same_name
 from apis.metadata_http import MetadataClient
 from apis.song_info import KINDS, SongInfo
 
@@ -66,15 +67,19 @@ class MusicBrainz:
             found.extend(self._infos(recording))
         return found
 
-    def find_cover(self, album, artist, releases=2):
-        """Cover Art Archive urls (biggest first) of the first releases that match this album and artist, or ().
-        For songs another service identified, so the cover can still come from here."""
+    def cover_urls(self, title, artist, album):
+        """Cover Art Archive urls (biggest first) of the releases that really are this album by this artist, or ()."""
+        if not album:
+            return ()
         query = f'release:"{_lucene(album)}" AND artist:"{_lucene(artist)}"'
-        data = self.client.get_json(f"{BASE}/release", {"query": query, "fmt": "json", "limit": releases})
-        urls = []
-        for release in (data.get("releases") or [])[:releases]:
-            if release.get("id"):
+        data = self.client.get_json(f"{BASE}/release", {"query": query, "fmt": "json", "limit": 5})
+        urls, kept = [], 0
+        for release in data.get("releases") or []:
+            if kept == 2:
+                break
+            if release.get("id") and same_name(album, release.get("title")) and same_artist(artist, _credit(release.get("artist-credit"))):
                 urls += [f"{COVERS}/{release['id']}/{name}" for name in ("front-1200", "front-500", "front")]
+                kept += 1
         return tuple(urls)
 
     def _infos(self, recording):

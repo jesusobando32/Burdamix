@@ -1,4 +1,5 @@
 """Deezer: the back-up for songs MusicBrainz does not know, and the source of the genre. Free, no account."""
+from apis.matching import same_artist, same_name
 from apis.metadata_http import MetadataClient
 from apis.song_info import SongInfo
 from exceptions import MetadataError, MetadataNetworkError, MetadataRateLimited
@@ -66,8 +67,17 @@ class Deezer:
         except (MetadataError, KeyError, TypeError, ValueError):
             pass
 
-    def find_cover(self, album, artist):
-        """Cover urls (biggest first) of the album that best matches, or ()."""
-        data = self._get("search/album", {"q": f"{artist} {album}", "limit": 1})
-        first = (data.get("data") or [None])[0] or {}
-        return tuple(u for u in (first.get("cover_xl"), first.get("cover_big")) if u)
+    def cover_urls(self, title, artist, album):
+        """Cover urls (biggest first) of this album (or, failing that, of this song) by this artist, or ()."""
+        def covers(item):
+            return tuple(u for u in (item.get("cover_xl"), item.get("cover_big")) if u)
+
+        if album:
+            for item in self._get("search/album", {"q": f"{artist} {album}", "limit": 5}).get("data") or []:
+                if same_name(album, item.get("title")) and same_artist(artist, (item.get("artist") or {}).get("name")) and covers(item):
+                    return covers(item)
+        for item in self._get("search/track", {"q": f"{artist} {title}", "limit": 5}).get("data") or []:
+            found = item.get("album") or {}
+            if same_name(title, item.get("title")) and same_artist(artist, (item.get("artist") or {}).get("name")) and covers(found):
+                return covers(found)
+        return ()

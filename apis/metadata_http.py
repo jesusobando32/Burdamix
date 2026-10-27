@@ -7,7 +7,7 @@ import time
 import requests
 
 import const
-from exceptions import MetadataNetworkError, MetadataNotFound, MetadataRateLimited
+from exceptions import MetadataNetworkError, MetadataNotFound, MetadataRateLimited, MetadataRefused
 
 USER_AGENT = f"Burdamix/{const.APP_VERSION} (https://github.com/jesusobando32/Burdamix)"   # MusicBrainz asks for "App/version (contact)"
 MAX_IMAGE_BYTES = 15 * 1024 * 1024   # a cover bigger than this is not a cover
@@ -63,7 +63,7 @@ class MetadataClient:
         if response.status_code == 404:
             raise MetadataNotFound(f"{self.name} no tiene lo que se buscó.")
         if response.status_code == 403:   # some services refuse VPN and data-centre addresses
-            raise MetadataNetworkError(f"{self.name} negó el acceso (403). Si usas una VPN, prueba sin ella.")
+            raise MetadataRefused(f"{self.name} negó el acceso (403). Si usas una VPN, prueba sin ella.")
         if response.status_code != 200:
             raise MetadataNetworkError(f"{self.name} respondió con un error ({response.status_code}).")
         return response

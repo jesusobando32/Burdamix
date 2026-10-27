@@ -44,6 +44,11 @@ class MetadataNetworkError(MetadataError):
     pass
 
 
+class MetadataRefused(MetadataNetworkError):
+    """A service refused us on purpose (403): some block VPN and data-centre addresses. Asking again will not help."""
+    pass
+
+
 class MetadataRateLimited(MetadataError):
     """A metadata service asked us to slow down."""
     pass

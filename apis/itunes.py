@@ -1,6 +1,7 @@
 """Apple's iTunes Search API: the second back-up, with large covers and the genre. Free, no account."""
 import re
 
+from apis.matching import same_artist, same_name
 from apis.metadata_http import MetadataClient
 from apis.song_info import SongInfo
 
@@ -57,9 +58,14 @@ class ITunes:
             ))
         return infos
 
-    def find_cover(self, album, artist):
-        for item in self._search(f"{artist} {album}", "album", 1):
-            art = item.get("artworkUrl100")
-            if art:
-                return (artwork(art, 1000),)
+    def cover_urls(self, title, artist, album):
+        """The 1000 px cover of this album (or, failing that, of this song) by this artist, or ()."""
+        if album:
+            for item in self._search(f"{artist} {album}", "album", 5):
+                name, _kind = _album_and_kind(item.get("collectionName"), item.get("artistName"))
+                if item.get("artworkUrl100") and same_name(album, name) and same_artist(artist, item.get("artistName")):
+                    return (artwork(item["artworkUrl100"], 1000),)
+        for item in self._search(f"{artist} {title}", "song", 5):
+            if item.get("artworkUrl100") and same_name(title, item.get("trackName")) and same_artist(artist, item.get("artistName")):
+                return (artwork(item["artworkUrl100"], 1000),)
         return ()

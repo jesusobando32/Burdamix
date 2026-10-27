@@ -7,20 +7,27 @@ import copy
 import os
 import re
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 
 import tagwriter
 from apis.deezer import Deezer
 from apis.itunes import ITunes
+from apis.matching import similarity
 from apis.metadata_http import MetadataClient
 from apis.musicbrainz import MusicBrainz
 from apis.ytmusic import YouTubeMusic
+from covers import CoverFinder
 from apis.song_info import SongInfo
 from apis.youtube import STRICT_TOLERANCE, UNWANTED_WORDS, clean_song_title, normalize
 from exceptions import MetadataError, MetadataNotFound
 from tagwriter import is_complete
 
 MAX_CANDIDATES = 5
+# The order the cover is looked for. Measured on 19 real songs (Latin urban music), each cover compared with Spotify's:
+#   deezer   15 right, 0.6 s per song, never wrong when it downloads (a VPN refuses some: it is paused when that happens)
+#   ytmusic  17 right, 1.0 s, finds them all, but gives a single's cover when the album's differs (2 of 19)
+#   caa       9 right, 3.0 s, never wrong, but only has about half
+#   itunes    4 right, 3.4 s, hardly has this music and is the slowest
+COVER_ORDER = ("deezer", "ytmusic", "caa", "itunes")
 SURE_TITLE = 0.92             # how alike the titles must be to apply a match without asking
 SURE_ARTIST = 0.80
 KIND_BONUS = {"album": 6, "ep": 3, "single": 1, "other": 0, "compilation": -8, "live": -15}
@@ -73,19 +80,6 @@ def queries_for(tags, path, title=None, artist=None):
 
 
 # ---------- ranking ----------
-
-def similarity(a, b):
-    """0..1. Words of the shorter text all appearing in the longer one counts as 0.88: close, but never 'the same'."""
-    a, b = normalize(a), normalize(b)
-    if not a or not b:
-        return 0.0
-    if a == b:
-        return 1.0
-    ratio = SequenceMatcher(None, a, b).ratio()
-    if set(a.split()) <= set(b.split()) or set(b.split()) <= set(a.split()):
-        ratio = max(ratio, 0.88)
-    return ratio
-
 
 def _title_similarity(wanted, found):
     return similarity(clean_song_title(wanted), clean_song_title(found))
@@ -147,7 +141,7 @@ def rank(pairs, file_seconds, limit=MAX_CANDIDATES):
 # ---------- the tagger ----------
 
 class AutoTagger:
-    def __init__(self, musicbrainz=None, deezer=None, itunes=None, images=None, reader=None, writer=None, renamer=None, ytmusic=None):
+    def __init__(self, musicbrainz=None, deezer=None, itunes=None, images=None, reader=None, writer=None, renamer=None, ytmusic=None, covers=None):
         self.musicbrainz = musicbrainz or MusicBrainz()
         self.deezer = deezer or Deezer()
         self.itunes = itunes or ITunes()
@@ -156,6 +150,8 @@ class AutoTagger:
         self.read = reader or tagwriter.read_tags
         self.write = writer or tagwriter.write_tags
         self.rename = renamer or tagwriter.rename_to_title
+        services = {"deezer": self.deezer, "itunes": self.itunes, "ytmusic": self.ytmusic, "caa": self.musicbrainz}
+        self.covers = covers or CoverFinder([(name, services[name]) for name in COVER_ORDER], self.images)
 
     def identify(self, path, title=None, artist=None):
         """Look the song up. Never raises for 'nothing found' (that is an answer); raises MetadataError for network trouble."""
@@ -169,28 +165,42 @@ class AutoTagger:
             result.error = "No sé qué canción es: el archivo no tiene título ni artista y su nombre no ayuda. Escríbelos tú."
             return result
 
-        pairs = []
+        pairs, failures, answered = [], [], []
+
+        def ask(source, query):
+            """Add what `source` knows. A service that is down is remembered, not fatal: the others may have the song."""
+            try:
+                pairs.extend((info, query) for info in source.search(query.title, query.artist))
+                answered.append(source)
+                return True
+            except MetadataError as error:
+                failures.append(error)
+                return False
+
         for query in queries:
-            pairs += [(info, query) for info in self.musicbrainz.search(query.title, query.artist)]
+            if not ask(self.musicbrainz, query):
+                break                               # it is failing: asking again with the other word order would fail the same way
         ranked = rank(pairs, tags.duration)
 
         if not (ranked and is_sure(ranked[0][0], ranked[0][1], tags.duration)):
-            query = ranked[0][1] if ranked else queries[0]
+            # With a best guess, ask the back-ups about that one. With none (MusicBrainz knows nothing or is down), try
+            # every way of reading the file name: the right word order may be the one MusicBrainz never got to try.
             for source in (self.deezer, self.itunes):
-                try:
-                    pairs += [(info, query) for info in source.search(query.title, query.artist)]
-                except MetadataError:
-                    if not pairs:
-                        raise                       # nothing found anywhere and the back-up failed: say why
-                    continue
+                for query in ([ranked[0][1]] if ranked else queries):
+                    ask(source, query)
                 ranked = rank(pairs, tags.duration)
                 if ranked and is_sure(ranked[0][0], ranked[0][1], tags.duration):
                     break
+
+        if not answered and failures:
+            raise failures[0]                       # no service could answer at all: say why, not "not found"
 
         result.candidates = [info for info, _query in ranked]
         result.sure = bool(ranked) and is_sure(ranked[0][0], ranked[0][1], tags.duration)
         if not result.candidates:
             result.error = "No encontré esta canción en MusicBrainz, Deezer ni iTunes. Prueba escribiendo el título y el artista."
+            if failures:                              # some service could not answer: the song may be there
+                result.error += f" Ojo: {failures[0]}"
         return result
 
     # --- what will change, shown before anything is written ---
@@ -235,44 +245,20 @@ class AutoTagger:
         return self.fetch_cover_checked(info)[0]
 
     def fetch_cover_checked(self, info):
-        """(cover bytes or None, problem or None). The candidate's own urls first, then the same album on iTunes,
-        on the Cover Art Archive, on YouTube Music and on Deezer. `problem` is set when a server refused us (403, no internet): that is different from "this song has no
-        cover", and the user needs to know which one it was."""
-        problem = []
-
-        def attempt(url):
-            try:
-                return self.images.get_image(url)
-            except MetadataNotFound:
-                return None                       # a size that does not exist, or no cover: nothing wrong
-            except MetadataError as error:
-                problem.append(str(error))        # refused, or the connection dropped
-                return None
-
-        for url in info.cover_urls:
-            data = attempt(url)
-            if data:
-                return data, None
-        if info.album and info.artist:
-            for source in (self.itunes, self.musicbrainz, self.ytmusic, self.deezer):   # Deezer last: it is the one whose pictures get refused
-                try:
-                    urls = source.find_cover(info.album, info.artist)
-                except MetadataError as error:
-                    problem.append(str(error))
-                    continue
-                for url in urls:
-                    data = attempt(url)
-                    if data:
-                        return data, None
-        return None, (problem[0] if problem else None)
+        """(cover bytes or None, problem or None). The cover is a step of its own: it is searched with the song's tags,
+        whichever service gave them (see covers.py). `problem` is set when a server refused us (403, no internet), which
+        is different from "nobody has a cover for this song", and the user needs to know which one it was."""
+        found = self.covers.find(info)
+        return found.data, found.problem
 
     def apply(self, path, info, rename=False):
         """Write `info` and its cover into the file. Returns {path, cover, genre, cover_problem}; raises TagWriteError on failure."""
         info = self.enrich(info)
-        cover, problem = self.fetch_cover_checked(info)
-        self.write(path, info, cover)
+        found = self.covers.find(info)
+        self.write(path, info, found.data)
         new_path = self.rename(path, info.title) if rename else path
-        return {"path": new_path, "cover": cover is not None, "genre": info.genre, "cover_problem": problem}
+        return {"path": new_path, "cover": found.data is not None, "genre": info.genre, "cover_problem": found.problem,
+                "cover_source": found.source}
 
 
 def collect_audio_files(paths):
