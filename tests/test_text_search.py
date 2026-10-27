@@ -43,6 +43,11 @@ def test_typed_words_are_found_even_when_the_artist_writes_them_apart():
     assert coverage("badtrip mora", song("Bad Tribe", "Vortek's", "Un asile")) == 0.0
 
 
+def test_a_short_word_must_be_a_whole_word():
+    assert coverage("calenton mora", song("Ti Penso E Cambia Il Mondo", "Adriano Celentano, Gianni Morandi", "")) == 0.0
+    assert coverage("calenton mora", song("CALENTÓN", "Mora", "")) == 1.0
+
+
 def test_deezer_answers_and_itunes_is_not_asked():
     deezer, itunes = Source([song(source="deezer")]), Source([song()])
     found, problems = search_with(deezer=deezer, itunes=itunes).lookup("badtrip mora")
@@ -186,10 +191,12 @@ def test_typing_a_name_needs_no_spotify_and_marks_only_the_first_result(tmp_path
     import login
     monkeypatch.setattr(login, "is_client_configured", lambda: False)             # no Spotify app: the text path must not care
     api = window(tmp_path, monkeypatch)
+    api._cover_tagger = type("T", (), {"preview_cover": lambda self, info: ("data:image/jpeg;base64,AA", None)})()
     monkeypatch.setattr("gui.backend.search_songs", lambda text, limit: ([song(), song("Otra", "Mora", "X", source="deezer")], []))
     result = api.preview("badtrip mora")
     assert "error" not in result and result["kind"] == "search" and len(result["items"]) == 2
     assert result["preselect"] == [result["items"][0]["key"]]
+    assert all(i["cover"].startswith("data:image") for i in result["items"])     # pictures come through the cover chain, not the blocked CDN
     assert api._pending["spotify"] is None and set(api._pending["tracks"]) == {i["key"] for i in result["items"]}
 
 

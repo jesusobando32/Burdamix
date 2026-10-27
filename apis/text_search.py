@@ -25,14 +25,15 @@ def _words(text):
 
 def coverage(query, info):
     """Share (0..1) of the typed words found in the result's title, artist or album. 'badtrip' is found in 'Bad Trip':
-    the words are also compared with the spaces taken out."""
+    a long word is also looked for with the spaces taken out. A short one must be a whole word."""
     wanted = _words(query)
     long_enough = [w for w in wanted if len(w) >= 3] or wanted
     if not long_enough:
         return 0.0
     text = normalize(f"{info.title} {info.artist} {info.album}")
     compact = text.replace(" ", "")
-    found = sum(1 for w in long_enough if w in text.split() or w in compact)
+    words = text.split()
+    found = sum(1 for w in long_enough if w in words or (len(w) >= 5 and w in compact))   # 'mora' is not inside 'Morandi'
     return found / len(long_enough)
 
 

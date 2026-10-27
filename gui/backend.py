@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 import webbrowser
 
 import const
@@ -52,6 +53,7 @@ class Api:
         self._downloader = None     # the running download, if any
         self._busy = False
         self._window = None
+        self._cover_tagger = None   # finds the pictures shown for searched songs (kept: it remembers what it found)
         self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
         self._apply_settings()
@@ -221,11 +223,30 @@ class Api:
                 "saved": "", "already": helper.already_downloaded(track, name, output_path),
             })
 
+        self._show_covers(items, {t.resource_id: t for _i, t, _n in plan})
         self._pending = {"spotify": None, "tracks": {t.resource_id: t for _i, t, _n in plan}, "output_path": output_path,
                          "kind": "search"}
         first = items[0]
         return {"kind": "search", "title": text, "cover": first["cover"], "items": items, "total": len(items), "folder": output_path,
                 "interludes": [], "repeated": 0, "limited": False, "preselect": [] if first["already"] else [first["key"]]}
+
+    def _show_covers(self, items, tracks):
+        """Replace each item's picture address by the picture itself. The window cannot load Deezer's pictures when Deezer
+        refuses the connection (403 by IP or VPN), so they are asked through the cover chain, which tries other services."""
+        if self._cover_tagger is None:
+            from autotag import AutoTagger
+            self._cover_tagger = AutoTagger()
+        tagger = self._cover_tagger
+
+        def thumb(item):
+            try:
+                return tagger.preview_cover(tracks[item["key"]].song_info)[0]
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=len(items)) as pool:
+            for item, picture in zip(items, pool.map(thumb, items)):
+                item["cover"] = picture or const.UNKNOWN_ALBUM_COVER_URL
 
     def _preview(self, kind, url, last):
         if self._busy:
