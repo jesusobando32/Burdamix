@@ -109,7 +109,7 @@ def friendly_reason(error):
     category = reason_category(error)
     if category == "no_encontrada":
         if "duration" in str(error).lower():
-            return ("No encontré en YouTube una versión con la misma duración que en Spotify "
+            return ("No encontré en YouTube un video que sea esta canción, con su título y la misma duración "
                     "(prefiero saltarla antes que bajar una equivocada).")
         return "YouTube no devolvió resultados para esta canción."
     if category == "otro":

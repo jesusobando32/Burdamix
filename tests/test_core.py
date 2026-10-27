@@ -956,7 +956,7 @@ def test_last_resort_results_must_contain_the_title_so_another_song_is_never_cho
 def test_require_title_only_filters_when_asked():
     from apis.youtube import rank_candidates
     other = cand("Artist - Something else", 200, "Artist", 10, "x")
-    assert rank_candidates([other], "Wanted", ["Artist"], 200)                      # normal search: duration is enough
+    assert not rank_candidates([other], "Wanted", ["Artist"], 200)                  # the same length is not enough: it is another song
     assert not rank_candidates([other], "Wanted", ["Artist"], 200, require_title=True)
 
 

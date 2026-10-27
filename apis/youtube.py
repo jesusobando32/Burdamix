@@ -127,6 +127,37 @@ def unknown_guests(video_title, known_text):
     return found
 
 
+TITLE_WORDS_REQUIRED = 0.6   # share of the song title's words a video's title must contain to be taken for the song
+
+
+def title_relevant(song_title, video_title):
+    """Could this video be the song at all? A duration close to the song's proves nothing: 'Ozuna - En Otro Mundo' lasts about as
+    long as 'Mujeres Lindas' and is another artist's song. The video's title must hold most of the words of the song's title
+    (not all: 'Shakira: Bzrp Music Sessions, Vol. 53/66' is written 'SHAKIRA || BZRP Music Sessions #53/66').
+    A title with no letters or digits at all (a symbol) cannot be checked, so it is not held against the video."""
+    words = [w for w in normalize(clean_song_title(song_title)).split() if len(w) >= 2 or w.isdigit()]
+    if not words or title_in(song_title, video_title):
+        return True
+    video = normalize(video_title)
+    present, compact = set(video.split()), video.replace(" ", "")
+    found = sum(1 for w in words if w in present or (len(w) >= 5 and w in compact))
+    return found / len(words) >= TITLE_WORDS_REQUIRED
+
+
+NO_ARTIST_TOLERANCE = 3     # seconds: a video that never mentions the artist must last almost exactly what the song lasts
+
+
+def names_artist(candidate, artists):
+    """Does the video's title or its channel mention one of the song's artists? 'Notah - En Mis Sueños' shares its title with RMAND's
+    song and has nothing to do with it; only the artist tells them apart."""
+    names = artist_names(artists)
+    if not names:
+        return True                       # no artist known: nothing to check
+    text = f"{normalize(candidate.title)} {normalize(candidate.channel)}"
+    compact = text.replace(" ", "")
+    return any(f" {name} " in f" {text} " or (len(name) >= 5 and name.replace(" ", "") in compact) for name in names)
+
+
 def channel_points(channel, artists):
     """+50 when the channel is the artist or 'Artist - Topic', +25 when it only contains the name."""
     channel = normalize(channel)
@@ -208,9 +239,13 @@ def rank_candidates(candidates, title, artists, duration_seconds, max_length=Non
     for candidate in candidates:
         if candidate.duration is None or (max_length and candidate.duration > max_length):
             continue
+        if not title_relevant(title, candidate.title):
+            continue
         score, title_matches, difference = score_candidate(candidate, title, artists, duration_seconds, asked)
         if require_title and not title_matches:
             continue
+        if difference is not None and difference > NO_ARTIST_TOLERANCE and not names_artist(candidate, artists):
+            continue                      # same title, different artist (or a stranger): only an exact duration could vouch for it
         if difference is None or difference <= STRICT_TOLERANCE or (difference <= RELAXED_TOLERANCE and title_matches):
             scored.append((score, candidate))
 

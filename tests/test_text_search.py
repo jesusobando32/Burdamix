@@ -331,3 +331,38 @@ def test_the_connection_waits_longer_and_retries_for_slow_networks():
     from apis.youtube import YouTube
     options = YouTube()._options()
     assert options["socket_timeout"] >= 30 and options["extractor_retries"] >= 3
+
+
+# --- a video of another song is never taken for this one ---------------------------------------------------------------
+
+def test_a_video_of_another_song_with_a_similar_duration_is_rejected():
+    ozuna = Candidate("ozuna", "Ozuna - En Otro Mundo [Audio Oficial]", "CamiloGonzalezTRB", 195, 9_000_000)
+    other_by_artist = Candidate("diskreto", "Rmand - Diskreto (Audio Oficial)", "RMAND", 201, 100_000)
+    assert rank_candidates([ozuna, other_by_artist], "Mujeres Lindas", ["RMAND"], 202, 1800) == []      # 7 s and 1 s off, still not the song
+    right = Candidate("right", "RMAND - Mujeres Lindas (Audio Oficial)", "RMAND", 203, 1)
+    assert rank_candidates([ozuna, other_by_artist, right], "Mujeres Lindas", ["RMAND"], 202, 1800)[0].url == "right"
+
+
+def test_the_title_may_be_written_differently_and_symbols_are_not_checked():
+    from apis.youtube import title_relevant
+    assert title_relevant("Shakira: Bzrp Music Sessions, Vol. 53/66", "SHAKIRA || BZRP Music Sessions #53/66")
+    assert title_relevant("badtrip :(", "Mora - Bad Trip :( (Visualizer)") and title_relevant("Tití Me Preguntó", "Titi Me Pregunto")
+    assert title_relevant("∆", "Anything at all") and title_relevant("Song (feat. X)", "Artist - Song")
+    assert not title_relevant("Mujeres Lindas", "Ozuna - En Otro Mundo") and not title_relevant("STV", "RaiNao - Otra cosa")
+
+
+def test_no_video_for_the_song_says_so_instead_of_downloading_another():
+    from downloader import friendly_reason
+    from exceptions import YoutubeItemNotFound
+    text = friendly_reason(YoutubeItemNotFound("No YouTube video matches Spotify's duration of 202s"))
+    assert "título" in text and "equivocada" in text
+
+
+def test_a_video_that_never_names_the_artist_needs_an_almost_exact_duration():
+    notah = Candidate("notah", "Notah - En Mis Sueños (Video Oficial)", "Notah", 223, 1)      # another artist's song, same title
+    assert rank_candidates([notah], "En Mis Sueños", ["RMAND"], 206, 1800) == []
+    assert rank_candidates([notah], "En Mis Sueños", ["RMAND"], 223, 1800)                       # an exact duration still vouches for it
+    fan = Candidate("fan", "En Mis Sueños (Audio)", "Un fan", 205, 1)                            # a re-upload that never says who sings it
+    assert rank_candidates([fan], "En Mis Sueños", ["RMAND"], 206, 1800)[0].url == "fan"          # 1 s off: accepted
+    real = Candidate("real", "RMAND - En Mis Sueños (Visualizer)", "RMAND", 210, 1)
+    assert rank_candidates([notah, real], "En Mis Sueños", ["RMAND"], 206, 1800)[0].url == "real"
