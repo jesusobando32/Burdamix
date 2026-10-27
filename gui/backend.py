@@ -19,6 +19,7 @@ import updater
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from const import SpotifyAuthType
+from gui.tags_jobs import TagJobs
 from downloader import ADVICE, SpotifyDownloader, friendly_reason, plan_filenames, reason_category, suggests_outdated_ytdlp
 from exceptions import (InvalidSpotifyURL, SpotifyAlbumNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         SpotifyTrackNotFound)
@@ -46,11 +47,24 @@ class Api:
         self._downloader = None     # the running download, if any
         self._busy = False
         self._window = None
+        self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
         self._apply_settings()
 
     def attach_window(self, window):
         self._window = window
+        window.events.loaded += self._on_page_loaded
+
+    def _on_page_loaded(self):
+        """Files dropped onto the window arrive here with their full path (the page itself cannot see paths)."""
+        from webview.dom import DOMEventHandler
+        self._window.dom.document.events.drop += DOMEventHandler(self._on_drop, prevent_default=True, stop_propagation=True)
+
+    def _on_drop(self, event):
+        files = ((event or {}).get("dataTransfer") or {}).get("files") or []
+        paths = [f["pywebviewFullPath"] for f in files if isinstance(f, dict) and f.get("pywebviewFullPath")]
+        if paths:
+            self._tags.push("dropped", paths=paths)
 
     # --- settings ---------------------------------------------------------------------------------------------
 
@@ -301,6 +315,39 @@ class Api:
         if d is not None:
             d.cancelled.set()
         return d is not None
+
+    # --- completing tags and covers of audio files ---------------------------------------------------------------
+
+    def tags_pick_files(self):
+        if self._window is None:
+            return []
+        import webview
+        kind = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        chosen = self._window.create_file_dialog(kind, allow_multiple=True,
+                                                 file_types=("Audio (*.mp3;*.flac;*.m4a;*.ogg;*.oga;*.opus)", "Todos los archivos (*.*)"))
+        return list(chosen or [])
+
+    def tags_pick_folder(self):
+        chosen = self.choose_folder()
+        return [chosen] if chosen else []
+
+    def tags_scan(self, paths):
+        return self._tags.scan(paths if isinstance(paths, list) else [])
+
+    def tags_identify(self, paths, title=None, artist=None, skip_complete=True):
+        return self._tags.identify(paths, title, artist, skip_complete)
+
+    def tags_prepare(self, path, candidate):
+        return self._tags.prepare(path, candidate)
+
+    def tags_apply(self, items, rename=False):
+        return self._tags.apply(items, rename)
+
+    def tags_cancel(self):
+        return self._tags.cancel()
+
+    def get_tag_events(self):
+        return self._tags.get_events()
 
     # --- folders and updates ---------------------------------------------------------------------------------
 

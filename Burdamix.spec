@@ -4,7 +4,7 @@ import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas, binaries, hiddenimports = [], [], []
-for package in ("yt_dlp", "yt_dlp_ejs", "imageio_ffmpeg", "moviepy", "eyed3", "tekore", "webview", "clr_loader", "pythonnet"):
+for package in ("yt_dlp", "yt_dlp_ejs", "imageio_ffmpeg", "moviepy", "eyed3", "tekore", "mutagen", "webview", "clr_loader", "pythonnet"):
     d, b, h = collect_all(package)     # code that is loaded by name (extractors, plugins, bundled ffmpeg, WebView2 DLLs) is invisible to the scan
     datas += d
     binaries += b

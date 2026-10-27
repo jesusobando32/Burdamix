@@ -3,6 +3,8 @@
 eyed3>=0.9.6
 flask>=2.2.5
 imageio-ffmpeg>=0.4.7
+mutagen>=1.47        # reads and writes the tags and covers of mp3, flac, m4a, ogg and opus (autotag.py)
+pillow>=10.0         # shrinks covers to at most 1000x1000 JPEG (it already came with moviepy; now it is used directly)
 moviepy>=1.0.3,<2     # 2.x removed moviepy.editor, which utils.py imports
 pywebview>=5.0       # the window of gui_app.py (uses the Microsoft Edge WebView2 that comes with Windows)
 requests>=2.27.1

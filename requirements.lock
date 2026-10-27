@@ -536,6 +536,10 @@ markupsafe==3.0.4 \
 moviepy==1.0.3 \
     --hash=sha256:2884e35d1788077db3ff89e763c5ba7bfddbd7ae9108c9bc809e7ba58fa433f5
     # via -r requirements.in
+mutagen==1.48.1 \
+    --hash=sha256:4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7 \
+    --hash=sha256:8f95637ab9f6f305cec6bd1294e197debe207998e3e068596563c74f86b0a173
+    # via -r requirements.in
 numpy==2.5.4 \
     --hash=sha256:067374eb538c34c745436365cf7b0112595c1d326f21ce4ff340f61230239fbb \
     --hash=sha256:0b4724a19de67bea8cfc4970798efa78bcbbe2ac2613cfac16721a42d44de2a5 \
@@ -694,7 +698,9 @@ pillow==13.0.0 \
     --hash=sha256:fc481f742ccda20e9ed760b8f978dff50f2a4e9bc253ac167fb0a05b0783ef52 \
     --hash=sha256:ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b \
     --hash=sha256:ffea6b2986a797c84b6d1d27d4f43e0b83c73fc16281a930891cd237cf0d08fe
-    # via imageio
+    # via
+    #   -r requirements.in
+    #   imageio
 proglog==0.1.12 \
     --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
     --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c

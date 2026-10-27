@@ -356,6 +356,7 @@ const FAQ = [
   ["¿Qué significa «YouTube te está bloqueando»?", "<p>Si YouTube rechaza varias canciones seguidas, paro para no empeorarlo. Espera un rato (a veces una hora) o cambia de red y vuelve a pegar el mismo enlace: lo ya descargado se salta y continúa donde quedó.</p>"],
   ["¿Por qué no se bajan las intros y los interludios?", "<p>Por defecto se omiten las pistas muy cortas (menos de 50 s, o intro/outro de menos de 95 s). Se puede desactivar en Configuración.</p>"],
   ["Dejó de funcionar de repente", "<p>YouTube cambia cada pocas semanas. En <b>Configuración → Actualizar yt-dlp</b> se baja la versión nueva (hace falta internet). Después cierra y abre el programa.</p>"],
+  ["¿Para qué sirve «Completar etiquetas»?", "<p>Para canciones que ya tienes pero que en el reproductor salen sin nombre, sin artista o sin portada. Elige los archivos (o una carpeta), Burdamix busca de qué canción se trata y escribe título, artista, álbum, año, género, número de pista y portada. Antes de escribir te enseña qué va a cambiar; <b>no se puede deshacer</b>.</p>"],
   ["¿Es seguro?", "<p>Todo se hace en tu computadora. Las claves de tu app de Spotify se guardan en una carpeta privada de tu usuario. Windows puede avisar de «editor desconocido» porque el programa no está firmado: es normal en programas gratuitos.</p>"],
 ];
 
@@ -422,6 +423,7 @@ function demoApi() {
     login_spotify: async () => { setTimeout(() => { cfg.logged_in = true; }, 1500); return { ok: true }; },
     get_login_state: async () => (cfg.logged_in ? { state: "ok", message: "Demo" } : { state: "waiting", message: "" }),
     update_ytdlp: async () => ({ ok: true, message: "Ya tienes la versión más nueva de yt-dlp." }),
+    ...demoTagsApi(art),
   };
 }
 
@@ -468,6 +470,7 @@ function init() {
   $("#set-update").onclick = updateYtdlp;
 
   buildFaq();
+  initTags();
   refreshState().then(st => {
     if (st && st.configured === false) { show("tutorial"); toast("Primero conecta el programa con Spotify."); }
   });
@@ -479,3 +482,54 @@ function init() {
   if (window.pywebview && window.pywebview.api) return start(window.pywebview.api);
   window.addEventListener("pywebviewready", () => start(window.pywebview.api));
 })();
+
+/* demo for "Completar etiquetas" */
+function demoTagsApi(art) {
+  let queue = [], busy = false;
+  const push = (kind, data) => queue.push({ kind, t: Date.now(), ...data });
+  const emptyTags = { title: "", artist: "", album: "", album_artist: "", year: "", genre: "", track: 0, track_total: 0, disc: 0, has_cover: false, duration: 200, complete: false };
+  const cand = (title, album, year, kind, label, source, genre, n, a, b) => ({ source, title, artist: "The Weeknd", album, album_artist: "The Weeknd", year, genre,
+    track_number: n, track_total: 14, disc_number: 1, kind, kind_label: label, duration: 200, cover_urls: [], thumb_url: art(a, b), release_id: "", score: 100 });
+  const files = {
+    "C:/Música/Blinding Lights - The Weeknd.mp3": { tags: { ...emptyTags }, status: "sure", candidates: [cand("Blinding Lights", "After Hours", "2020", "album", "Álbum de estudio", "musicbrainz", "", 9, "#7b2d26", "#f0a500"), cand("Blinding Lights", "Blinding Lights", "2019", "single", "Sencillo", "musicbrainz", "", 1, "#3a1c71", "#d76d77")] },
+    "C:/Música/audio_173.mp3": { tags: { ...emptyTags, title: "Starboy" }, status: "review", candidates: [cand("Starboy", "Starboy", "2016", "album", "Álbum de estudio", "deezer", "R&B", 1, "#134e5e", "#71b280"), cand("Starboy", "Greatest Hits", "2018", "compilation", "Recopilatorio", "itunes", "Pop", 4, "#1f4037", "#99f2c8")] },
+    "C:/Música/grabación rara.flac": { tags: { ...emptyTags }, status: "notfound", error: "No encontré esta canción en MusicBrainz, Deezer ni iTunes. Prueba escribiendo el título y el artista.", candidates: [] },
+    "C:/Música/Save Your Tears.m4a": { tags: { ...emptyTags, title: "Save Your Tears", artist: "The Weeknd", album: "After Hours", year: "2020", track: 4, has_cover: true, complete: true }, status: "complete", candidates: [] },
+  };
+  const name = p => p.split("/").pop();
+  return {
+    tags_pick_files: async () => Object.keys(files),
+    tags_pick_folder: async () => Object.keys(files),
+    tags_scan: async paths => paths.map(p => ({ path: p, name: name(p), tags: files[p] ? files[p].tags : emptyTags })),
+    tags_identify: async (paths, title, artist) => {
+      busy = true;
+      paths.forEach((p, i) => {
+        setTimeout(() => push("identifying", { path: p }), 400 + i * 900);
+        setTimeout(() => {
+          const f = files[p] || { status: "notfound", candidates: [], tags: emptyTags, error: "No encontré esta canción." };
+          const retried = (title || artist) && f.status === "notfound";
+          push("identified", retried ? { path: p, status: "review", tags: f.tags, candidates: [cand(title || "Canción", "Álbum", "2021", "album", "Álbum de estudio", "musicbrainz", "", 1, "#3a1c71", "#d76d77")] }
+                                      : { path: p, status: f.status, tags: f.tags, candidates: f.candidates, error: f.error });
+        }, 900 + i * 900);
+      });
+      setTimeout(() => { busy = false; push("finished", { job: "identify", total: paths.length, counts: {}, cancelled: false, error: null }); }, 1200 + paths.length * 900);
+      return { ok: true };
+    },
+    tags_prepare: async (path, c) => ({ ok: true, candidate: { ...c, genre: c.genre || "R&B" }, changes: [
+      { field: "title", label: "Título", old: "", new: c.title }, { field: "artist", label: "Artista", old: "", new: c.artist },
+      { field: "album", label: "Álbum", old: "", new: c.album }, { field: "year", label: "Año", old: "", new: c.year },
+      { field: "genre", label: "Género", old: "", new: c.genre || "R&B" }, { field: "track", label: "Pista", old: "", new: c.track_number + "/" + c.track_total },
+      { field: "cover", label: "Portada", old: "no", new: "nueva" }] }),
+    tags_apply: async items => {
+      items.forEach((it, i) => {
+        setTimeout(() => push("applying", { path: it.path }), 300 + i * 700);
+        setTimeout(() => push("applied", { path: it.path, new_path: it.path, cover: true, genre: "R&B",
+          tags: { ...emptyTags, title: it.candidate.title, artist: it.candidate.artist, album: it.candidate.album, year: it.candidate.year, genre: "R&B", track: it.candidate.track_number, has_cover: true, complete: true } }), 700 + i * 700);
+      });
+      setTimeout(() => push("finished", { job: "apply", total: items.length, done: items.length, failed: 0, cancelled: false, error: null }), 900 + items.length * 700);
+      return { ok: true, count: items.length };
+    },
+    tags_cancel: async () => busy,
+    get_tag_events: async () => { const e = queue; queue = []; return e; },
+  };
+}

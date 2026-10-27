@@ -32,3 +32,33 @@ class YoutubeBlocked(Exception):
 class YoutubeTransientError(Exception):
     """A download failed in a way that usually works on another try (403, dropped connection...)."""
     pass
+
+
+class MetadataError(Exception):
+    """Completing a song's tags failed. The message is written for the user, in Spanish."""
+    pass
+
+
+class MetadataNetworkError(MetadataError):
+    """No internet, or the service answered something unexpected."""
+    pass
+
+
+class MetadataRateLimited(MetadataError):
+    """A metadata service asked us to slow down."""
+    pass
+
+
+class MetadataNotFound(MetadataError):
+    """The services have no match for this song (or no cover for it)."""
+    pass
+
+
+class UnsupportedAudioFormat(MetadataError):
+    """The file is not one of the formats whose tags can be written (mp3, flac, m4a, ogg, opus)."""
+    pass
+
+
+class TagWriteError(MetadataError):
+    """The tags could not be written (file open in another program, no permission, damaged file)."""
+    pass

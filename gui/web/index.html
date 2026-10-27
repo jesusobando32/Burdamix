@@ -26,6 +26,10 @@
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
         <span>Mis favoritos</span>
       </button>
+      <button class="nav" data-view="tags" title="Completar etiquetas">
+        <svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>
+        <span>Completar etiquetas</span>
+      </button>
       <div class="nav-sep"></div>
       <button class="nav" data-view="tutorial" title="Tutorial e inicio de sesión">
         <svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5a1.5 1.5 0 0 1 1.5 1.5z"/></svg>
@@ -101,6 +105,41 @@
         </div>
         <div class="results" id="fav-results"></div>
       </div>
+    </section>
+
+    <!-- Completar etiquetas -->
+    <section class="view" id="view-tags">
+      <div class="scroll" id="tags-scroll">
+        <div class="page">
+          <h1>Completar etiquetas</h1>
+          <p class="lead">Elige canciones y Burdamix busca su título, artista, álbum, año, género y portada, y los escribe en el archivo para que cualquier reproductor los muestre.</p>
+
+          <div class="drop" id="tags-drop">
+            <b>Suelta aquí tus canciones o una carpeta</b>
+            <div class="btn-row">
+              <button class="btn primary" id="tags-pick-files">Elegir archivos…</button>
+              <button class="btn" id="tags-pick-folder">Elegir carpeta…</button>
+            </div>
+            <span class="muted small">mp3, flac, m4a, ogg y opus</span>
+          </div>
+
+          <div class="card hidden" id="tags-options">
+            <div class="two" id="tags-one">
+              <label>Título (opcional)<input id="tags-title" type="text" autocomplete="off" placeholder="Si el archivo no lo dice"></label>
+              <label>Artista (opcional)<input id="tags-artist" type="text" autocomplete="off" placeholder="Si el archivo no lo dice"></label>
+            </div>
+            <label class="check"><input id="tags-skip" type="checkbox" checked> Saltar los que ya tienen todo (título, artista, álbum, año, pista y portada)</label>
+            <label class="check"><input id="tags-rename" type="checkbox"> Renombrar el archivo con el título (<code>Título.mp3</code>; el artista queda en las etiquetas)</label>
+            <div class="btn-row">
+              <button class="btn primary" id="tags-search">Buscar etiquetas</button>
+              <button class="btn" id="tags-clear">Quitar todo</button>
+            </div>
+          </div>
+
+          <div id="tags-list"></div>
+        </div>
+      </div>
+      <div class="dock hidden" id="tags-dock"><div class="action-bar" id="tags-bar"></div></div>
     </section>
 
     <!-- Tutorial -->
@@ -185,6 +224,7 @@
 </div>
 
 <div id="toasts" aria-live="polite"></div>
+<script src="tags.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
