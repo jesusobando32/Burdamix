@@ -371,7 +371,7 @@ def test_invisible_direction_characters_are_removed_from_names():
     ("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate", "YoutubeVideoUnavailable"),
     ("ERROR: [youtube] abc: Video unavailable", "YoutubeVideoUnavailable"),
     ("ERROR: unable to download video data: HTTP Error 403: Forbidden", "YoutubeTransientError"),
-    ("ERROR: <urlopen error [WinError 10060] timed out>", "YoutubeTransientError"),
+    ("ERROR: <urlopen error [WinError 10060] timed out>", "YoutubeNetworkError"),
 ])
 def test_youtube_errors_are_classified(message, kind):
     from apis.youtube import translate_youtube_error

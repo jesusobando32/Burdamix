@@ -34,6 +34,11 @@ class YoutubeTransientError(Exception):
     pass
 
 
+class YoutubeNetworkError(YoutubeTransientError):
+    """The connection itself failed (no internet, a slow or unstable network, DNS): not YouTube's doing, and no sign of a block."""
+    pass
+
+
 class MetadataError(Exception):
     """Completing a song's tags failed. The message is written for the user, in Spanish."""
     pass

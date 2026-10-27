@@ -5,7 +5,8 @@ import unicodedata
 from dataclasses import dataclass
 
 import tempdirs
-from exceptions import ConfigVideoLowViewCount, YoutubeBlocked, YoutubeItemNotFound, YoutubeTransientError, YoutubeVideoUnavailable
+from exceptions import (ConfigVideoLowViewCount, YoutubeBlocked, YoutubeItemNotFound, YoutubeNetworkError, YoutubeTransientError,
+                        YoutubeVideoUnavailable)
 
 SUPPORTED_BROWSERS = ("firefox", "chrome", "edge", "brave", "opera", "chromium")   # where yt-dlp can read a YouTube login from
 
@@ -38,6 +39,12 @@ TRANSIENT_MARKERS = ("http error 403", "http error 500", "http error 502", "http
                      "unable to download video data", "timed out", "connection reset", "connection aborted",
                      "incompleteread", "remote end closed", "unexpected eof", "temporary failure")
 
+# The connection itself failed: nothing to do with YouTube refusing us.
+NETWORK_MARKERS = ("getaddrinfo", "name or service not known", "failed to resolve", "network is unreachable", "no route to host",
+                   "unable to download webpage", "unable to download json", "unable to download api page", "urlopen error",
+                   "read timed out", "timed out", "connection refused", "max retries exceeded", "winerror 100", "ssl:",
+                   "eof occurred", "connection reset", "connection aborted", "remote end closed", "incompleteread")
+
 UNAVAILABLE_MARKERS = ("confirm your age", "age-restricted", "video unavailable", "private video",
                        "not available in your country", "members-only", "has been removed")
 
@@ -49,6 +56,8 @@ def translate_youtube_error(error):
         return YoutubeBlocked(str(error).splitlines()[0][:160])
     if any(marker in text for marker in UNAVAILABLE_MARKERS):
         return YoutubeVideoUnavailable(str(error).splitlines()[0][:160])
+    if any(marker in text for marker in NETWORK_MARKERS):
+        return YoutubeNetworkError(str(error).splitlines()[0][:160])
     if any(marker in text for marker in TRANSIENT_MARKERS):
         return YoutubeTransientError(str(error).splitlines()[0][:160])
     return error
@@ -216,7 +225,9 @@ class YouTube:
         self.cookies_from_browser = cookies_from_browser
 
     def _options(self, **extra):
-        options = {'quiet': True, 'no_warnings': True, 'noprogress': True}
+        # A slow network needs patience: wait longer for each answer and try the page and the data again before giving up.
+        options = {'quiet': True, 'no_warnings': True, 'noprogress': True,
+                   'socket_timeout': 40, 'extractor_retries': 3, 'retries': 3}
         if self.cookies_from_browser:
             options['cookiesfrombrowser'] = (self.cookies_from_browser,)
         options.update(extra)

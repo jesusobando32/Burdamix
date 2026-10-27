@@ -3,7 +3,7 @@ import updater
 from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError,
-                        MetadataError, TagWriteError)
+                        YoutubeNetworkError, MetadataError, TagWriteError)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from pathutils import sanitize_filename, long_path, is_hard_to_open
@@ -76,6 +76,8 @@ def reason_category(error):
     text = str(error).lower()
     if isinstance(error, YoutubeBlocked):
         return "robot"
+    if isinstance(error, YoutubeNetworkError):
+        return "red"
     if isinstance(error, YoutubeTransientError):
         return "temporal"
     if isinstance(error, YoutubeVideoUnavailable):
@@ -119,6 +121,7 @@ REASONS = {
     "edad": "YouTube marca este video para mayores de edad y pide iniciar sesión.",
     "robot": "YouTube pidió comprobar que no eres un robot (demasiadas solicitudes seguidas).",
     "temporal": "YouTube falló varias veces seguidas con esta canción (error temporal).",
+    "red": "No pude conectar bien con YouTube: la conexión a internet falló o va muy lenta.",
     "no_disponible": "Este video no está disponible (privado, retirado o bloqueado en tu país).",
     "pocas_vistas": "El video tiene menos vistas que el mínimo que pediste (--min-views).",
     "no_en_spotify": "Spotify no tiene los datos de esta canción.",
@@ -131,6 +134,8 @@ ADVICE = {
             "--cookies-from-browser firefox (o chrome, edge). En el modo guiado, el programa te lo ofrece al terminar.",
     "robot": "Las del aviso de robot: YouTube recibió muchas solicitudes. Espera unos minutos y ejecuta de nuevo "
              "el mismo enlace: solo bajará las que faltan.",
+    "red": "Las de conexión: tu internet falló o va muy lento. Revisa la conexión (o cambia de red) y vuelve a intentarlo: "
+           "solo bajará las que faltan.",
     "temporal": "Las de error temporal: vuelve a ejecutar el mismo enlace en un rato; solo bajará las que faltan.",
     "no_encontrada": "Las que no se encontraron: no hay en YouTube una versión con la misma duración (quizá solo "
                      "existen en Spotify). Prefiero saltarlas antes que bajar una equivocada.",
@@ -373,6 +378,8 @@ class SpotifyDownloader:
                 return _NOT_STARTED
             try:
                 self.download_track(None, track, i, idx_max, output_path, True, filename)
+            except YoutubeNetworkError:
+                raise   # the connection failed: that says nothing about YouTube blocking us, so it does not count towards the block streak
             except (YoutubeBlocked, YoutubeTransientError):
                 # A song that kept failing with temporary errors (403...) after trying every match twice is
                 # how an IP flagged by YouTube looks too; counting it stops the run instead of hammering on.

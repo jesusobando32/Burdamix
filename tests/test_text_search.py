@@ -302,3 +302,32 @@ def test_a_version_the_user_asked_for_is_not_an_alternate():
     assert not is_alternate(song("Mi Gente (Busta K Remix)", "J Balvin"), "mi gente remix")
     assert is_alternate(song("Song", "A", kind="live"), "song a") and not is_alternate(song("Song", "A", kind="album"), "song a")
     assert not is_alternate(song("Calentón", "Mora"), "calenton mora")
+
+
+# --- a slow or failing connection is named as such ------------------------------------------------------------------
+
+@pytest.mark.parametrize("text", ["ERROR: [youtube] x: Unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>",
+                                  "ERROR: Unable to download JSON metadata: The read operation timed out",
+                                  "HTTPSConnectionPool(host='www.youtube.com'): Max retries exceeded with url",
+                                  "[WinError 10054] An existing connection was forcibly closed"])
+def test_connection_failures_are_told_apart_from_youtube_blocking_us(text):
+    from apis.youtube import translate_youtube_error
+    from downloader import friendly_reason, reason_category
+    from exceptions import YoutubeNetworkError, YoutubeTransientError
+    error = translate_youtube_error(Exception(text))
+    assert isinstance(error, YoutubeNetworkError) and isinstance(error, YoutubeTransientError)    # so it is still retried
+    assert reason_category(error) == "red" and "internet" in friendly_reason(error)
+
+
+def test_a_block_or_a_403_is_still_not_a_network_failure():
+    from apis.youtube import translate_youtube_error
+    from exceptions import YoutubeBlocked, YoutubeNetworkError, YoutubeTransientError
+    assert isinstance(translate_youtube_error(Exception("Sign in to confirm you're not a bot")), YoutubeBlocked)
+    error = translate_youtube_error(Exception("HTTP Error 403: Forbidden"))
+    assert isinstance(error, YoutubeTransientError) and not isinstance(error, YoutubeNetworkError)
+
+
+def test_the_connection_waits_longer_and_retries_for_slow_networks():
+    from apis.youtube import YouTube
+    options = YouTube()._options()
+    assert options["socket_timeout"] >= 30 and options["extractor_retries"] >= 3
