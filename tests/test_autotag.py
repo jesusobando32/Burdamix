@@ -1101,3 +1101,99 @@ def test_apply_tells_the_window_why_the_cover_is_missing_and_where_it_came_from(
     assert result["cover"] is False and "VPN" in result["cover_problem"] and result["cover_source"] == ""
     good = tagger(images=Images({"https://c/a.jpg": b"IMG"}), writer=lambda p, s, c: None, renamer=lambda p, title: p)
     assert good.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)))["cover_source"] == "caa"
+
+
+# --- How downloaded files are named (Artista - Título / Título - Artista / solo el título) ---------------------------
+
+def spotify_track(title, artists, track_id="abc"):
+    from apis.spotify import SpotifyTrack
+    track = SpotifyTrack(None, f"https://open.spotify.com/track/{track_id}")
+    track.track_metadata = {"title": title, "artist": artists}
+    return track
+
+
+def test_a_song_can_be_named_three_ways_and_an_unknown_way_gives_the_default():
+    track = spotify_track("Blinding Lights", ["The Weeknd", "Daft Punk"])
+    assert track.get_filename() == "The Weeknd, Daft Punk - Blinding Lights"                       # the default is unchanged
+    assert track.get_filename("artist_title") == "The Weeknd, Daft Punk - Blinding Lights"
+    assert track.get_filename("title_artist") == "Blinding Lights - The Weeknd, Daft Punk"
+    assert track.get_filename("title") == "Blinding Lights"
+    assert track.get_filename("nonsense") == track.get_filename()
+
+
+def test_every_style_is_still_a_safe_file_name():
+    track = spotify_track('AC/DC: "Back" in Black?', ["AC/DC"])
+    for style in ("artist_title", "title_artist", "title"):
+        name = track.get_filename(style)
+        assert not any(c in name for c in '\\/:*?"<>|') and name == name.strip()
+
+
+def test_songs_with_the_same_title_do_not_overwrite_each_other_when_only_the_title_is_used():
+    import downloader
+    first, second = spotify_track("Intro", ["A"], "idA1"), spotify_track("Intro", ["B"], "idB2")
+    plan, repeated, renamed = downloader.plan_filenames([first, second], "title")
+    assert sorted(name for _i, _t, name in plan) == ["Intro", "Intro (2)"] and len(renamed) == 1
+    again = downloader.plan_filenames([second, first], "title")[0]                                  # a second run, other order
+    assert {t.resource_id: name for _i, t, name in again} == {t.resource_id: name for _i, t, name in plan}      # same names for the same songs
+    assert sorted(name for _i, _t, name in downloader.plan_filenames([first, second], "title_artist")[0]) == ["Intro - A", "Intro - B"]
+
+
+def test_changing_the_style_does_not_download_everything_again(tmp_path):
+    import downloader
+    track = spotify_track("Blinding Lights", ["The Weeknd"])
+    (tmp_path / "The Weeknd - Blinding Lights.mp3").write_bytes(b"old style")
+    folder = str(tmp_path) + os.sep
+    for style in ("title_artist", "title"):
+        d = downloader.SpotifyDownloader(None, None, name_style=style)
+        assert d.already_downloaded(track, track.get_filename(style), folder) is True                 # found under the old style
+    assert downloader.SpotifyDownloader(None, None, name_style="artist_title").already_downloaded(track, "The Weeknd - Blinding Lights", folder)
+
+
+def test_a_file_named_with_only_a_title_is_never_taken_for_another_song(tmp_path):
+    import downloader
+    (tmp_path / "Intro.mp3").write_bytes(b"someone else's intro")
+    folder = str(tmp_path) + os.sep
+    other = spotify_track("Intro", ["B"], "idB2")
+    assert downloader.SpotifyDownloader(None, None, name_style="artist_title").already_downloaded(other, "B - Intro", folder) is False
+    assert downloader.SpotifyDownloader(None, None, name_style="title_artist").already_downloaded(other, "Intro - B", folder) is False
+    clash = downloader.SpotifyDownloader(None, None, name_style="title")
+    assert clash.already_downloaded(other, "Intro (2)", folder) is False                            # a clash name matches only exactly
+
+
+def test_an_unknown_style_falls_back_to_the_default_in_the_downloader():
+    import downloader
+    assert downloader.SpotifyDownloader(None, None, name_style="whatever").name_style == "artist_title"
+    assert downloader.SpotifyDownloader(None, None, name_style="title").name_style == "title"
+
+
+def test_download_track_uses_the_chosen_style_for_the_file_it_looks_for(monkeypatch):
+    import downloader
+    asked = []
+    monkeypatch.setattr(downloader.SpotifyDownloader, "prep_folder", lambda self, folder: None)
+    monkeypatch.setattr(downloader.SpotifyDownloader, "file_exists", lambda self, path: asked.append(os.path.basename(path)) or path.endswith("Blinding Lights.mp3"))
+    d = downloader.SpotifyDownloader(None, None, name_style="title")
+    track = spotify_track("Blinding Lights", ["The Weeknd"])
+    track.get_title = lambda sanitize=False: "Blinding Lights"
+    assert d.download_track(None, track, 0, 1, "out/", True, None) is True                            # "exists": nothing is downloaded
+    assert asked[0] == "Blinding Lights.mp3"
+
+
+def test_the_command_line_accepts_the_three_styles():
+    import spotify2mp3 as app
+    parse = app.build_parser().parse_args
+    assert parse(["-l"]).naming == "artist-title"
+    assert [parse(["-l", "--naming", n]).naming for n in ("artist-title", "title-artist", "title")] == ["artist-title", "title-artist", "title"]
+    with pytest.raises(SystemExit):
+        parse(["-l", "--naming", "artist"])
+
+
+def test_the_window_saves_validates_and_offers_the_naming_styles(tmp_path, monkeypatch):
+    import const
+    api = _window_api(tmp_path, monkeypatch)
+    assert api.get_settings()["name_style"] == "artist_title"
+    assert [s["id"] for s in api.get_settings()["name_styles"]] == list(const.NAME_STYLES)
+    assert api.save_settings({"name_style": "title"})["name_style"] == "title"
+    assert api.save_settings({"name_style": "rubbish"})["name_style"] == "artist_title"
+    api.save_settings({"name_style": "title_artist"})
+    assert _window_api(tmp_path, monkeypatch).get_settings()["name_style"] == "title_artist"           # remembered
+    assert api._make_downloader(spotify=None, youtube=None).name_style == "title_artist"

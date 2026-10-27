@@ -375,8 +375,16 @@ async function loadSettings() {
   const sel = $("#set-browser");
   sel.innerHTML = '<option value="">No usar</option>' + s.browsers.map(b => `<option value="${esc(b)}">${esc(b[0].toUpperCase() + b.slice(1))}</option>`).join("");
   sel.value = s.browser;
+  $("#set-naming").innerHTML = (s.name_styles || []).map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join("");
+  $("#set-naming").value = s.name_style;
+  showNamingExample();
   const st = await refreshState();
   $("#set-ytdlp").textContent = `yt-dlp ${st.ytdlp || "?"}. YouTube cambia cada pocas semanas: si una descarga falla de repente, actualiza esto.`;
+}
+
+const NAMING_EXAMPLES = { artist_title: "The Weeknd - Blinding Lights.mp3", title_artist: "Blinding Lights - The Weeknd.mp3", title: "Blinding Lights.mp3" };
+function showNamingExample() {
+  $("#set-naming-example").textContent = "Ejemplo: " + (NAMING_EXAMPLES[$("#set-naming").value] || "");
 }
 
 function saveSettingsSoon() {
@@ -384,6 +392,7 @@ function saveSettingsSoon() {
   saveTimer = setTimeout(async () => {
     const r = await call("save_settings", {
       workers: +$("#set-workers").value, skip_interludes: $("#set-interludes").checked, browser: $("#set-browser").value,
+      name_style: $("#set-naming").value,
     });
     if (r.ok === false) toast(r.error, true);
   }, 300);
@@ -393,14 +402,15 @@ function saveSettingsSoon() {
 function demoApi() {
   const art = (a, b) => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${a}'/><stop offset='1' stop-color='${b}'/></linearGradient></defs><rect width='96' height='96' fill='url(#g)'/></svg>`);
   const names = ["Blinding Lights", "Save Your Tears", "Starboy", "Heartless", "Die For You", "Take My Breath", "In Your Eyes", "Out of Time"];
-  let queue = [], cfg = { configured: true, logged_in: true }, settings = { downloads_dir: "", workers: 5, skip_interludes: true, browser: "" };
+  let queue = [], cfg = { configured: true, logged_in: true }, settings = { downloads_dir: "", workers: 5, skip_interludes: true, browser: "", name_style: "artist_title" };
   const items = names.map((t, i) => ({ key: "k" + i, title: t, artists: "The Weeknd", album: "After Hours", seconds: 190 + i * 7,
     cover: art(["#3a1c71", "#134e5e", "#7b2d26", "#1f4037"][i % 4], ["#d76d77", "#71b280", "#f0a500", "#99f2c8"][i % 4]), saved: "", already: i === 3 }));
   const push = (kind, data) => queue.push({ kind, t: Date.now(), ...data });
   return {
     get_state: async () => ({ version: "0.2.0-pre", ytdlp: "2026.10.21", frozen: false, configured: cfg.configured, logged_in: cfg.logged_in,
       redirect_uri: "http://127.0.0.1:5000/callback", dashboard_url: "", busy: false, downloads_dir: "C:\\Users\\Tú\\Music\\Burdamix" }),
-    get_settings: async () => ({ ...settings, effective_downloads_dir: "C:\\Users\\Tú\\Music\\Burdamix", browsers: ["firefox", "chrome", "edge"] }),
+    get_settings: async () => ({ ...settings, effective_downloads_dir: "C:\\Users\\Tú\\Music\\Burdamix", browsers: ["firefox", "chrome", "edge"],
+      name_styles: [{ id: "artist_title", label: "Artista - Título" }, { id: "title_artist", label: "Título - Artista" }, { id: "title", label: "Solo el título" }] }),
     save_settings: async s => { settings = { ...settings, ...s }; return { ok: true }; },
     preview: async url => { await new Promise(r => setTimeout(r, 900)); return /spotify/.test(url) ? { kind: "album", title: "After Hours", cover: art("#7b2d26", "#f0a500"), items, total: 8, folder: "C:\\Users\\Tú\\Music\\Burdamix\\albums\\After Hours\\", interludes: ["Intro"], repeated: 0, limited: false } : { error: "Eso no parece un enlace de Spotify de una canción, playlist o álbum." }; },
     preview_liked: async n => { await new Promise(r => setTimeout(r, 900)); return { kind: "liked", title: "Liked Songs", cover: null, items, total: 1036, folder: "C:\\Users\\Tú\\Music\\Burdamix\\liked\\Liked Songs\\", interludes: [], repeated: 0, limited: true }; },
@@ -467,6 +477,7 @@ function init() {
   $("#set-workers").oninput = () => { $("#set-workers-out").textContent = $("#set-workers").value; saveSettingsSoon(); };
   $("#set-interludes").onchange = saveSettingsSoon;
   $("#set-browser").onchange = saveSettingsSoon;
+  $("#set-naming").onchange = () => { showNamingExample(); saveSettingsSoon(); };
   $("#set-update").onclick = updateYtdlp;
 
   buildFaq();

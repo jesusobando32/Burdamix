@@ -118,7 +118,7 @@ def test_download_tracks_runs_in_parallel_and_collects_failures(monkeypatch):
 
     class FakeTrack:
         def __init__(self, n): self.n = n
-        def get_filename(self): return f"t{self.n}"
+        def get_filename(self, style=None): return f"t{self.n}"
 
     def fake_download_track(self, url, track, i, n, out, sub, filename=None):
         with lock:
@@ -386,7 +386,7 @@ def test_unknown_errors_pass_through_unchanged():
 
 class _Song:
     def __init__(self, n): self.n = n
-    def get_filename(self): return f"s{self.n}"
+    def get_filename(self, style=None): return f"s{self.n}"
 
 
 def _run(outcomes, workers, capsys):
@@ -492,7 +492,7 @@ def test_redirects_are_not_followed():
 
 class _Named:
     def __init__(self, spotify_id, filename): self.resource_id, self._f = spotify_id, filename
-    def get_filename(self): return self._f
+    def get_filename(self, style=None): return self._f
 
 
 def test_same_song_twice_is_planned_once():

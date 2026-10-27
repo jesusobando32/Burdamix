@@ -13,7 +13,7 @@ import login
 import utils
 from apis.spotify import Spotify
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
-from const import colours, DOWNLOADS_DIR, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
+from const import colours, DOWNLOADS_DIR, DEFAULT_NAME_STYLE, SpotifyAuthType, DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, DEFAULT_MAX_LENGTH_FOR_DOWNLOAD, LIKED_KEYWORD, HELP_URL
 import tempdirs
 import updater
 from pathutils import long_path
@@ -149,7 +149,7 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
          max_length=None, workers=DEFAULT_WORKERS, cookies_from_browser=None,
          skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
          intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-         last=None, dry_run=False, confirm=False, offer_browser=False):
+         last=None, dry_run=False, confirm=False, offer_browser=False, name_style=DEFAULT_NAME_STYLE):
 
     url = song or playlist or album
 
@@ -214,7 +214,8 @@ def main(authtype=None, playlist=None, song=None, album=None, liked=False, quali
     tempdirs.clean_stale()   # leftovers of runs that were closed by force
     youtube = YouTube(cookies_from_browser)
     downloader = SpotifyDownloader(spotify, youtube, get_bitrate_from_quality(quality), max_length, min_views, workers,
-                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run, confirm, offer_browser)
+                                  skip_interludes, interlude_max_seconds, intro_outro_max_seconds, short_max_seconds, dry_run, confirm, offer_browser,
+                                  name_style=name_style)
 
     success = False
 
@@ -257,6 +258,8 @@ def build_parser():
                         choices=range(1, MAX_WORKERS + 1), metavar=f"1-{MAX_WORKERS}", default=DEFAULT_WORKERS)
     parser.add_argument("--min-views", help="Minimum view count on YouTube (default: off)", type=int, default=DEFAULT_MIN_VIEWS_FOR_DOWNLOAD)
     parser.add_argument("--max-length", help="Maximum video length on YouTube in minutes", type=int, default=DEFAULT_MAX_LENGTH_FOR_DOWNLOAD // 60)
+    parser.add_argument("--naming", choices=["artist-title", "title-artist", "title"], default="artist-title",
+                        help="How the files are named: 'Artist - Title' (default), 'Title - Artist' or just 'Title'. The artist is always in the tags.")
     parser.add_argument("--keep-interludes", help="Also download short interludes/skits/intros (skipped by default)", action="store_true")
     parser.add_argument("--short-max", metavar="SECONDS", type=int, default=DEFAULT_SHORT_MAX_SECONDS,
                         help=f"Any track this many seconds or shorter is skipped, whatever its name (default {DEFAULT_SHORT_MAX_SECONDS})")
@@ -327,7 +330,7 @@ def run():
              min_views=args.min_views, max_length=args.max_length * 60, workers=args.workers,
              cookies_from_browser=args.cookies_from_browser,
              skip_interludes=not args.keep_interludes, interlude_max_seconds=args.interlude_max, intro_outro_max_seconds=args.intro_outro_max, short_max_seconds=args.short_max,
-             last=args.last, dry_run=args.dry_run, confirm=args.ask)
+             last=args.last, dry_run=args.dry_run, confirm=args.ask, name_style=args.naming.replace("-", "_"))
     else:
         run_guided()
 

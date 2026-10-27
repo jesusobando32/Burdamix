@@ -25,7 +25,7 @@ from exceptions import (InvalidSpotifyURL, SpotifyAlbumNotFound, SpotifyPlaylist
                         SpotifyTrackNotFound)
 from pathutils import sanitize_filename
 
-DEFAULT_SETTINGS = {"downloads_dir": "", "workers": 5, "skip_interludes": True, "browser": ""}
+DEFAULT_SETTINGS = {"downloads_dir": "", "workers": 5, "skip_interludes": True, "browser": "", "name_style": const.DEFAULT_NAME_STYLE}
 MAX_WORKERS = 8
 BEST_QUALITY_BPS = 320000      # "the best YouTube has": the real bitrate is whatever the best stream is (~130 kbps)
 
@@ -94,6 +94,7 @@ class Api:
             "workers": max(1, min(MAX_WORKERS, workers)),
             "skip_interludes": bool(settings.get("skip_interludes", True)),
             "browser": browser if browser in SUPPORTED_BROWSERS else "",
+            "name_style": settings.get("name_style") if settings.get("name_style") in const.NAME_STYLES else const.DEFAULT_NAME_STYLE,
         }
 
     def _downloads_dir(self):
@@ -103,7 +104,8 @@ class Api:
         downloader.DOWNLOADS_DIR = self._downloads_dir()
 
     def get_settings(self):
-        return {**self._settings, "effective_downloads_dir": self._downloads_dir(), "browsers": list(SUPPORTED_BROWSERS)}
+        return {**self._settings, "effective_downloads_dir": self._downloads_dir(), "browsers": list(SUPPORTED_BROWSERS),
+                "name_styles": [{"id": key, "label": label} for key, label in const.NAME_STYLES.items()]}
 
     def save_settings(self, new_settings):
         merged = {**self._settings, **(new_settings or {})}
@@ -229,7 +231,7 @@ class Api:
             return {"error": f"Algo salió mal al leer el enlace ({type(error).__name__})."}
 
         tracks, interludes = helper.split_interludes(tracks)
-        plan, repeated, _renamed = plan_filenames(tracks)
+        plan, repeated, _renamed = plan_filenames(tracks, self._settings["name_style"])
         items = []
         for _index, track, name in plan:
             meta = track.get_metadata()
@@ -241,7 +243,7 @@ class Api:
                 "seconds": round(meta["duration_ms"] / 1000),
                 "cover": meta["image_url"],
                 "saved": (getattr(track, "added_at", None) or "")[:10],
-                "already": helper.file_exists(output_path + name + ".mp3"),
+                "already": helper.already_downloaded(track, name, output_path),
             })
 
         self._pending = {"spotify": spotify, "tracks": {t.resource_id: t for _i, t, _n in plan}, "output_path": output_path,
@@ -255,7 +257,8 @@ class Api:
     def _make_downloader(self, spotify, youtube):
         return SpotifyDownloader(spotify, youtube, BEST_QUALITY_BPS, const.DEFAULT_MAX_LENGTH_FOR_DOWNLOAD,
                                  const.DEFAULT_MIN_VIEWS_FOR_DOWNLOAD, self._settings["workers"],
-                                 skip_interludes=self._settings["skip_interludes"], on_event=self._push)
+                                 skip_interludes=self._settings["skip_interludes"], on_event=self._push,
+                                 name_style=self._settings["name_style"])
 
     def _push(self, kind, **data):
         with self._lock:

@@ -26,6 +26,9 @@ class colours:
 
 
 APP_VERSION = "0.2.0-pre"
+# How a downloaded song's file is named. The artist is always written inside the tags too, so a name with only the title loses nothing.
+NAME_STYLES = {"artist_title": "Artista - Título", "title_artist": "Título - Artista", "title": "Solo el título"}
+DEFAULT_NAME_STYLE = "artist_title"
 LIKED_KEYWORD = "liked"
 
 IS_FROZEN = getattr(sys, "frozen", False)  # True inside the compiled program (PyInstaller)

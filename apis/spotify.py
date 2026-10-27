@@ -311,10 +311,13 @@ class SpotifyTrack:
         title = self.track_metadata.get("title", "Unknown Title")
         return sanitize_filename(title) if sanitize else title
 
-    def get_filename(self):
-        """'Artist - Title': unique enough that two songs titled alike don't overwrite each other."""
+    def get_filename(self, style=const.DEFAULT_NAME_STYLE):
+        """'Artist - Title' (the default: unique enough that two songs titled alike don't overwrite each other),
+        'Title - Artist' or just 'Title' (see const.NAME_STYLES). An unknown style gives the default."""
         self._ensure_loaded()
-        return sanitize_filename(f"{', '.join(self.track_metadata['artist'])} - {self.track_metadata['title']}")
+        artists, title = ", ".join(self.track_metadata['artist']), self.track_metadata['title']
+        name = {"title_artist": f"{title} - {artists}", "title": title}.get(style, f"{artists} - {title}")
+        return sanitize_filename(name)
 
     def get_artist(self, sanitize=False):
         self._ensure_loaded()

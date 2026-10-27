@@ -24,7 +24,7 @@ Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistent
 | **Completar etiquetas** | Elige canciones que ya tengas (o suéltalas en la ventana) y Burdamix escribe en ellas título, artista, álbum, año, género, número de pista y portada. Ver la sección de abajo. |
 | **Tutorial · Iniciar sesión** | Los pasos para conectar el programa con Spotify, con los campos para pegar el Client ID y el Client secret. |
 | **Preguntas frecuentes** | Las dudas más comunes. |
-| **Configuración** | Carpeta de descargas, canciones a la vez, saltar intros, sesión del navegador y actualizar yt-dlp. |
+| **Configuración** | Carpeta de descargas, **nombre de los archivos**, canciones a la vez, saltar intros, sesión del navegador y actualizar yt-dlp. |
 
 Para abrirla desde el código: `python gui_app.py`. Las versiones compiladas (instalador y portable) están en la sección
 *Releases* del repositorio y abren esta ventana; `Burdamix-consola.exe` es el modo de texto de siempre.
@@ -127,6 +127,7 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 | `--max-length 30` | Descarta videos más largos que esto (minutos). |
 | `--min-views N` | Descarta videos con menos reproducciones (apagado por defecto). |
 | `--keep-interludes` | Descarga también los interludios (por defecto se saltan). |
+| `--naming` | Cómo se llaman los archivos: `artist-title` (por defecto, `Artista - Título.mp3`), `title-artist` o `title` (solo el título). El artista siempre queda dentro de las etiquetas. |
 | `--last 50` | Con `-l`: solo tus **50 canciones más recientes** de “Me gusta” (Spotify las ordena de la más nueva a la más vieja). Si tienes miles, no hace falta bajarlas todas. |
 | `--ask` | Muestra la lista primero y pregunta **yes/no** antes de descargar (es lo que hace `like it` en el modo guiado). |
 | `--dry-run` | Solo **muestra la lista** (con la fecha en que la guardaste y cuántas ya tienes) y no descarga nada. Sirve para ver cuántas detecta antes de bajar. |
@@ -136,6 +137,21 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 | `--cookies-from-browser firefox` | Para videos con restricción de edad (ver abajo). |
 | `--setup` | Repetir la conexión con Spotify (también cierra la sesión anterior). |
 | `--no-update` | No buscar una versión nueva de yt-dlp. |
+
+## Nombre de los archivos
+
+Tres opciones, en **Configuración → Nombre de los archivos** (o con `--naming` en la consola):
+
+| Opción | Ejemplo |
+|---|---|
+| Artista - Título (por defecto) | `The Weeknd - Blinding Lights.mp3` |
+| Título - Artista | `Blinding Lights - The Weeknd.mp3` |
+| Solo el título | `Blinding Lights.mp3` |
+
+El artista, el álbum, el año y la portada siempre se escriben dentro de las **etiquetas** del archivo, así que el reproductor muestra lo mismo
+con cualquiera de las tres. Con «solo el título», dos canciones que se llamen igual no se pisan: la segunda queda como `Título (2).mp3`.
+Cambiar de opción **no vuelve a bajar** lo que ya tienes con los otros dos nombres completos. Un archivo que solo tiene el título no se
+toma por otra canción, así que si pasas de «solo el título» a otra opción, esas canciones se volverían a bajar.
 
 ## Cosas que conviene saber
 

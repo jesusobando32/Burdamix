@@ -171,8 +171,8 @@ def ask_yes_no(prompt):
         print(f"{colours.WARNING}Responde yes o no.{colours.ENDC}")
 
 
-def plan_filenames(tracks):
-    """Decide the file name of every track before downloading anything.
+def plan_filenames(tracks, style=const.DEFAULT_NAME_STYLE):
+    """Decide the file name of every track before downloading anything, written in the chosen style (const.NAME_STYLES).
 
     Returns (plan, repeated, renamed):
     - plan: [(index, track, file name)] to download;
@@ -183,7 +183,7 @@ def plan_filenames(tracks):
     Names depend on the Spotify ids, not on the playlist order, so a second run gives the same names."""
     groups = {}
     for index, track in enumerate(tracks):
-        groups.setdefault(track.get_filename().casefold(), []).append((index, track))
+        groups.setdefault(track.get_filename(style).casefold(), []).append((index, track))
 
     names = {}
     repeated = []
@@ -194,7 +194,7 @@ def plan_filenames(tracks):
             by_id.setdefault(getattr(track, "resource_id", None) or id(track), []).append((index, track))
         for rank, track_id in enumerate(sorted(by_id, key=str), start=1):
             first_index, first_track = by_id[track_id][0]
-            base = first_track.get_filename()
+            base = first_track.get_filename(style)
             names[first_index] = base if rank == 1 else f"{base} ({rank})"
             if rank > 1:
                 renamed.append((first_track, names[first_index]))
@@ -223,7 +223,9 @@ class SpotifyDownloader:
     def __init__(self, spotify: Spotify, youtube: YouTube, audio_quality=1000000, max_length=60*30, min_view_count=10000, workers=5,
                  skip_interludes=True, interlude_max_seconds=DEFAULT_INTERLUDE_MAX_SECONDS,
                  intro_outro_max_seconds=DEFAULT_INTRO_OUTRO_MAX_SECONDS, short_max_seconds=DEFAULT_SHORT_MAX_SECONDS,
-                 dry_run=False, ask_before_download=False, offer_browser_login=False, on_event=None):
+                 dry_run=False, ask_before_download=False, offer_browser_login=False, on_event=None,
+                 name_style=const.DEFAULT_NAME_STYLE):
+        self.name_style = name_style if name_style in const.NAME_STYLES else const.DEFAULT_NAME_STYLE
         self.on_event = on_event   # graphical interface: called with (kind, **data) as each song progresses
         self.cancelled = threading.Event()   # set to stop starting new songs
         self.dry_run = dry_run   # list what would be downloaded and stop
@@ -319,8 +321,8 @@ class SpotifyDownloader:
 
     def _show_plan(self, tracks, output_path, total=None):
         """Preview for --dry-run: what would be downloaded, and how much of it is already on disk."""
-        plan, repeated, renamed = plan_filenames(tracks)
-        already = sum(1 for _, _, name in plan if self.file_exists(output_path + name + ".mp3"))
+        plan, repeated, renamed = plan_filenames(tracks, self.name_style)
+        already = sum(1 for _, track, name in plan if self.already_downloaded(track, name, output_path))
 
         print(f"\n{colours.HEADER}=== Vista previa (no se descarga nada) ==={colours.ENDC}")
         for number, track in enumerate(tracks[:PREVIEW_LINES], start=1):
@@ -385,11 +387,11 @@ class SpotifyDownloader:
             return True
 
         not_started = 0
-        plan, repeated, renamed = plan_filenames(tracks)
+        plan, repeated, renamed = plan_filenames(tracks, self.name_style)
         self.planned = len(plan)
         if repeated:
             print(f"{colours.OKBLUE}[!] {len(repeated)} repeated song(s) in the list, downloaded once: "
-                  f"{', '.join(sorted({t.get_filename() for t in repeated}))}{colours.ENDC}")
+                  f"{', '.join(sorted({t.get_filename(self.name_style) for t in repeated}))}{colours.ENDC}")
         for _track, name in renamed:
             print(f"{colours.OKBLUE}[!] Different song with the same file name, saved as '{name}'{colours.ENDC}")
 
@@ -503,7 +505,7 @@ class SpotifyDownloader:
             return
         print(f"\n{colours.WARNING}[!] {len(skipped_tracks)} canción(es) no se pudieron descargar:{colours.ENDC}\n")
         for track, error in skipped_tracks:
-            print(f"    {track.get_filename()}")
+            print(f"    {track.get_filename(self.name_style)}")
             print(f"        {colours.WARNING}-> {friendly_reason(error)}{colours.ENDC}")
 
         present = {reason_category(error) for _, error in skipped_tracks}
@@ -567,13 +569,13 @@ class SpotifyDownloader:
             self._emit("stage", track, stage="searching")
             self._log(tag, f"{colours.OKGREEN}Searching{colours.ENDC}: {track.get_title()} by {track.get_artist()}")
 
-            track_path = output_path + (filename or track.get_filename()) + ".mp3"
+            track_path = output_path + (filename or track.get_filename(self.name_style)) + ".mp3"
 
             if is_hard_to_open(track_path):
                 self._log(tag, f"{colours.WARNING}[!] Long file name: it will be saved, but some Windows programs may not open it.")
 
             self.prep_folder(output_path)
-            if self.file_exists(track_path):
+            if self.already_downloaded(track, filename or track.get_filename(self.name_style), output_path):
                 self._log(tag, f"{colours.OKCYAN}File exists, skipping.")
                 self._emit("done", track, existed=True)
                 return True
@@ -622,6 +624,17 @@ class SpotifyDownloader:
 
     def prep_folder(self, folder_name):
         Path(long_path(folder_name)).mkdir(parents=True, exist_ok=True)
+
+    def already_downloaded(self, track, name, output_path):
+        """Is this song already in the folder? Also under the other two full-name styles, so changing how songs are
+        named does not download everything again. A file named with the title alone is never taken for another song's
+        (many songs share a title), and a name that got a " (2)" because of a clash is only matched exactly."""
+        if self.file_exists(output_path + name + ".mp3"):
+            return True
+        if name != track.get_filename(self.name_style):
+            return False
+        return any(self.file_exists(output_path + track.get_filename(style) + ".mp3")
+                   for style in ("artist_title", "title_artist") if style != self.name_style)
 
     def file_exists(self, file_path):
         return Path(long_path(file_path)).exists()
