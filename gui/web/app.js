@@ -527,7 +527,8 @@ function demoTagsApi(art) {
       setTimeout(() => { busy = false; push("finished", { job: "identify", total: paths.length, counts: {}, cancelled: false, error: null }); }, 1200 + paths.length * 900);
       return { ok: true };
     },
-    tags_prepare: async (path, c) => ({ ok: true, candidate: { ...c, genre: c.genre || "R&B" }, file_name: c.artist + " - " + c.title + ".mp3", changes: [
+    tags_cover_preview: async c => ({ ok: true, preview: art("#7b2d26", "#f0a500"), problem: null }),
+    tags_prepare: async (path, c) => ({ ok: true, candidate: { ...c, genre: c.genre || "R&B" }, file_name: c.artist + " - " + c.title + ".mp3", cover_preview: art("#7b2d26", "#f0a500"), cover_problem: null, changes: [
       { field: "title", label: "Título", old: "", new: c.title }, { field: "artist", label: "Artista", old: "", new: c.artist },
       { field: "album", label: "Álbum", old: "", new: c.album }, { field: "year", label: "Año", old: "", new: c.year },
       { field: "genre", label: "Género", old: "", new: c.genre || "R&B" }, { field: "track", label: "Pista", old: "", new: c.track_number + "/" + c.track_total },
@@ -535,7 +536,7 @@ function demoTagsApi(art) {
     tags_apply: async items => {
       items.forEach((it, i) => {
         setTimeout(() => push("applying", { path: it.path }), 300 + i * 700);
-        setTimeout(() => push("applied", { path: it.path, new_path: it.path, cover: true, genre: "R&B",
+        setTimeout(() => push("applied", { path: it.path, new_path: it.path, cover: true, cover_thumb: art("#7b2d26", "#f0a500"), genre: "R&B",
           tags: { ...emptyTags, title: it.candidate.title, artist: it.candidate.artist, album: it.candidate.album, year: it.candidate.year, genre: "R&B", track: it.candidate.track_number, has_cover: true, complete: true } }), 700 + i * 700);
       });
       setTimeout(() => push("finished", { job: "apply", total: items.length, done: items.length, failed: 0, cancelled: false, error: null }), 900 + items.length * 700);

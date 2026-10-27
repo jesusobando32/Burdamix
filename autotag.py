@@ -261,7 +261,12 @@ class AutoTagger:
         self.write(path, info, found.data)
         new_path = self.rename(path, song_filename(info.title, info.artist, style)) if rename else path
         return {"path": new_path, "cover": found.data is not None, "genre": info.genre, "cover_problem": found.problem,
-                "cover_source": found.source}
+                "cover_source": found.source, "cover_thumb": tagwriter.cover_thumbnail(found.data) if found.data else None}
+
+    def preview_cover(self, info):
+        """(a small picture as a data: URL or None, problem or None): the cover that WOULD be written, so the window can show it."""
+        found = self.covers.find(info)
+        return (tagwriter.cover_thumbnail(found.data) if found.data else None), found.problem
 
 
 def collect_audio_files(paths):

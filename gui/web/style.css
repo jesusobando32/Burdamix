@@ -276,3 +276,4 @@ code { background: var(--surface-2); border: 1px solid var(--border); border-rad
 .inline-form input { height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); padding: 0 10px; outline: 0; color: var(--text); }
 .icon-btn.small { width: 30px; height: 30px; border-radius: 8px; }
 @media (max-width: 760px) { .two, .inline-form { grid-template-columns: 1fr; } }
+.done-cover { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; float: left; margin-right: 14px; box-shadow: var(--shadow); }

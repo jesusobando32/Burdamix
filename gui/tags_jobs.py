@@ -127,9 +127,19 @@ class TagJobs:
             tags = tagwriter.read_tags(path)
             info = self.tagger.enrich(SongInfo.from_dict(candidate))
             new_name = song_filename(info.title, info.artist, name_style) + os.path.splitext(path)[1]
-            return {"ok": True, "candidate": info.to_dict(), "changes": self.tagger.changes(tags, info), "file_name": new_name}
+            preview, problem = self.tagger.preview_cover(info)       # the cover that will be written, found now so the user sees it
+            return {"ok": True, "candidate": info.to_dict(), "changes": self.tagger.changes(tags, info), "file_name": new_name,
+                    "cover_preview": preview, "cover_problem": problem}
         except MetadataError as error:
             return {"ok": False, "error": str(error)}
+
+    def cover_preview(self, candidate):
+        """A small picture of the cover that would be written for this candidate, for the list of options."""
+        try:
+            preview, problem = self.tagger.preview_cover(SongInfo.from_dict(candidate))
+        except MetadataError as error:
+            return {"ok": False, "error": str(error)}
+        return {"ok": True, "preview": preview, "problem": problem}
 
     # --- a cover the user picked themselves ---
 
@@ -186,7 +196,7 @@ class TagJobs:
                     self.push("failed", path=path, error=str(error))
                     continue
                 done += 1
-                self.push("applied", path=path, new_path=result["path"], cover=result["cover"], cover_problem=result.get("cover_problem"), genre=result["genre"],
+                self.push("applied", path=path, new_path=result["path"], cover=result["cover"], cover_problem=result.get("cover_problem"), cover_thumb=result.get("cover_thumb"), genre=result["genre"],
                           tags=self._safe_tags(result["path"]))
         except Exception as error:
             stopped = f"Se detuvo la escritura ({type(error).__name__})."

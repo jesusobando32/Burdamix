@@ -354,6 +354,9 @@ class Api:
     def tags_prepare(self, path, candidate):
         return self._tags.prepare(path, candidate, self._settings["name_style"])
 
+    def tags_cover_preview(self, candidate):
+        return self._tags.cover_preview(candidate)
+
     def tags_apply(self, items, rename=False):
         return self._tags.apply(items, rename, self._settings["name_style"])
 

@@ -152,6 +152,20 @@ def prepare_cover(data):
     return out.getvalue(), image.size
 
 
+def cover_thumbnail(data, size=160):
+    """A small JPEG of the picture `data` as a data: URL, for the window to show; None when it cannot be read."""
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError):
+        return None
+    image = image.convert("RGB")
+    image.thumbnail((size, size), Image.LANCZOS)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=80)
+    return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+
+
 def _picture(cover, size):
     picture = Picture()
     picture.type, picture.mime, picture.desc = 3, "image/jpeg", "Cover"   # 3 = front cover

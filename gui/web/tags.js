@@ -44,7 +44,7 @@ function candidatesHTML(f) {
   const rows = f.candidates.map((c, i) => `
     <label class="cand ${i === f.sel ? "on" : ""}" data-i="${i}">
       <input type="radio" name="c-${esc(f.path)}" ${i === f.sel ? "checked" : ""} data-act="pick" data-i="${i}">
-      <img src="${esc(c.thumb_url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <img class="cthumb" data-i="${i}" src="${esc(c.thumb_url)}" alt="" loading="lazy">
       <div><b>${esc(c.title)}</b> — ${esc(c.artist)}
         <span><i class="tag-kind ${c.kind === "album" ? "studio" : ""}">${esc(c.kind_label)}</i>${esc([c.album, c.year].filter(Boolean).join(" · "))}</span>
         <span>${esc(c.source === "musicbrainz" ? "MusicBrainz" : c.source === "deezer" ? "Deezer" : "iTunes")}${c.genre ? " · " + esc(c.genre) : ""}${c.track_number ? " · pista " + c.track_number : ""}</span></div>
@@ -57,7 +57,9 @@ function candidatesHTML(f) {
 function diffHTML(f) {
   const p = f.prepared, rename = $("#tags-rename").checked;
   const rows = p.changes.map(r => r.field === "cover"
-    ? `<tr><td class="lab">Portada</td><td class="old">${esc(r.old)}</td><td>→</td><td class="new"><img src="${esc(p.candidate.thumb_url)}" alt="" onerror="this.style.display='none'"></td></tr>`
+    ? `<tr><td class="lab">Portada</td><td class="old">${esc(r.old)}</td><td>→</td><td class="new">${p.cover_preview
+        ? `<img src="${esc(p.cover_preview)}" alt="">`
+        : `<span class="warn-note">${esc(p.cover_problem || "No encontré una portada para esta canción.")}</span>`}</td></tr>`
     : `<tr><td class="lab">${esc(r.label)}</td><td class="old">${esc(r.old)}</td><td>→</td><td class="new">${esc(r.new)}</td></tr>`).join("");
   return `${p.changes.length ? `<table class="diff">${rows}</table>` : '<p class="muted">No hay nada que cambiar: el archivo ya tiene esos datos.</p>'}
     <p class="warn-note">Los cambios se escriben en el archivo y no se pueden deshacer.${rename ? ` El archivo se renombrará a «${esc(p.file_name || "")}».` : ""}</p>
@@ -75,7 +77,7 @@ function bodyHTML(f) {
   if ((f.status === "sure" || f.status === "review") && f.candidates.length) return f.prepared ? diffHTML(f) : candidatesHTML(f);
   if (f.status === "applied") {
     const d = f.done || {};
-    return `<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ` <span class="warn-note">${esc(d.problem || "No encontré portada para esta canción.")}</span>`}</p>
+    return `${d.thumb ? `<img class="done-cover" src="${esc(d.thumb)}" alt="Portada escrita">` : ""}<p>✓ Etiquetas escritas${d.genre ? " · género " + esc(d.genre) : ""}.${d.cover ? "" : ` <span class="warn-note">${esc(d.problem || "No encontré portada para esta canción.")}</span>`}</p>
       ${d.cover ? "" : `<div class="btn-row"><button class="btn" data-act="pickcover">Elegir una imagen…</button></div>
         <p class="muted small">${d.problem ? "También puedes volver a buscar esta canción cuando se resuelva. " : ""}La imagen se reduce a 1000 × 1000 y se escribe en el archivo.</p>`}`;
   }
@@ -137,6 +139,16 @@ function renderTagBar() {
     bar.innerHTML = `<div class="grow"><b>${plural(T.files.length, "canción", "canciones")}</b>${parts.length ? `<div class="muted small">${esc(parts.join(" · "))}</div>` : ""}</div>
       ${sure.length ? `<button class="btn primary" data-act="apply-sure">Aplicar ${sure.length === 1 ? "la coincidencia clara" : "las " + sure.length + " coincidencias claras"}</button>` : ""}`;
   }
+}
+
+/* ---------- a candidate whose own picture does not load: show the cover that would really be written ---------- */
+async function previewCover(img) {
+  const card = img.closest(".tcard"), f = card && tagFile(card.dataset.path);
+  if (!f || img.dataset.tried) return;
+  img.dataset.tried = "1";
+  img.style.visibility = "hidden";
+  const r = await call("tags_cover_preview", f.candidates[+img.dataset.i]);
+  if (r && r.preview) { img.src = r.preview; img.style.visibility = "visible"; }
 }
 
 /* ---------- the rename option shows what the chosen file-name style looks like ---------- */
@@ -230,7 +242,7 @@ function onTagEvent(e) {
   } else if (e.kind === "applying") f.status = "writing";
   else if (e.kind === "applied") {
     T.jobDone++;
-    f.status = "applied"; f.done = { cover: e.cover, genre: e.genre, problem: e.cover_problem }; f.prepared = null;
+    f.status = "applied"; f.done = { cover: e.cover, genre: e.genre, problem: e.cover_problem, thumb: e.cover_thumb }; f.prepared = null;
     if (e.tags) f.tags = e.tags;
     if (e.new_path && e.new_path !== f.path) { f.path = e.new_path; f.name = baseName(e.new_path); }
     return renderTags();   // the card's identity (its path) may have changed
@@ -257,6 +269,7 @@ function initTags() {
   $("#tags-search").onclick = searchAll;
   $("#tags-clear").onclick = () => { if (T.running || T.applying) return toast("Espera a que termine o cancela.", true); T.files = []; renderTags(); };
   $("#tags-list").addEventListener("click", onTagsClick);
+  $("#tags-list").addEventListener("error", ev => { if (ev.target.classList && ev.target.classList.contains("cthumb")) previewCover(ev.target); }, true);   // image errors do not bubble
   $("#tags-list").addEventListener("change", ev => { if (ev.target.dataset.act === "pick" || ev.target.dataset.act === "include") onTagsClick(ev); });
   $("#tags-bar").addEventListener("click", onBarClick);
   try { if (localStorage.getItem("tags-rename") === "0") $("#tags-rename").checked = false; } catch (e) { /* default: on */ }

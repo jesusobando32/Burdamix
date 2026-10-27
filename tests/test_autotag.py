@@ -490,7 +490,8 @@ def test_applying_enriches_the_genre_downloads_the_cover_writes_and_renames_in_t
     result = t.apply("C:/music/x.mp3", info(cover_urls=("https://c/a.jpg",)), rename=True)
     assert log == [("cover", "https://c/a.jpg"), "write", ("rename", "The Weeknd - Blinding Lights")]       # the default name style
     assert written["song"].genre == "R&B" and written["cover"] == b"JPEG"
-    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None, "cover_source": "caa"}
+    assert result == {"path": "C:/music/Blinding Lights.mp3", "cover": True, "genre": "R&B", "cover_problem": None, "cover_source": "caa",
+                      "cover_thumb": None}                                       # b"JPEG" is not a real picture: no thumbnail
 
 
 def test_apply_does_not_rename_unless_asked_and_survives_a_missing_cover():
@@ -684,6 +685,9 @@ class FakeTagger:
     def enrich(self, info):
         info.genre = info.genre or "Pop"
         return info
+
+    def preview_cover(self, info):
+        return "data:image/jpeg;base64,PREVIEW", None
 
     def apply(self, path, info, rename=False, style=None):
         from pathutils import song_filename
@@ -1028,9 +1032,9 @@ class Images:
         return outcome
 
 
-def chain(*providers, images, clock=lambda: 0):
+def chain(*providers, images, clock=lambda: 0, cache_size=0):
     from covers import CoverFinder
-    return CoverFinder(list(providers), images, clock)
+    return CoverFinder(list(providers), images, clock, cache_size)
 
 
 def test_the_chain_is_asked_in_order_and_stops_at_the_first_picture():
@@ -1275,3 +1279,58 @@ def test_the_cover_inside_the_file_is_baseline_420_even_when_the_source_was_not(
     seen = subprocess.run([ffmpeg(), "-hide_banner", "-i", song], capture_output=True, text=True).stderr
     picture = [line for line in seen.splitlines() if "attached pic" in line][0]
     assert "Baseline" in picture and "yuvj420p" in picture and "900x900" in picture
+
+
+# --- Showing the user the cover that will be (or was) written ----------------------------------------------------
+
+def test_the_review_shows_the_cover_that_will_be_written_and_the_finished_card_the_one_that_was(jobs):
+    tagger_jobs, folder = jobs
+    prepared = tagger_jobs.prepare(str(folder / "sure.mp3"), info().to_dict())
+    assert prepared["cover_preview"] == "data:image/jpeg;base64,PREVIEW" and prepared["cover_problem"] is None
+    assert tagger_jobs.cover_preview(info().to_dict()) == {"ok": True, "preview": "data:image/jpeg;base64,PREVIEW", "problem": None}
+
+
+def test_a_small_thumbnail_of_a_cover_is_made_for_the_window_and_garbage_gives_none():
+    import base64
+    from PIL import Image
+    url = tagwriter.cover_thumbnail(png(900, 600))
+    assert url.startswith("data:image/jpeg;base64,")
+    thumb = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1])))
+    assert thumb.format == "JPEG" and max(thumb.size) == 160
+    assert tagwriter.cover_thumbnail(b"not a picture") is None
+
+
+def test_the_tagger_gives_the_window_a_thumbnail_of_the_cover_it_found_and_why_when_there_is_none():
+    ok = tagger(images=Images({"https://c/a.jpg": png(500, 500)}), writer=lambda p, s, c: None, renamer=lambda p, n: p)
+    result = ok.apply("x.mp3", info(cover_urls=("https://c/a.jpg",)))
+    assert result["cover_thumb"].startswith("data:image/jpeg;base64,") and result["cover"] is True
+    assert ok.preview_cover(info(cover_urls=("https://c/a.jpg",)))[0].startswith("data:image/jpeg")
+    refused = Images({"https://c/a.jpg": MetadataRefused("El servidor de portadas negó el acceso (403). Si usas una VPN, prueba sin ella.")})
+    thumb, problem = tagger(images=refused).preview_cover(info(cover_urls=("https://c/a.jpg",)))
+    assert thumb is None and "VPN" in problem
+
+
+def test_the_songs_of_an_album_share_one_cover_search_and_download():
+    """A folder of 12 songs from one album must not search and download the same cover 12 times."""
+    provider = FakeSource(covers=("https://dz/cover.jpg",))
+    images = Images({"https://dz/cover.jpg": b"ALBUM COVER"})
+    finder = chain(("deezer", provider), images=images, cache_size=8)
+    for n in range(12):
+        assert finder.find(info(title=f"Song {n}", source="")).data == b"ALBUM COVER"
+    assert len(provider.cover_calls) == 1 and images.asked == ["https://dz/cover.jpg"]
+    assert finder.find(info(album="Another Album", source="")).data == b"ALBUM COVER"          # a different album is searched on its own
+    assert len(provider.cover_calls) == 2
+
+
+def test_a_cover_that_was_not_found_is_not_remembered_so_it_can_be_found_later():
+    provider = FakeSource()
+    finder = chain(("deezer", provider), images=Images({}), cache_size=8)
+    assert finder.find(info(source="")).data is None and finder.find(info(source="")).data is None
+    assert len(provider.cover_calls) == 2
+
+
+def test_the_cover_cache_stays_small():
+    finder = chain(("a", FakeSource(covers=("https://x/1.jpg",))), images=Images({"https://x/1.jpg": b"X"}), cache_size=2)
+    for n in range(5):
+        finder.find(info(album=f"Album {n}", source=""))
+    assert len(finder._cache) == 2
