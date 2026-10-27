@@ -353,6 +353,7 @@ class Api:
         try:
             tempdirs.clean_stale()
             d = self._make_downloader(pending["spotify"], YouTube(self._settings["browser"] or None))
+            d._tagger = self._cover_tagger   # searched songs are tagged with the cover already found for the preview (None: made when needed)
             self._downloader = d
             d.prep_folder(pending["output_path"])
             skipped = d.download_tracks(pending["output_path"], chosen)
