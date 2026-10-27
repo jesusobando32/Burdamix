@@ -6,14 +6,31 @@
 
 Spotify no permite descargar su audio, así que el programa **lee la lista en Spotify y busca cada canción en YouTube**,
 descarga el audio que mejor coincide (compara la duración, el título y el artista con los de Spotify), lo convierte a MP3
-y le pone título, artista, álbum, año y portada.
+y le pone título, artista, álbum, año y portada. También completa las etiquetas y la portada de canciones que ya tengas.
 
 > Proyecto basado en [couldbejake/spotify2mp3](https://github.com/couldbejake/spotify2mp3). Úsalo solo con música
 > que tengas derecho a guardar; bajar audio de YouTube va contra sus términos de servicio.
 
 ---
 
-## Aplicación con ventana (Windows)
+## Cómo conseguirlo (Windows)
+
+La forma más fácil es bajar el programa desde la sección **[Releases](https://github.com/jesusobando32/Burdamix/releases)**:
+
+| Archivo | Para qué |
+|---|---|
+| `Burdamix-Setup.exe` | **Instalador (recomendado).** Se instala sin pedir permisos de administrador, con acceso directo y desinstalador. Las canciones quedan en `Música\Burdamix`. |
+| `Burdamix-portable.zip` | Versión portable: descomprímela y abre `Burdamix.exe`. Las canciones y la configuración quedan en su misma carpeta. |
+
+Por ahora son versiones de prueba (*pre-release*). Windows puede avisar de «editor desconocido» porque el programa no está firmado
+(firmarlo cuesta dinero): pulsa **Más información** y luego **Ejecutar de todas formas**.
+
+**Desde el código** (para probar lo último o para desarrollar): instala **Python 3.10 o más nuevo**
+(marca «Add python.exe to PATH»), descarga el proyecto, instala las dependencias con
+`pip install -r requirements.lock yt-dlp` y abre la ventana con **`abrir_ventana.bat`** (o `python gui_app.py`).
+Las canciones quedan en la carpeta `downloads` del proyecto.
+
+## La ventana
 
 Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistente de IA:
 
@@ -26,8 +43,20 @@ Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistent
 | **Preguntas frecuentes** | Las dudas más comunes. |
 | **Configuración** | Carpeta de descargas, **nombre de los archivos**, canciones a la vez, saltar intros, sesión del navegador y actualizar yt-dlp. |
 
-Para abrirla desde el código: `python gui_app.py`. Las versiones compiladas (instalador y portable) están en la sección
-*Releases* del repositorio y abren esta ventana; `Burdamix-consola.exe` es el modo de texto de siempre.
+## Conectar con Spotify (solo la primera vez)
+
+Spotify obliga a que cada persona cree su propia “app” gratuita; así el programa puede leer tus playlists.
+La primera vez, la ventana abre directamente el **Tutorial · Iniciar sesión**, que te guía con estos pasos y tiene los campos para pegar tus datos:
+
+1. Entra a <https://developer.spotify.com/dashboard> e inicia sesión con tu cuenta de Spotify.
+2. **Create app**. Nombre y descripción: lo que quieras.
+3. En **Redirect URI** pega exactamente `http://127.0.0.1:5000/callback` (el Tutorial tiene un botón para copiarla) y pulsa **Add**.
+4. Marca **Web API**, acepta los términos y pulsa **Save**.
+5. Abre tu app > **Settings**. Copia el **Client ID** y el **Client secret** (*View client secret*) y pégalos en el Tutorial.
+
+Tu usuario y contraseña de Spotify **nunca** se piden. El Client ID, el Client secret y tu sesión se guardan en una carpeta privada de tu usuario (`%LOCALAPPDATA%\Burdamix\` en Windows; en la versión portable, la carpeta `datos` junto al programa), **fuera del proyecto**: así no se sincronizan con OneDrive ni viajan dentro de la carpeta si se la pasas a alguien.
+
+Para **tus playlists y tus favoritos** hace falta además iniciar sesión (paso 2 del Tutorial): se abre el navegador para que pulses **Aceptar**. Tienes 3 minutos. Si cambias de app de Spotify, vuelve a pasar por el Tutorial.
 
 ## Completar etiquetas y portadas
 
@@ -57,14 +86,64 @@ Las portadas se guardan como JPG de **1000 × 1000 píxeles como máximo**, en e
 > **Todavía no incluido:** identificar una canción por su **huella acústica** (AcoustID), para archivos sin ningún dato. Necesitará
 > el programa `fpcalc` (Chromaprint) y una clave gratuita de AcoustID; se añadirá con sus instrucciones de instalación.
 
-## Inicio rápido (Windows)
+## Nombre de los archivos
+
+Tres opciones, en **Configuración → Nombre de los archivos** :
+
+| Opción | Ejemplo |
+|---|---|
+| Artista - Título (por defecto) | `The Weeknd - Blinding Lights.mp3` |
+| Título - Artista | `Blinding Lights - The Weeknd.mp3` |
+| Solo el título | `Blinding Lights.mp3` |
+
+El artista, el álbum, el año y la portada siempre se escriben dentro de las **etiquetas** del archivo, así que el reproductor muestra lo mismo
+con cualquiera de las tres. Con «solo el título», dos canciones que se llamen igual no se pisan: la segunda queda como `Título (2).mp3`.
+Cambiar de opción **no vuelve a bajar** lo que ya tienes con los otros dos nombres completos. Un archivo que solo tiene el título no se
+toma por otra canción, así que si pasas de «solo el título» a otra opción, esas canciones se volverían a bajar.
+
+## Cosas que conviene saber
+
+- **Solo playlists tuyas.** Spotify ya no deja que ninguna app lea las playlists de otras personas (da error 403).
+  Truco: abre la playlist en Spotify, selecciona todo (`Ctrl+A`), *Añadir a playlist* > *Nueva playlist*, y usa el enlace de tu copia.
+  Los **álbumes y canciones sueltas** funcionan con cualquier enlace.
+- **Calidad.** Es siempre la mejor que ofrece YouTube: unos 130 kbps, que queda como MP3 de 128 kbps. Pedir 320 no mejora nada, porque YouTube no tiene más.
+- **Velocidad.** Medido con un álbum de 14 canciones: 2 a la vez = 70 s, 4 = 41 s, 8 = 32 s. Por eso el valor por defecto es 5 (se cambia en Configuración): subir más rinde poco y aumenta el riesgo de que YouTube te limite.
+- **Dónde quedan las canciones.** Instalado: `Música\Burdamix`. Portable: junto al programa. Desde el código: `downloads` del proyecto. En todos los casos puedes cambiarlo en **Configuración**, y dentro hay una carpeta por álbum o playlist.
+- **Cancelar.** El botón **Cancelar** de la ventana deja terminar las canciones que ya empezaron y conserva todo lo descargado.
+- **Se puede cortar y reanudar.** Si una canción ya está en la carpeta, se salta. Pega otra vez el mismo enlace y sigue donde quedó.
+- **«Me gusta» con muchas canciones.** En **Mis favoritos** eliges cuántas de las más recientes ver (50, 100, 200, 500, todas o un número). Pide a Spotify solo esas.
+- **Videos para mayores de edad.** Si la única versión de una canción está marcada para mayores de edad, YouTube exige iniciar sesión. En **Configuración → Usar mi sesión de YouTube** eliges el navegador donde ya la tienes abierta (Firefox es el que mejor funciona; si usas Chrome o Edge, ciérralo antes). Solo se lee ese navegador y solo si lo eliges.
+- **Canciones saltadas.** Al final, la ventana lista cuáles no se pudieron bajar, por qué, y qué hacer. Archivos locales y podcasts de una playlist se ignoran.
+- **Intros e interludios** (pistas muy cortas) se saltan por defecto; se puede apagar en Configuración.
+
+## Problemas frecuentes
+
+| Síntoma | Qué hacer |
+|---|---|
+| «Spotify no aceptó esos datos» | Copia de nuevo el Client ID y el Client secret, completos y sin espacios. |
+| «El puerto 5000 está ocupado» | Cierra el programa que lo usa y reintenta el inicio de sesión. |
+| Muchas canciones saltadas con «No encontré una versión con la misma duración» | Normal en temas muy nuevos o raros: el programa prefiere saltar antes que bajar una versión equivocada. |
+| Dejó de funcionar de golpe | YouTube cambia seguido. En **Configuración → Buscar actualización** se baja la versión nueva de `yt-dlp` (hace falta internet); después cierra y abre el programa. |
+| «YouTube pidió comprobar que no eres un robot» | Pasa a veces con un video concreto: el programa prueba solo otra versión de la canción y reintenta al final. Si siguen saltadas, espera unos minutos y pega **el mismo enlace**: solo baja las que faltan. Una VPN o una red compartida lo provoca más. |
+| «YouTube te está bloqueando» | Tras 5 canciones seguidas rechazadas, el programa se detiene para no empeorarlo. Espera un rato (a veces una hora) o cambia de red y pega el mismo enlace. |
+| La portada está en el archivo pero el reproductor de Windows no la muestra | Algunos reproductores guardan en memoria lo que sabían del archivo y no lo actualizan. Quita la carpeta de la biblioteca del reproductor y vuelve a agregarla (VLC y el Explorador sí la muestran). |
+| Una portada no se pudo bajar («negó el acceso (403)») | Algunos servidores bloquean las VPN. Prueba sin ella, o usa el botón **Elegir una imagen…** de la tarjeta. |
+
+## Versión de consola (sin mantenimiento)
+
+Burdamix empezó como un programa de texto. **Ya no se actualiza**: todo lo nuevo (la ventana, **Completar etiquetas**, el buscador de portadas,
+el instalador, el nombre de los archivos y las mejoras de errores y portadas) existe **solo en la ventana**. La consola sigue incluida en el
+proyecto y funciona, pero sin mantenimiento. La última versión de consola está guardada con la etiqueta
+[`consola-final`](https://github.com/jesusobando32/Burdamix/tree/consola-final).
+
+### Inicio rápido
 
 1. Instala **Python 3.10 o más nuevo** desde <https://www.python.org/downloads/>.
    Durante la instalación **marca la casilla “Add python.exe to PATH”**.
 2. Descarga este proyecto (botón verde *Code* > *Download ZIP*) y descomprímelo.
 3. Haz **doble clic en `iniciar.bat`**.
    La primera vez instala todo lo necesario (unos 2 minutos). Después abre el programa guiado.
-4. Sigue las instrucciones de la pantalla. La primera vez te explica, paso a paso, cómo conectarlo con Spotify (ver abajo).
+4. Sigue las instrucciones de la pantalla. La primera vez te explica, paso a paso, cómo conectarlo con Spotify (ver «Conectar con Spotify», arriba).
 
 Los MP3 quedan en la carpeta **`downloads/`**.
 
@@ -75,24 +154,7 @@ pip install -r requirements.txt
 python spotify2mp3.py
 ```
 
-## Conectar con Spotify (solo la primera vez)
-
-Spotify obliga a que cada persona cree su propia “app” gratuita; así el programa puede leer tus playlists.
-El programa te lo pide y te guía, pero estos son los pasos:
-
-1. Entra a <https://developer.spotify.com/dashboard> e inicia sesión con tu cuenta de Spotify.
-2. **Create app**. Nombre y descripción: lo que quieras.
-3. En **Redirect URI** pega exactamente `http://127.0.0.1:5000/callback` y pulsa **Add**.
-4. Marca **Web API**, acepta los términos y pulsa **Save**.
-5. Abre tu app > **Settings**. Copia el **Client ID** y el **Client secret** (*View client secret*) y pégalos cuando el programa los pida.
-
-Tu usuario y contraseña de Spotify **nunca** se piden. El Client ID, el Client secret y tu sesión se guardan en una carpeta privada de tu usuario (`%LOCALAPPDATA%\Burdamix\` en Windows), **fuera del proyecto**: así no se sincronizan con OneDrive ni viajan dentro de la carpeta si se la pasas a alguien.
-
-La primera vez que uses una **playlist** se abrirá el navegador para que pulses **Aceptar**. Tienes 3 minutos.
-
-Si algo sale mal o cambias de app: `python spotify2mp3.py --setup`.
-
-## Cómo usarlo
+### Cómo se usa
 
 **Modo guiado** (lo más fácil): abre `iniciar.bat` (o `python spotify2mp3.py`), pega el enlace y elige la calidad.
 
@@ -138,49 +200,6 @@ python spotify2mp3.py -l --last 50                                   # bajar sol
 | `--setup` | Repetir la conexión con Spotify (también cierra la sesión anterior). |
 | `--no-update` | No buscar una versión nueva de yt-dlp. |
 
-## Nombre de los archivos
-
-Tres opciones, en **Configuración → Nombre de los archivos** (o con `--naming` en la consola):
-
-| Opción | Ejemplo |
-|---|---|
-| Artista - Título (por defecto) | `The Weeknd - Blinding Lights.mp3` |
-| Título - Artista | `Blinding Lights - The Weeknd.mp3` |
-| Solo el título | `Blinding Lights.mp3` |
-
-El artista, el álbum, el año y la portada siempre se escriben dentro de las **etiquetas** del archivo, así que el reproductor muestra lo mismo
-con cualquiera de las tres. Con «solo el título», dos canciones que se llamen igual no se pisan: la segunda queda como `Título (2).mp3`.
-Cambiar de opción **no vuelve a bajar** lo que ya tienes con los otros dos nombres completos. Un archivo que solo tiene el título no se
-toma por otra canción, así que si pasas de «solo el título» a otra opción, esas canciones se volverían a bajar.
-
-## Cosas que conviene saber
-
-- **Solo playlists tuyas.** Spotify ya no deja que ninguna app lea las playlists de otras personas (da error 403).
-  Truco: abre la playlist en Spotify, selecciona todo (`Ctrl+A`), *Añadir a playlist* > *Nueva playlist*, y usa el enlace de tu copia.
-  Los **álbumes y canciones sueltas** funcionan con cualquier enlace.
-- **Velocidad.** Medido con un álbum de 14 canciones: 2 a la vez = 70 s, 4 = 41 s, 8 = 32 s. Por eso el valor por defecto es 5: subir más rinde poco y aumenta el riesgo de que YouTube te limite.
-- **Cancelar.** Mientras se descarga (una playlist, un álbum o una canción), pulsa **Ctrl+C tres veces**: una o dos solo avisan y la descarga sigue (probado con pulsaciones reales de consola). Al cancelar se conserva lo ya descargado. En las preguntas del modo guiado, un Ctrl+C te despide al instante.
-- **Dónde quedan los MP3.** Siempre en la carpeta `downloads` **dentro del proyecto**, sin importar desde dónde lo ejecutes. Al terminar, el programa muestra la ruta completa.
-- **“Me gusta” con muchas canciones.** Usa `-l --last 50` para bajar solo las más recientes: pide a Spotify únicamente esas (una petición en lugar de veinte). Más adelante puedes repetirlo con otro número y las que ya tienes se saltan, así que sirve para ir actualizando.
-- **Se puede cortar y reanudar.** Si ya existe `Artista - Título.mp3`, se salta. Vuelve a ejecutar el mismo enlace y sigue donde quedó.
-- **Videos para mayores de edad.** Si la única versión de una canción en YouTube está marcada para mayores de edad, YouTube exige iniciar sesión y el programa no puede bajarla sin tu cuenta. En el **modo guiado**, al terminar te pregunta si quieres usar la sesión de YouTube que ya tienes en tu navegador: escribe `firefox` (el que mejor funciona), `chrome`, `edge`... o Enter para dejarlas. En la línea de comandos: `--cookies-from-browser firefox`. Solo se lee el navegador que elijas, y solo cuando lo eliges. Si usas Chrome o Edge, ciérralo por completo antes.
-- **Canciones saltadas.** Al final se lista cuáles no se pudieron bajar y por qué. Archivos locales y podcasts de una playlist se ignoran.
-- **Nombre de archivo:** `Artista - Título.mp3`, dentro de `downloads/playlists/<nombre>/`, `downloads/albums/<nombre>/` o `downloads/tracks/`.
-
-## Problemas frecuentes
-
-| Síntoma | Qué hacer |
-|---|---|
-| `python` no se reconoce | Reinstala Python marcando “Add python.exe to PATH”. |
-| “Spotify no aceptó esos datos” | Copia de nuevo el Client ID y el Client secret, completos y sin espacios. |
-| “El puerto 5000 está ocupado” | Cierra el programa que lo usa y reintenta. |
-| “Spotify only lets this app read playlists that are YOURS” | Copia la playlist a una tuya (ver arriba). |
-| Muchas canciones saltadas con “No YouTube video matches…” | Normal en temas muy nuevos o raros; el programa prefiere saltar antes que bajar una versión equivocada. |
-| Dejó de funcionar de golpe | YouTube cambia seguido. El programa busca solo una versión nueva de `yt-dlp` **una vez al día**. Si acaba de fallar, borra el archivo `.ytdlp_last_check` y vuelve a abrirlo para forzar la búsqueda. |
-| Dos canciones con el mismo nombre | Si la misma canción está repetida en la lista, se baja una sola vez. Si son versiones distintas con el mismo nombre (por ejemplo la original y la *Remastered*), la segunda se guarda como `Artista - Título (2).mp3` y el programa te avisa. |
-| “YouTube pidió comprobar que no eres un robot” | Pasa a veces con un video concreto: el programa prueba solo otra versión de la canción, y al final reintenta una vez las que YouTube rechazó. Si siguen saltadas, espera unos minutos y ejecuta **el mismo enlace**: solo baja las que faltan. |
-| “YouTube marca este video para mayores de edad” | Mira la sección *Videos para mayores de edad* de arriba. |
-| “YouTube te está bloqueando” | Tras 5 canciones seguidas rechazadas el programa se detiene para no empeorarlo. Espera un rato (a veces hasta una hora) o cambia de red y ejecuta **el mismo enlace**: lo ya descargado se salta. |
 
 ## Para desarrolladores
 
@@ -189,12 +208,16 @@ pip install -r requirements.lock yt-dlp pytest mutagen
 python -m pytest tests
 ```
 
-**Etiquetas.** `autotag.py` coordina la búsqueda y el ranking; `tagwriter.py` lee y escribe etiquetas con `mutagen`; cada servicio está en `apis/` (`musicbrainz.py`, `deezer.py`, `itunes.py`) con un cliente HTTP común (`apis/metadata_http.py`) que limita las peticiones y envía el User-Agent. Las pruebas están en `tests/test_autotag.py` y no usan internet.
+**Ventana.** `gui_app.py` abre la ventana (PyWebView); `gui/backend.py` es lo que la página puede pedirle al programa y `gui/web/` es la página (HTML, CSS y JavaScript sin librerías externas; abierta en un navegador con `?demo` usa datos de mentira para ajustar el diseño). Los trabajos largos corren en hilos y la página pregunta por novedades.
 
-**Versiones fijas.** `requirements.lock` tiene las versiones exactas (con hashes) con las que se probó todo, y es lo que instala `iniciar.bat`.
+**Etiquetas y portadas.** `autotag.py` coordina la búsqueda y el ranking; `covers.py` busca la portada como un paso aparte; `tagwriter.py` lee y escribe etiquetas con `mutagen`; cada servicio está en `apis/` (`musicbrainz.py`, `deezer.py`, `itunes.py`, `ytmusic.py`) con un cliente HTTP común (`apis/metadata_http.py`) que limita las peticiones y envía el User-Agent. Las pruebas están en `tests/test_autotag.py` y no usan internet.
+
+**Versiones fijas.** `requirements.lock` tiene las versiones exactas (con hashes) con las que se probó todo, y es lo que instalan el compilado y `iniciar.bat`.
 `yt-dlp` queda fuera a propósito: se actualiza solo. Para subir versiones, edita `requirements.in` y regenera:
 
 ```bash
 pip install pip-tools
 pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.lock requirements.in
 ```
+
+**Compilar.** `build_exe.bat` crea el programa con PyInstaller y el zip portable en `build_out\`; `build_installer.bat` crea el instalador (hace falta Inno Setup 6).
