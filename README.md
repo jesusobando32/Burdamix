@@ -43,7 +43,20 @@ Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistent
 | **Preguntas frecuentes** | Las dudas más comunes. |
 | **Configuración** | Carpeta de descargas, **nombre de los archivos**, canciones a la vez, saltar intros, sesión del navegador y actualizar yt-dlp. |
 
+## Buscar una canción escribiendo su nombre
+
+En el cuadro de la pantalla principal puedes escribir, por ejemplo, `badtrip mora` en vez de pegar un enlace. **No necesitas cuenta de Spotify ni ninguna clave.**
+
+1. El programa busca los datos oficiales de la canción (título, artista, álbum, duración, año, pista y portada) en Deezer. Si Deezer no responde, usa iTunes, y como último recurso YouTube Music. Si un servicio te rechaza (por ejemplo Deezer en algunos países o con VPN), no vuelve a preguntarle durante esa sesión.
+2. Te enseña hasta 5 resultados con el primero marcado. Si no es el que querías, marca otro.
+3. Busca en YouTube y elige el video que más se parezca a la canción oficial: gana el canal del propio artista (o «Artista - Topic»), el que tenga una duración casi igual y que no sea un en vivo, remix, karaoke, 8D, etc.
+4. Lo convierte a MP3 y lo etiqueta con los datos oficiales y la portada.
+
+Con YouTube Music no se conocen el año ni el número de pista; con Deezer e iTunes sí.
+
 ## Conectar con Spotify (solo la primera vez)
+
+Solo hace falta para pegar enlaces de Spotify (canciones, álbumes, playlists y favoritos).
 
 Spotify obliga a que cada persona cree su propia “app” gratuita; así el programa puede leer tus playlists.
 La primera vez, la ventana abre directamente el **Tutorial · Iniciar sesión**, que te guía con estos pasos y tiene los campos para pegar tus datos:

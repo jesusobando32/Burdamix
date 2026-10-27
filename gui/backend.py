@@ -5,6 +5,7 @@ The window never blocks: long jobs (login, download) run in threads and the wind
 get_events() / get_login_state()."""
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -17,6 +18,8 @@ import login
 import tempdirs
 import updater
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
+from apis.text_search import search_songs
+from apis.text_track import TextTrack
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from const import SpotifyAuthType
 from gui.tags_jobs import TagJobs
@@ -27,6 +30,8 @@ from pathutils import sanitize_filename
 
 DEFAULT_SETTINGS = {"downloads_dir": "", "workers": 5, "skip_interludes": True, "browser": "", "name_style": const.DEFAULT_NAME_STYLE}
 MAX_WORKERS = 8
+TEXT_RESULTS = 5               # songs offered when the user types a name instead of pasting a link
+LINK = re.compile(r"https?://|spotify[:.]|/(?:track|album|playlist)/", re.I)   # anything else is a song name to search
 BEST_QUALITY_BPS = 320000      # "the best YouTube has": the real bitrate is whatever the best stream is (~130 kbps)
 
 # Pages the window may open in the user's browser; nothing else is ever opened from a link in the page.
@@ -171,7 +176,10 @@ class Api:
     # --- looking at a link before downloading ----------------------------------------------------------------
 
     def preview(self, url, last=None):
-        """The songs behind a Spotify link, with covers and what is already on disk. Nothing is downloaded."""
+        """The songs behind a Spotify link, with covers and what is already on disk. Nothing is downloaded.
+        Text that is not a link ("badtrip mora") is searched as a song name instead; that needs no Spotify at all."""
+        if (url or "").strip() and not LINK.search(url):
+            return self._preview_text(url.strip())
         try:
             kind = _validate_spotify_url(url or "")
         except ValueError as error:
@@ -186,6 +194,38 @@ class Api:
         if last is not None and last < 1:
             return {"error": "Escribe un número mayor que 0."}
         return self._preview("liked", None, last)
+
+    def _preview_text(self, text):
+        """The songs a name may mean, best first and only the first one marked, with their official data. Needs no account."""
+        if self._busy:
+            return {"error": "Hay una descarga en curso. Espera a que termine o cancélala."}
+        self._apply_settings()
+        try:
+            songs, problems = search_songs(text, TEXT_RESULTS)
+        except Exception as error:
+            return {"error": f"Algo salió mal al buscar ({type(error).__name__})."}
+        if not songs:
+            if problems:
+                return {"error": f"No pude buscar esa canción: {problems[0]}"}
+            return {"error": "No encontré esa canción. Prueba con el título y el artista, por ejemplo «badtrip mora»."}
+
+        helper = self._make_downloader(spotify=None, youtube=None)
+        output_path = os.path.join(self._downloads_dir(), "tracks") + os.sep
+        plan, _repeated, _renamed = plan_filenames([TextTrack(song, asked=text) for song in songs], self._settings["name_style"])
+        items = []
+        for _index, track, name in plan:
+            meta = track.get_metadata()
+            items.append({
+                "key": track.resource_id, "title": track.get_title(), "artists": track.get_artist(),
+                "album": meta["album"], "seconds": round(meta["duration_ms"] / 1000), "cover": meta["image_url"],
+                "saved": "", "already": helper.already_downloaded(track, name, output_path),
+            })
+
+        self._pending = {"spotify": None, "tracks": {t.resource_id: t for _i, t, _n in plan}, "output_path": output_path,
+                         "kind": "search"}
+        first = items[0]
+        return {"kind": "search", "title": text, "cover": first["cover"], "items": items, "total": len(items), "folder": output_path,
+                "interludes": [], "repeated": 0, "limited": False, "preselect": [] if first["already"] else [first["key"]]}
 
     def _preview(self, kind, url, last):
         if self._busy:

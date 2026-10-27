@@ -2,7 +2,8 @@ import const
 import updater
 from const import colours, DOWNLOADS_DIR
 from exceptions import (SpotifyAlbumNotFound, SpotifyTrackNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
-                        InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError)
+                        InvalidSpotifyURL, ConfigVideoLowViewCount, YoutubeItemNotFound, YoutubeVideoUnavailable, YoutubeBlocked, YoutubeTransientError,
+                        MetadataError, TagWriteError)
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from pathutils import sanitize_filename, long_path, is_hard_to_open
@@ -246,6 +247,8 @@ class SpotifyDownloader:
         self.blocked = False   # set when YouTube made us stop mid-run
         self.planned = 0       # songs actually attempted in the last download_tracks call
         self.last_output_path = None   # folder where the songs of the last request were saved
+        self._tagger = None            # tags songs found by typing their name (created when the first one needs it)
+        self._tagger_lock = threading.Lock()
 
     def split_interludes(self, tracks):
         """(songs to download, short interludes left out). Nothing is left out when skipping is off."""
@@ -582,7 +585,7 @@ class SpotifyDownloader:
 
             metadata = track.get_metadata()
             links = self.youtube_client.search(metadata["title"], metadata["artist"], round(metadata["duration_ms"] / 1000),
-                                               self.max_length, self.min_view_count)
+                                               self.max_length, self.min_view_count, asked=getattr(track, "asked", ""))
 
             self._emit("stage", track, stage="downloading")
             video_downloaded_path, source_kbps = self._download_audio(tag, track, links)
@@ -592,7 +595,10 @@ class SpotifyDownloader:
 
             # Never encode above the source: upscaling 128 kbps audio to 256 only wastes space.
             target_kbps = mp3_bitrate_for(source_kbps, self.audio_quality // 1000)
-            resave_audio_clip_with_metadata(video_downloaded_path, track.get_metadata(), track_path, target_kbps)
+            song_info = getattr(track, "song_info", None)   # a song found by typing its name: tagged from what the service said
+            resave_audio_clip_with_metadata(video_downloaded_path, track.get_metadata(), track_path, target_kbps, tag=song_info is None)
+            if song_info is not None:
+                self._tag_from_song_info(tag, track_path, song_info)
 
             self._log(tag, f"{colours.OKGREEN}Done!{colours.ENDC} {track.get_title()}")
             self._emit("done", track, existed=False)
@@ -606,6 +612,21 @@ class SpotifyDownloader:
             if self._explain_single_failure(e):   # the user chose a browser login: try once more with it
                 return self.download_track(track_url, track, idx, idx_max, output_path, as_sub_function, filename)
             return False
+
+    def _tag_from_song_info(self, tag, track_path, song_info):
+        """Write the official tags and the cover of a searched song. The song is already saved: if the tags cannot be
+        written (a service is down, the cover cannot be found) it stays as it is and the user is told."""
+        with self._tagger_lock:
+            if self._tagger is None:
+                from autotag import AutoTagger
+                self._tagger = AutoTagger()
+        try:
+            result = self._tagger.apply(track_path, song_info)
+        except (MetadataError, TagWriteError) as error:
+            self._log(tag, f"{colours.WARNING}[!] Se guardó, pero sin etiquetas: {error}")
+            return
+        if result.get("cover_problem") and not result.get("cover"):
+            self._log(tag, f"{colours.WARNING}[!] Se guardó sin portada: {result['cover_problem']}")
 
     def _explain_single_failure(self, error):
         """Say, in plain words, why a lone song failed and what to do. Returns True when it should be tried

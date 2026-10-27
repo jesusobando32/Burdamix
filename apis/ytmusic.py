@@ -1,4 +1,4 @@
-"""YouTube Music's public search, used only to find the cover of a song. No account, no key.
+"""YouTube Music's public search, used to find the cover of a song and, as a last resort, the song itself. No account, no key.
 
 It is YouTube's own web interface, not an official API, so it can change without notice. If it does, this source simply
 returns nothing and the other sources carry on."""
@@ -6,6 +6,7 @@ import re
 
 from apis.matching import same_artist, same_name
 from apis.metadata_http import MetadataClient
+from apis.song_info import SongInfo
 from apis.youtube import normalize
 
 SEARCH_URL = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false"
@@ -57,6 +58,30 @@ def parse_songs(data):
     return songs
 
 
+def _clock_seconds(text):
+    """'3:12' -> 192, '1:02:03' -> 3723; anything else -> 0."""
+    if not re.fullmatch(r"\d{1,2}(:\d{2}){1,2}", text or ""):
+        return 0
+    seconds = 0
+    for part in text.split(":"):
+        seconds = seconds * 60 + int(part)
+    return seconds
+
+
+def parse_song_details(data):
+    """[SongInfo-like dicts] of a songs search: title, artist, album, duration in seconds and the picture.
+    YouTube Music has no year or track number, so those stay empty."""
+    songs = []
+    for columns, thumbnail in _items(data):
+        parts = [p.strip() for p in columns[1].split("•")]
+        duration = _clock_seconds(parts[-1]) if len(parts) >= 2 else 0
+        if duration:
+            parts = parts[:-1]
+        songs.append({"title": columns[0].strip(), "artist": parts[0], "album": parts[1] if len(parts) >= 2 else "",
+                      "duration": duration, "thumbnail": thumbnail})
+    return songs
+
+
 def parse_albums(data):
     """[(title, artist, thumbnail url)]: the details line of an album reads "Álbum • Artist • 2024" (or "EP", "Single")."""
     albums = []
@@ -80,6 +105,17 @@ class YouTubeMusic:
         body = {"context": {"client": {"clientName": "WEB_REMIX", "clientVersion": CLIENT_VERSION, "hl": "es", "gl": "US"}},
                 "query": query, "params": params}
         return self.client.post_json(SEARCH_URL, body, headers={"Origin": "https://music.youtube.com", "Referer": "https://music.youtube.com/"})
+
+    def search(self, title, artist=None, limit=5):
+        """Songs matching free text, as SongInfo. It is the last resort of the text search: it knows the album, the
+        duration and the picture, but not the year or the track number."""
+        query = f"{artist} {title}" if artist else title
+        infos = []
+        for found in parse_song_details(self._search(query, SONGS_FILTER))[:limit]:
+            infos.append(SongInfo(source="ytmusic", title=found["title"], artist=found["artist"], album=found["album"],
+                                  album_artist=found["artist"], duration=float(found["duration"]),
+                                  cover_urls=(square(found["thumbnail"]), found["thumbnail"]), thumb_url=found["thumbnail"]))
+        return infos
 
     def cover_urls(self, title, artist, album):
         """Picture urls (biggest first), or (). A song on an album gets the ALBUM's cover (what the tags say it belongs to);

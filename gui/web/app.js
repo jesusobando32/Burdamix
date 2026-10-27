@@ -72,7 +72,8 @@ async function submitLink() {
   $("#send").disabled = true;
   setHero("home", true);
   clearOther("home");
-  showLoading("home", "Leyendo el enlace en Spotify…");
+  const isLink = /https?:\/\/|spotify[:.]|\/(track|album|playlist)\//i.test(url);
+  showLoading("home", isLink ? "Leyendo el enlace en Spotify…" : "Buscando la canción…");
   const r = await call("preview", url);
   $("#send").disabled = false;
   handlePreview("home", r);
@@ -108,14 +109,14 @@ function handlePreview(view, r) {
     if (go) go.onclick = () => show("tutorial");
     return;
   }
-  S.cur = { view, data: r, selected: new Set(r.items.filter(i => !i.already).map(i => i.key)), status: {}, phase: "idle", summary: null };
+  S.cur = { view, data: r, selected: new Set(r.preselect || r.items.filter(i => !i.already).map(i => i.key)), status: {}, phase: "idle", summary: null };
   renderResults();
   const scroller = $(view === "home" ? "#home-scroll" : "#fav-scroll");
   scroller.scrollTop = 0;
 }
 
 /* ---------- the list ---------- */
-const KIND = { song: "Canción", album: "Álbum", playlist: "Playlist", liked: "Mis favoritos" };
+const KIND = { song: "Canción", album: "Álbum", playlist: "Playlist", liked: "Mis favoritos", search: "Resultados" };
 const STATE_TEXT = { queued: "En cola", searching: "Buscando…", downloading: "Descargando…", converting: "Convirtiendo…" };
 
 function renderResults() {
@@ -413,7 +414,10 @@ function demoApi() {
     get_settings: async () => ({ ...settings, effective_downloads_dir: "C:\\Users\\Tú\\Music\\Burdamix", browsers: ["firefox", "chrome", "edge"],
       name_styles: [{ id: "artist_title", label: "Artista - Título" }, { id: "title_artist", label: "Título - Artista" }, { id: "title", label: "Solo el título" }] }),
     save_settings: async s => { settings = { ...settings, ...s }; return { ok: true }; },
-    preview: async url => { await new Promise(r => setTimeout(r, 900)); return /spotify/.test(url) ? { kind: "album", title: "After Hours", cover: art("#7b2d26", "#f0a500"), items, total: 8, folder: "C:\\Users\\Tú\\Music\\Burdamix\\albums\\After Hours\\", interludes: ["Intro"], repeated: 0, limited: false } : { error: "Eso no parece un enlace de Spotify de una canción, playlist o álbum." }; },
+    preview: async url => { await new Promise(r => setTimeout(r, 900));
+      if (!/https?:\/\/|spotify[:.]/i.test(url)) { const hits = items.slice(0, 3).map((it, i) => ({ ...it, key: "t" + i, title: i ? it.title : "badtrip :(", artists: i ? "Mora, Eladio Carrión" : "Mora", album: "MICRODOSIS", seconds: 192 - i * 14 }));
+        return { kind: "search", title: url, cover: hits[0].cover, items: hits, total: 3, folder: "C:\\Users\\Tú\\Music\\Burdamix\\tracks\\", interludes: [], repeated: 0, limited: false, preselect: ["t0"] }; }
+      return /spotify/.test(url) ? { kind: "album", title: "After Hours", cover: art("#7b2d26", "#f0a500"), items, total: 8, folder: "C:\\Users\\Tú\\Music\\Burdamix\\albums\\After Hours\\", interludes: ["Intro"], repeated: 0, limited: false } : { error: "Eso no parece un enlace de Spotify de una canción, playlist o álbum." }; },
     preview_liked: async n => { await new Promise(r => setTimeout(r, 900)); return { kind: "liked", title: "Liked Songs", cover: null, items, total: 1036, folder: "C:\\Users\\Tú\\Music\\Burdamix\\liked\\Liked Songs\\", interludes: [], repeated: 0, limited: true }; },
     start_download: async keys => {
       keys.forEach((k, i) => {

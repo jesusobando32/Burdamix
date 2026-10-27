@@ -44,6 +44,11 @@ class MetadataNetworkError(MetadataError):
     pass
 
 
+class MetadataBadResponse(MetadataNetworkError):
+    """A 200 that is not what the service sends: a block page ("Access Denied"), or a Wi-Fi login page."""
+    pass
+
+
 class MetadataRefused(MetadataNetworkError):
     """A service refused us on purpose (403): some block VPN and data-centre addresses. Asking again will not help."""
     pass

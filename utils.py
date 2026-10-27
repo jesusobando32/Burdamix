@@ -44,9 +44,10 @@ def _image_mime_type(data):
     return "image/png" if data[:4] == png_signature else "image/jpeg"
 
 
-def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output_path, audio_quality):
+def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output_path, audio_quality, tag=True):
     """Convert `audio_input_path` to mp3 at `audio_quality` kbps, tag it and write it to
-    `song_output_path` atomically. The input file is always removed afterwards."""
+    `song_output_path` atomically. The input file is always removed afterwards.
+    With `tag=False` the mp3 is left without tags: the caller writes them afterwards (tagwriter)."""
 
     handle, temporary_audio_path = tempfile.mkstemp(suffix=".mp3", dir=tempdirs.run_dir())   # unique name
     os.close(handle)
@@ -60,27 +61,28 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
         finally:
             clip.close()  # releases the ffmpeg handle; otherwise Windows can't delete the file
 
-        audiofile = eyed3.load(temporary_audio_path)
+        if tag:
+            audiofile = eyed3.load(temporary_audio_path)
 
-        if audiofile.tag is None:
-            audiofile.initTag()
+            if audiofile.tag is None:
+                audiofile.initTag()
 
-        try:
-            cover = _fetch_cover(song_metadata['image_url'])
-            audiofile.tag.images.set(ImageFrame.FRONT_COVER, cover, _image_mime_type(cover), "Cover Image from Spotify")
-        except requests.RequestException as e:
-            print(f"   - {colours.WARNING}[!] Could not download cover art, continuing without it.{colours.ENDC} {e}")
+            try:
+                cover = _fetch_cover(song_metadata['image_url'])
+                audiofile.tag.images.set(ImageFrame.FRONT_COVER, cover, _image_mime_type(cover), "Cover Image from Spotify")
+            except requests.RequestException as e:
+                print(f"   - {colours.WARNING}[!] Could not download cover art, continuing without it.{colours.ENDC} {e}")
 
-        audiofile.tag.title = song_metadata['title']
-        audiofile.tag.artist = ", ".join(song_metadata['artist'])
-        audiofile.tag.album = song_metadata['album']
-        audiofile.tag.track_num = (song_metadata['track_num'], 0)
-        year = (song_metadata.get('release_date') or "")[:4]
-        if year:
-            audiofile.tag.recording_date = year   # ID3v2.3 stores the year in TYER; 'release_date' would be dropped
+            audiofile.tag.title = song_metadata['title']
+            audiofile.tag.artist = ", ".join(song_metadata['artist'])
+            audiofile.tag.album = song_metadata['album']
+            audiofile.tag.track_num = (song_metadata['track_num'], 0)
+            year = (song_metadata.get('release_date') or "")[:4]
+            if year:
+                audiofile.tag.recording_date = year   # ID3v2.3 stores the year in TYER; 'release_date' would be dropped
 
-        # v2.3 (not the newer v2.4): old car radios and players only read accents correctly in v2.3
-        audiofile.tag.save(version=eyed3.id3.ID3_V2_3)
+            # v2.3 (not the newer v2.4): old car radios and players only read accents correctly in v2.3
+            audiofile.tag.save(version=eyed3.id3.ID3_V2_3)
 
         shutil.copy(temporary_audio_path, partial_output_path)
         os.replace(partial_output_path, final_path)  # a half-written .mp3 can never look finished

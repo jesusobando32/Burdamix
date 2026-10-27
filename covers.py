@@ -13,7 +13,7 @@ from exceptions import MetadataError, MetadataNotFound, MetadataRateLimited, Met
 
 # Which service's own pictures a candidate carries, by where its tags came from. Those exact urls are used at that
 # service's turn in the chain instead of searching it again.
-OWN_COVERS_OF = {"musicbrainz": "caa", "deezer": "deezer", "itunes": "itunes"}
+OWN_COVERS_OF = {"musicbrainz": "caa", "deezer": "deezer", "itunes": "itunes", "ytmusic": "ytmusic"}
 CACHE_SIZE = 64       # the songs of an album share one cover: it is found and downloaded once, not once per song
 PAUSE_SECONDS = 600   # a service that refused us (403, too many requests) is left alone for ten minutes: asking again in a batch only wastes time
 

@@ -7,7 +7,7 @@ import time
 import requests
 
 import const
-from exceptions import MetadataNetworkError, MetadataNotFound, MetadataRateLimited, MetadataRefused
+from exceptions import MetadataBadResponse, MetadataNetworkError, MetadataNotFound, MetadataRateLimited, MetadataRefused
 
 USER_AGENT = f"Burdamix/{const.APP_VERSION} (https://github.com/jesusobando32/Burdamix)"   # MusicBrainz asks for "App/version (contact)"
 MAX_IMAGE_BYTES = 15 * 1024 * 1024   # a cover bigger than this is not a cover
@@ -33,8 +33,9 @@ class RateLimiter:
 
 
 class MetadataClient:
-    def __init__(self, name, min_interval, session=None, clock=time.monotonic, sleep=time.sleep):
+    def __init__(self, name, min_interval, session=None, clock=time.monotonic, sleep=time.sleep, timeout=20):
         self.name = name            # "MusicBrainz": how the service is called in messages
+        self.timeout = timeout      # seconds to wait for each answer
         self.limiter = RateLimiter(min_interval, clock, sleep)
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": USER_AGENT})
@@ -45,9 +46,9 @@ class MetadataClient:
             self.limiter.wait()
             try:
                 if body is None:
-                    response = self.session.get(url, params=params or None, timeout=20, stream=stream)
+                    response = self.session.get(url, params=params or None, timeout=self.timeout, stream=stream)
                 else:
-                    response = self.session.post(url, json=body, headers=headers or None, timeout=20)
+                    response = self.session.post(url, json=body, headers=headers or None, timeout=self.timeout)
             except requests.RequestException:
                 raise MetadataNetworkError(f"No pude conectar con {self.name}. Revisa tu conexión a internet.") from None
             if response.status_code in (429, 503) and attempt == 1:
@@ -78,7 +79,7 @@ class MetadataClient:
         try:
             data = response.json()
         except ValueError:   # a 200 that is not JSON, e.g. a Wi-Fi login page
-            raise MetadataNetworkError(f"{self.name} respondió algo inesperado.") from None
+            raise MetadataBadResponse(f"{self.name} respondió algo inesperado.") from None
         return data
 
     def get_image(self, url):

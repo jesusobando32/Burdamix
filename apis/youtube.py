@@ -15,8 +15,16 @@ STRICT_TOLERANCE = 7        # seconds of difference from Spotify's duration
 RELAXED_TOLERANCE = 20      # only accepted if the video title contains the song title
 
 # Versions nobody asked for. Penalised unless the Spotify title itself contains the word.
-UNWANTED_WORDS = ("live", "cover", "remix", "slowed", "sped up", "speed up", "reverb", "instrumental",
-                  "karaoke", "8d", "nightcore", "acoustic", "reaction", "tutorial", "mashup", "loop", "hour")
+UNWANTED_WORDS = ("live", "en vivo", "concert", "concierto", "cover", "remix", "slowed", "sped up", "speed up", "reverb",
+                  "instrumental", "karaoke", "8d", "nightcore", "acoustic", "reaction", "tutorial", "mashup", "loop", "hour")
+
+# Points of a video (see score_candidate). A channel that IS the artist is the strongest sign of the studio audio.
+OFFICIAL_CHANNEL_POINTS = 50       # the channel is exactly the artist, or "Artist - Topic" (YouTube's own audio channel)
+ARTIST_IN_CHANNEL_POINTS = 25      # the channel only contains the artist's name
+TITLE_POINTS = 15
+UNWANTED_POINTS = -40              # per word nobody asked for
+DURATION_POINTS = ((3, 30), (8, 20), (15, 5))   # (seconds apart at most, points); further apart: DURATION_FAR_POINTS
+DURATION_FAR_POINTS = -30
 
 # What YouTube says when it flags the IP. Checked in lower case, with both kinds of apostrophe.
 BLOCKED_MARKERS = ("not a bot", "rate-limited", "rate limited", "too many requests", "http error 429",
@@ -66,29 +74,73 @@ def clean_song_title(title):
     return title.strip()
 
 
-def score_candidate(candidate, title, artists, duration_seconds):
-    """Return (score, title_matches, duration_difference). Higher score = more likely the studio audio."""
+COLLABORATION = re.compile(r"\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\by\b|\bcon\b)\s*", re.I)
+
+
+def artist_names(artists):
+    """['Bad Bunny & Jhay Cortez'] -> the normalized names that may appear as a channel: the artist as written, and each
+    artist of a collaboration."""
+    names = []
+    for artist in artists:
+        names.append(normalize(artist))
+        names.extend(normalize(part) for part in COLLABORATION.split(artist or ""))
+    return [n for n in dict.fromkeys(names) if n]
+
+
+def title_in(song_title, video_title):
+    """Does the video's title name the song? 'badtrip :(' is written 'Bad Trip :(' by the artist, so the words are also
+    compared with the spaces taken out (only for titles long enough not to match by chance)."""
+    wanted, video = normalize(clean_song_title(song_title)), normalize(video_title)
+    if not wanted:
+        return False
+    if wanted in video:
+        return True
+    compact = wanted.replace(" ", "")
+    return len(compact) >= 5 and compact in video.replace(" ", "")
+
+
+def channel_points(channel, artists):
+    """+50 when the channel is the artist or 'Artist - Topic', +25 when it only contains the name."""
+    channel = normalize(channel)
+    best = 0
+    for name in artist_names(artists):
+        if channel in (name, f"{name} topic"):
+            return OFFICIAL_CHANNEL_POINTS
+        if name in channel:
+            best = ARTIST_IN_CHANNEL_POINTS
+    return best
+
+
+def duration_points(difference):
+    for limit, points in DURATION_POINTS:
+        if difference <= limit:
+            return points
+    return DURATION_FAR_POINTS
+
+
+def score_candidate(candidate, title, artists, duration_seconds, asked=""):
+    """Return (score, title_matches, duration_difference). Higher score = more likely the studio audio.
+
+    `asked` is what the user typed: a word in it ('en vivo') is not held against a video. A `duration_seconds` of 0 or
+    None means the duration is not known: it then neither helps nor hurts (the difference is None)."""
     video_title = normalize(candidate.title)
-    channel = normalize(candidate.channel)
-    spotify_title = normalize(title)
-    difference = abs(candidate.duration - duration_seconds)
+    wanted = f"{normalize(title)} {normalize(asked)}"
+    difference = abs(candidate.duration - duration_seconds) if duration_seconds else None
 
-    title_matches = normalize(clean_song_title(title)) in video_title
-    score = -float(difference)
-
+    title_matches = title_in(title, candidate.title)
+    score = float(channel_points(candidate.channel, artists))
     if title_matches:
-        score += 5
-    main_artist = normalize(artists[0])
-    if main_artist and (main_artist in video_title or main_artist in channel):
+        score += TITLE_POINTS
+    if difference is not None:
+        score += duration_points(difference)
+    if any(name in video_title for name in artist_names(artists)):
         score += 4
-    if channel.endswith("topic"):           # YouTube's auto-generated "Artist - Topic" channel = the studio audio
-        score += 8
     if "official audio" in video_title:
         score += 6
     for word in UNWANTED_WORDS:
         pattern = rf"\b{word}\b"
-        if re.search(pattern, video_title) and not re.search(pattern, spotify_title):
-            score -= 15
+        if re.search(pattern, video_title) and not re.search(pattern, wanted):
+            score += UNWANTED_POINTS
 
     score += math.log10(candidate.views + 1)  # tie-breaker only
     return score, title_matches, difference
@@ -117,7 +169,7 @@ def reduced_queries(title, artists, limit=4):
     return [f"{artists[0]} {' '.join(w for j, w in enumerate(words) if j != i)}" for i in longest_first]
 
 
-def rank_candidates(candidates, title, artists, duration_seconds, max_length=None, require_title=False):
+def rank_candidates(candidates, title, artists, duration_seconds, max_length=None, require_title=False, asked=""):
     """Best-first list of videos that plausibly are this song, judged against Spotify's data.
 
     With `require_title` a video is only accepted if its name contains the song's title: used for the
@@ -126,10 +178,10 @@ def rank_candidates(candidates, title, artists, duration_seconds, max_length=Non
     for candidate in candidates:
         if candidate.duration is None or (max_length and candidate.duration > max_length):
             continue
-        score, title_matches, difference = score_candidate(candidate, title, artists, duration_seconds)
+        score, title_matches, difference = score_candidate(candidate, title, artists, duration_seconds, asked)
         if require_title and not title_matches:
             continue
-        if difference <= STRICT_TOLERANCE or (difference <= RELAXED_TOLERANCE and title_matches):
+        if difference is None or difference <= STRICT_TOLERANCE or (difference <= RELAXED_TOLERANCE and title_matches):
             scored.append((score, candidate))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
@@ -167,11 +219,17 @@ class YouTube:
                 views=entry.get('view_count') or 0,
             )
 
-    def search(self, title, artists, duration_seconds, max_length, min_view_count):
-        """Return up to MAX_FALLBACKS video links, best match first.
+    def search(self, title, artists, duration_seconds, max_length, min_view_count, asked=""):
+        """Return up to MAX_FALLBACKS video links, best match first (see search_ranked)."""
+        ranked = self.search_ranked(title, artists, duration_seconds, max_length, min_view_count, asked)
+        return [c.url for c in ranked[:MAX_FALLBACKS]]
 
-        Videos are judged against Spotify's own data (duration, title, artist), so the music-video
-        cut with a long intro is rejected in favour of the audio that really is the song."""
+    def search_ranked(self, title, artists, duration_seconds, max_length, min_view_count, asked=""):
+        """Every plausible video as a Candidate, best match first (so a window can offer the next one).
+
+        Videos are judged against the song's official data (duration, title, artist), so the music-video
+        cut with a long intro is rejected in favour of the audio that really is the song. `asked` is the text
+        the user typed, when the song came from a search: words in it are not held against a video."""
         # YouTube's search is picky: a long query (title + several artists + "audio") can return a single
         # unrelated video, or nothing at all when the title is made of symbols. So if one wording does not
         # give a video with the right duration, the next one is tried, adding what was found to the pool.
@@ -180,7 +238,7 @@ class YouTube:
         for query in search_queries(title, artists):
             for candidate in self._search(query):
                 candidates.setdefault(candidate.url, candidate)
-            ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length)
+            ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length, asked=asked)
             if ranked:
                 break
 
@@ -188,7 +246,7 @@ class YouTube:
             for query in reduced_queries(title, artists):
                 for candidate in self._search(query):
                     candidates.setdefault(candidate.url, candidate)
-                ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length, require_title=True)
+                ranked = rank_candidates(list(candidates.values()), title, artists, duration_seconds, max_length, require_title=True, asked=asked)
                 if ranked:
                     break
 
@@ -197,14 +255,14 @@ class YouTube:
             raise YoutubeItemNotFound('Could not load results from YouTube')
 
         if not ranked:
-            closest = min((c.duration for c in candidates if c.duration), key=lambda d: abs(d - duration_seconds), default=None)
+            closest = min((c.duration for c in candidates if c.duration), key=lambda d: abs(d - (duration_seconds or 0)), default=None)
             hint = f" (closest video lasts {closest}s)" if closest else ""
             raise YoutubeItemNotFound(f"No YouTube video matches Spotify's duration of {duration_seconds}s{hint}")
 
         if ranked[0].views < min_view_count:
             raise ConfigVideoLowViewCount(f'View count {ranked[0].views} does not meet MIN_VIEW_COUNT value of {min_view_count} [{ranked[0].url}]')
 
-        return [c.url for c in ranked[:MAX_FALLBACKS]]
+        return ranked
 
     def download(self, url, audio_bitrate):
         """Download the audio of `url` into this run's temporary folder.
