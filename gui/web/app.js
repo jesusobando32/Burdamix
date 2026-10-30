@@ -17,13 +17,26 @@ async function call(name, ...args) {
   catch (e) { return { error: "Algo salió mal dentro del programa." }; }
 }
 
-function toast(text, bad = false) {
+function toast(text, bad = false, action = null) {
   const el = document.createElement("div");
-  el.className = "toast" + (bad ? " bad" : "");
-  el.textContent = text;
+  el.className = "toast" + (bad ? " bad" : "") + (action ? " has-action" : "");
+  const label = document.createElement("span");
+  label.textContent = text;
+  el.append(label);
+  const close = () => {
+    if (!el.isConnected || el.classList.contains("out")) return;
+    el.classList.remove("in"); el.classList.add("out");
+    setTimeout(() => el.remove(), 200);
+  };
+  if (action) {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "toast-action"; button.textContent = action.label;
+    button.onclick = () => { action.run(); close(); };
+    el.append(button);
+  }
   $("#toasts").append(el);
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("in")));
-  setTimeout(() => { el.classList.replace("in", "out"); setTimeout(() => el.remove(), 200); }, 4200);
+  setTimeout(close, action ? 7000 : 4200);
 }
 
 const ICONS = {
@@ -284,9 +297,17 @@ function goBack() {
 function setAll(on) {
   const c = S.cur;
   if (!c || c.phase === "running") return;
+  const before = c.selected;
   c.selected = new Set(on ? c.data.items.map(i => i.key) : []);
   c.data.items.forEach(i => paintRow(i.key));
   paintBar();
+  if (before.size === c.selected.size) return;   // nothing changed: nothing to undo
+  toast(on ? "Todas marcadas" : "Ninguna marcada", false, { label: "Deshacer", run: () => {
+    if (S.cur !== c || c.phase !== "idle") return;
+    c.selected = before;
+    c.data.items.forEach(i => paintRow(i.key));
+    paintBar();
+  } });
 }
 
 function paintRow(key) {
