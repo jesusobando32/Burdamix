@@ -118,10 +118,12 @@ def current_ytdlp_version():
 
 
 def _safe_members(archive):
-    """Only the yt_dlp package, and only inside the target folder (a malicious zip could try '../')."""
+    """Only the yt_dlp package, and only inside the target folder (a malicious zip could try '../', or 'D:' in the middle
+    of the name, which os.path.join takes as 'jump to that drive')."""
     for name in archive.namelist():
         parts = name.replace("\\", "/").split("/")
-        if parts[0] == "yt_dlp" and ".." not in parts and not os.path.isabs(name) and not name.endswith("/"):
+        if (parts[0] == "yt_dlp" and ".." not in parts and not os.path.isabs(name) and not name.endswith("/")
+                and not any(":" in part for part in parts)):
             yield name
 
 

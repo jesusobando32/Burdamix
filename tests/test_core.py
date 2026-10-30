@@ -1707,3 +1707,22 @@ def test_the_window_files_exist_and_the_page_works_offline():
         assert os.path.exists(os.path.join(web, name)), name
     html = open(os.path.join(web, "index.html"), encoding="utf-8").read()
     assert 'href="style.css"' in html and 'src="app.js"' in html and "https://" not in html
+
+
+def test_a_zip_member_with_a_drive_letter_is_never_extracted(tmp_path, monkeypatch):
+    """'yt_dlp/D:evil/x.py' made os.path.join jump to the drive-relative path 'D:evil/x.py', outside the staging folder."""
+    import updater
+    drive = os.path.splitdrive(str(tmp_path))[0] or "D:"
+    sneaky = f"yt_dlp/{drive}evil/x.py"
+
+    class Archive:
+        def namelist(self):
+            return ["yt_dlp/ok.py", sneaky]
+    assert list(updater._safe_members(Archive())) == ["yt_dlp/ok.py"]
+
+    monkeypatch.chdir(tmp_path)   # a drive-relative path on this drive would land here, not in the user's real folders
+    lib = tmp_path / "sub" / "yt-dlp"
+    updater.download_latest_ytdlp(str(lib), _fake_pypi(extra_files={sneaky: "x"}), current="2025.01.01")
+    assert not (tmp_path / "evil").exists()
+    assert updater._version_in(str(lib)) == "2099.01.01"
+
