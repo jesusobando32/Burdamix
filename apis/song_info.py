@@ -24,6 +24,7 @@ class SongInfo:
     contributors: tuple = ()  # every artist credited on the song (guests included), when the service says; else just `artist`
     thumb_url: str = ""       # small picture for the window
     release_id: str = ""      # MusicBrainz release id, when there is one
+    track_id: str = ""        # the service's own id of the song (Deezer, iTunes): what lets the rest of its data be fetched later
     score: float = 0.0        # filled in when the results are ranked
 
     @property
@@ -54,7 +55,7 @@ class SongInfo:
             clean["score"] = float(clean.get("score") or 0)
         except (TypeError, ValueError):
             clean["duration"] = clean["score"] = 0.0
-        for key in ("source", "title", "artist", "album", "album_artist", "year", "genre", "thumb_url", "release_id"):
+        for key in ("source", "title", "artist", "album", "album_artist", "year", "genre", "thumb_url", "release_id", "track_id"):
             clean[key] = str(clean.get(key) or "")
         clean["kind"] = clean.get("kind") if clean.get("kind") in KINDS else "other"
         return cls(**clean)

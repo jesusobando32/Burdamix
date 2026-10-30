@@ -12,9 +12,16 @@ class TextTrack:
         self.song_info = info          # what the metadata service said: the tags are written from it
         self.asked = asked             # what the user typed ("en vivo" in it is not held against a video)
         self.added_at = None
-        # Letters and digits only: the window and the file-name planner use this id as a key.
-        key = "|".join(normalize(part) for part in (info.artist, info.title, info.album))
+        # Letters and digits only: the window and the file-name planner use this id as a key. Two songs of one album may share a title
+        # ("Intro" on both discs): the service's id, or the disc and track number, keep them apart (or the second would count as a repeat).
+        key = "|".join([*(normalize(part) for part in (info.artist, info.title, info.album)), info.track_id,
+                        str(info.disc_number), str(info.track_number)])
         self.resource_id = "t" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+        self.refresh()
+
+    def refresh(self):
+        """Rebuild what the downloader reads from `song_info`: call it after the song's data was completed."""
+        info = self.song_info
         self.track_metadata = {
             "title": info.title,
             # The main artist first (file name, window), then the guests credited on the song: the video search must know

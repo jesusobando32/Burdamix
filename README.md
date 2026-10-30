@@ -54,6 +54,13 @@ En el cuadro de la pantalla principal puedes escribir, por ejemplo, `badtrip mor
 
 Con YouTube Music no se conocen el año ni el número de pista; con Deezer e iTunes sí.
 
+### Álbumes y artistas
+
+- Si lo que escribes es el nombre de un álbum (`microdosis mora`), arriba aparece una tarjeta **Álbum completo**. Al abrirla ves todas sus pistas, marcadas, y se guardan numeradas y con las mismas etiquetas en `albums\Artista - Álbum`.
+- Si escribes solo el nombre de un artista (`mora`), aparece una tarjeta **Artista**: sus 50 canciones más populares (sin marcar) y su **discografía** completa; cada álbum se abre y se descarga con un clic. Los sencillos están en un desplegable.
+- **Volver** regresa a la lista anterior. Un álbum nunca se descarga en la carpeta de otra lista.
+- No hay un botón para bajar toda la discografía de una vez: es más seguro hacerlo álbum por álbum (YouTube puede bloquear una conexión que pide cientos de canciones seguidas).
+
 ## Conectar con Spotify (solo la primera vez)
 
 Solo hace falta para pegar enlaces de Spotify (canciones, álbumes, playlists y favoritos).

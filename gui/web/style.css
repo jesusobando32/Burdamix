@@ -277,3 +277,28 @@ code { background: var(--surface-2); border: 1px solid var(--border); border-rad
 .icon-btn.small { width: 30px; height: 30px; border-radius: 8px; }
 @media (max-width: 760px) { .two, .inline-form { grid-template-columns: 1fr; } }
 .done-cover { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; float: left; margin-right: 14px; box-shadow: var(--shadow); }
+
+/* ---------- cards (album, artist), discography, back ---------- */
+.back { margin: 14px 0 -8px -6px; }
+.section { font-size: 17px; margin: 22px 0 10px; }
+.section .muted { font-weight: 400; margin-left: 8px; }
+.tno { font-variant-numeric: tabular-nums; font-weight: 500; }
+.cover-lg.avatar { display: grid; place-items: center; background: linear-gradient(145deg, var(--surface-2), var(--surface)); border: 1px solid var(--border);
+  font-size: 40px; font-weight: 700; color: var(--accent); box-shadow: none; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 6px 0 18px; }
+.card { display: flex; gap: 14px; align-items: center; text-align: left; width: 100%; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); transition: border-color .15s, background .15s; }
+.card:hover { border-color: var(--accent); background: var(--surface-2); }
+.card-cover { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; flex: none; background: var(--surface-2); display: grid; place-items: center; }
+.card-cover.round { border-radius: 50%; font-size: 28px; font-weight: 700; color: var(--accent); border: 1px solid var(--border); }
+.card-cover img { width: 100%; height: 100%; object-fit: cover; }
+.card-t { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-t b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.albums { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; margin-bottom: 8px; }
+.album { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 8px; border-radius: 12px; background: transparent; border: 1px solid transparent; color: var(--text); min-width: 0; }
+.album:hover { background: var(--surface); border-color: var(--border); }
+.album img { width: 100%; aspect-ratio: 1; border-radius: 10px; object-fit: cover; background: var(--surface-2); margin-bottom: 4px; }
+.album b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.singles { margin: 8px 0 4px; }
+.singles summary { cursor: pointer; color: var(--accent); font-size: 14px; padding: 6px 0; }
+.row .t b .tno { display: inline-block; font-size: inherit; min-width: 24px; overflow: visible; color: var(--muted); }

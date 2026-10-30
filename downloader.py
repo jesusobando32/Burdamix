@@ -252,6 +252,7 @@ class SpotifyDownloader:
         self.blocked = False   # set when YouTube made us stop mid-run
         self.planned = 0       # songs actually attempted in the last download_tracks call
         self.last_output_path = None   # folder where the songs of the last request were saved
+        self.completer = None          # called with a searched song's SongInfo before it is looked for on YouTube (see apis.catalog)
         self._tagger = None            # tags songs found by typing their name (created when the first one needs it)
         self._tagger_lock = threading.Lock()
 
@@ -590,6 +591,12 @@ class SpotifyDownloader:
                 self._emit("done", track, existed=True)
                 return True
 
+            if self.completer is not None and getattr(track, "song_info", None) is not None:
+                try:   # a song from an artist's popular list lacks its credited artists, year and track number: best effort, never fatal
+                    self.completer(track.song_info)
+                    track.refresh()
+                except Exception:
+                    pass
             metadata = track.get_metadata()
             links = self.youtube_client.search(metadata["title"], metadata["artist"], round(metadata["duration_ms"] / 1000),
                                                self.max_length, self.min_view_count, asked=getattr(track, "asked", ""))

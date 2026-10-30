@@ -9,7 +9,8 @@ const fmt = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 let api = null;
-const S = { view: "home", state: {}, cur: null, running: false, poll: null, rows: {}, favCount: 200 };
+const S = { view: "home", state: {}, cur: null, running: false, poll: null, rows: {}, favCount: 200, stack: [] };
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 async function call(name, ...args) {
   try { return await api[name](...args); }
@@ -72,6 +73,7 @@ async function submitLink() {
   $("#send").disabled = true;
   setHero("home", true);
   clearOther("home");
+  S.stack = [];
   const isLink = /https?:\/\/|spotify[:.]|\/(track|album|playlist)\//i.test(url);
   showLoading("home", isLink ? "Leyendo el enlace en Spotify…" : "Buscando la canción…");
   const r = await call("preview", url);
@@ -116,8 +118,34 @@ function handlePreview(view, r) {
 }
 
 /* ---------- the list ---------- */
-const KIND = { song: "Canción", album: "Álbum", playlist: "Playlist", liked: "Mis favoritos", search: "Resultados" };
+const KIND = { song: "Canción", album: "Álbum", playlist: "Playlist", liked: "Mis favoritos", search: "Resultados", artist: "Artista" };
+const KIND_LABEL = { album: "Álbum", ep: "EP", single: "Sencillo", other: "Disco", compilation: "Recopilatorio", live: "En vivo" };
 const STATE_TEXT = { queued: "En cola", searching: "Buscando…", downloading: "Descargando…", converting: "Convirtiendo…" };
+
+const avatar = (text, extra = "") => `<div class="cover-lg avatar ${extra}">${esc((text || "?").trim().charAt(0).toUpperCase())}</div>`;
+
+function cardHTML(card) {
+  if (card.type === "artist") {
+    return `<button class="card" data-key="${esc(card.key)}"><span class="card-cover round">${esc((card.title || "?").charAt(0).toUpperCase())}</span>
+      <span class="card-t"><span class="kind">Artista</span><b>${esc(card.title)}</b><span class="muted small">Sus canciones populares y toda su discografía</span></span></button>`;
+  }
+  const bits = [card.artist, card.year, card.tracks ? plural(card.tracks, "canción", "canciones") : ""].filter(Boolean).join(" · ");
+  return `<button class="card" data-key="${esc(card.key)}"><span class="card-cover"><img src="${BLANK}" alt="" data-cover="${esc(card.key)}"></span>
+    <span class="card-t"><span class="kind">${KIND_LABEL[card.kind] || "Álbum"} completo</span><b>${esc(card.title)}</b><span class="muted small">${esc(bits)}</span></span></button>`;
+}
+
+function albumTile(album) {
+  return `<button class="album" data-key="${esc(album.key)}" title="${esc(album.title)}"><img src="${BLANK}" alt="" data-cover="${esc(album.key)}">
+    <b>${esc(album.title)}</b><span class="muted small">${[album.year, KIND_LABEL[album.kind] || "Álbum"].filter(Boolean).join(" · ")}</span></button>`;
+}
+
+function discographyHTML(albums) {
+  const main = albums.filter(a => a.kind !== "single"), singles = albums.filter(a => a.kind === "single");
+  let html = `<h3 class="section">Discografía <span class="muted small">${plural(albums.length, "lanzamiento", "lanzamientos")} · pulsa uno para descargarlo entero</span></h3>`;
+  if (main.length) html += `<div class="albums">${main.map(albumTile).join("")}</div>`;
+  if (singles.length) html += `<details class="singles"><summary>Sencillos (${singles.length})</summary><div class="albums">${singles.map(albumTile).join("")}</div></details>`;
+  return html;
+}
 
 function renderResults() {
   const c = S.cur;
@@ -125,7 +153,7 @@ function renderResults() {
   const d = c.data, box = $(c.view === "home" ? "#home-results" : "#fav-results");
   const cover = c.view === "favorites" || d.kind === "liked"
     ? '<div class="cover-lg fav"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></div>'
-    : `<img class="cover-lg" src="${esc(d.cover)}" alt="">`;
+    : d.cover ? `<img class="cover-lg" src="${esc(d.cover)}" alt="">` : avatar(d.title);
   const title = d.kind === "liked" ? "Tus canciones favoritas" : d.title;
   const meta = d.limited ? `Las ${d.items.length} más recientes de ${d.total}` : plural(d.items.length, "canción", "canciones");
 
@@ -133,34 +161,79 @@ function renderResults() {
   if (d.interludes.length) notes += `<p class="note">Se omiten ${plural(d.interludes.length, "pista corta", "pistas cortas")} (intros, interludios): ${esc(d.interludes.join(", "))}.</p>`;
   if (d.repeated) notes += `<p class="note">${plural(d.repeated, "canción repetida", "canciones repetidas")} en la lista: se baja una sola vez.</p>`;
 
+  const listTitle = d.kind === "artist" ? `<h3 class="section">Canciones populares</h3>` : "";
   box.innerHTML = `
+    ${d.back ? '<button class="linkish back" id="back">← Volver</button>' : ""}
     <div class="list-head">${cover}<div>
-      <div class="kind">${KIND[d.kind]}</div><h2>${esc(title)}</h2>
+      <div class="kind">${KIND[d.kind]}</div><h2>${esc(title)}</h2>${d.subtitle ? `<div class="muted">${esc(d.subtitle)}</div>` : ""}
       <div class="muted">${esc(meta)} · <span title="${esc(d.folder)}">se guarda en ${esc(d.folder)}</span></div></div></div>
     <div id="summary-slot"></div>${notes}
+    ${(d.cards || []).length ? `<div class="cards">${d.cards.map(cardHTML).join("")}</div>` : ""}
+    ${(d.albums || []).length ? discographyHTML(d.albums) : ""}
+    ${listTitle}
     <div class="list-tools"><span class="muted small" id="sel-count"></span>
       <span><button class="linkish" id="sel-all">Marcar todas</button><button class="linkish" id="sel-none">Ninguna</button></span></div>
     <div class="tracks" id="tracks"></div>
     <div class="bar-wrap"><div class="action-bar" id="bar"></div></div>`;
 
+  const jobs = [];
   const list = $("#tracks", box);
   S.rows = {};
   d.items.forEach(item => {
     const row = document.createElement("div");
     row.className = "row";
     row.innerHTML = `<input type="checkbox" aria-label="Marcar">
-      <img src="${esc(item.cover)}" alt="" loading="lazy">
-      <div class="t"><b>${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span></div>
+      <img src="${esc(item.cover || BLANK)}" alt="" loading="lazy">
+      <div class="t"><b>${item.number ? `<span class="tno">${item.number}</span>` : ""}${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span></div>
       <div class="dur">${fmt(item.seconds)}</div><div class="state"></div>`;
     $("input", row).onchange = ev => { ev.target.checked ? c.selected.add(item.key) : c.selected.delete(item.key); paintBar(); paintRow(item.key); };
     S.rows[item.key] = row;
     list.append(row);
     paintRow(item.key);
+    if (!item.cover) jobs.push({ key: item.key, img: $("img", row) });
   });
+  $$("[data-cover]", box).forEach(img => jobs.push({ key: img.dataset.cover, img }));
+  $$(".card, .album", box).forEach(el => el.onclick = () => openCard(el.dataset.key));
+  const back = $("#back", box);
+  if (back) back.onclick = goBack;
   $("#sel-all", box).onclick = () => setAll(true);
   $("#sel-none", box).onclick = () => setAll(false);
   if (c.summary) paintSummary();
   paintBar();
+  if (jobs.length) lazyCovers(d.view, jobs);
+}
+
+/* Pictures of a long list or of many albums come one by one, three at a time: the list shows at once and the pictures fill in. */
+async function lazyCovers(view, jobs) {
+  const queue = [...jobs];
+  const worker = async () => {
+    while (queue.length) {
+      const job = queue.shift();
+      if (!job.img.isConnected || !S.cur || S.cur.data.view !== view) return;
+      const url = await call("item_cover", view, job.key);
+      if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) job.img.src = url;
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+
+async function openCard(key) {
+  if (S.running) return toast("Hay una descarga en curso. Espera a que termine o cancélala.", true);
+  const previous = S.cur && S.cur.data;
+  showLoading("home", "Abriendo…");
+  const r = await call("open_card", key);
+  if (r.error) { toast(r.error, true); renderResults(); return; }
+  if (previous) S.stack.push(previous);
+  handlePreview("home", r);
+}
+
+function goBack() {
+  if (S.running) return toast("Hay una descarga en curso. Espera a que termine o cancélala.", true);
+  const previous = S.stack.pop();
+  if (!previous) return;
+  S.cur = { view: "home", data: previous, selected: new Set(previous.preselect || previous.items.filter(i => !i.already).map(i => i.key)), status: {}, phase: "idle", summary: null };
+  renderResults();
+  $("#home-scroll").scrollTop = 0;
 }
 
 function setAll(on) {
@@ -226,6 +299,7 @@ function paintBar() {
 function newSearch() {
   const view = S.cur ? S.cur.view : "home";
   S.cur = null;
+  S.stack = [];
   $(view === "home" ? "#home-results" : "#fav-results").innerHTML = "";
   setHero(view, false);
   if (view === "home") { $("#link").value = ""; $("#link").focus(); }
@@ -259,7 +333,7 @@ async function startDownload() {
   const c = S.cur;
   if (!c || !c.selected.size) return;
   const keys = [...c.selected];
-  const r = await call("start_download", keys);
+  const r = await call("start_download", keys, c.data.view);
   if (!r.ok) return toast(r.error || "No se pudo empezar.", true);
   c.phase = "running";
   c.status = {};
@@ -416,9 +490,21 @@ function demoApi() {
     save_settings: async s => { settings = { ...settings, ...s }; return { ok: true }; },
     preview: async url => { await new Promise(r => setTimeout(r, 900));
       if (!/https?:\/\/|spotify[:.]/i.test(url)) { const hits = items.slice(0, 3).map((it, i) => ({ ...it, key: "t" + i, title: i ? it.title : "badtrip :(", artists: i ? "Mora, Eladio Carrión" : "Mora", album: "MICRODOSIS", seconds: 192 - i * 14 }));
-        return { kind: "search", title: url, cover: hits[0].cover, items: hits, total: 3, folder: "C:\\Users\\Tú\\Music\\Burdamix\\tracks\\", interludes: [], repeated: 0, limited: false, preselect: ["t0"] }; }
+        return { kind: "search", title: url, cover: hits[0].cover, items: hits, total: 3, folder: "C:\\Users\\Tú\\Music\\Burdamix\\tracks\\", interludes: [], repeated: 0, limited: false, preselect: ["t0"], view: "v1",
+          cards: [{ key: "artist:demo:1", type: "artist", title: "Mora" }, { key: "album:demo:1", type: "album", title: "MICRODOSIS", artist: "Mora", year: "2022", tracks: 15, kind: "album" }] }; }
       return /spotify/.test(url) ? { kind: "album", title: "After Hours", cover: art("#7b2d26", "#f0a500"), items, total: 8, folder: "C:\\Users\\Tú\\Music\\Burdamix\\albums\\After Hours\\", interludes: ["Intro"], repeated: 0, limited: false } : { error: "Eso no parece un enlace de Spotify de una canción, playlist o álbum." }; },
     preview_liked: async n => { await new Promise(r => setTimeout(r, 900)); return { kind: "liked", title: "Liked Songs", cover: null, items, total: 1036, folder: "C:\\Users\\Tú\\Music\\Burdamix\\liked\\Liked Songs\\", interludes: [], repeated: 0, limited: true }; },
+    open_card: async key => { await new Promise(r => setTimeout(r, 700));
+      const folder = "C:\\Users\\Tú\\Music\\Burdamix\\";
+      if (key.startsWith("album")) {
+        const tracks = ["badtrip :(", "2010", "MEMORIAS", "ROBERT DE NIRO", "PECADO", "DROGA", "AURORA", "ESCALOFRÍOS"].map((t, i) => ({ key: "a" + i, title: t, artists: "Mora", album: "MICRODOSIS", seconds: 190 + i * 9, cover: art("#7b2d26", "#f0a500"), saved: "", already: i === 1, number: i + 1 }));
+        return { kind: "album", title: "MICRODOSIS", subtitle: "Mora · 2022", cover: art("#7b2d26", "#f0a500"), items: tracks, total: 15, folder: folder + "albums\\Mora - MICRODOSIS\\", interludes: ["Intro"], repeated: 0, limited: false, view: "v2", back: true }; }
+      const kinds = ["album", "album", "ep", "album", "single", "single", "single", "album"];
+      const albums = kinds.map((k, i) => ({ key: "album:demo:" + (10 + i), type: "album", title: ["Cabernet", "LO MISMO DE SIEMPRE", "ESTRELLA", "PARAÍSO", "MICRODOSIS", "Volando (Remix)", "MEMORIAS", "Primer Día de Clases"][i], artist: "Mora", year: String(2026 - i), tracks: 0, kind: k }));
+      const popular = ["Una Vez", "Tuyo", "512", "HIBIKI", "LA INOCENTE", "MEMORIAS", "DROGA", "AURORA"].map((t, i) => ({ key: "p" + i, title: t, artists: "Mora", album: "Varios", seconds: 180 + i * 8, cover: null, saved: "", already: false }));
+      return { kind: "artist", title: "Mora", cover: null, items: popular, total: 8, folder: folder + "tracks\\", interludes: [], repeated: 0, limited: false, view: "v3", back: true, preselect: [], albums }; },
+    item_cover: async (view, key) => { await new Promise(r => setTimeout(r, 250 + Math.random() * 500)); const n = [...key].reduce((a, c) => a + c.charCodeAt(0), 0);
+      return art(["#3a1c71", "#134e5e", "#7b2d26", "#1f4037"][n % 4], ["#d76d77", "#71b280", "#f0a500", "#99f2c8"][n % 4]); },
     start_download: async keys => {
       keys.forEach((k, i) => {
         const at = ms => 700 + i * 900 + ms;

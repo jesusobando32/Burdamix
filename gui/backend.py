@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import webbrowser
 
@@ -19,18 +20,23 @@ import login
 import tempdirs
 import updater
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
+from apis.catalog import Catalog
+from apis.catalog_info import AlbumInfo, ArtistInfo
+from apis.song_info import SongInfo
 from apis.text_search import search_songs
 from apis.text_track import TextTrack
 from apis.youtube import YouTube, SUPPORTED_BROWSERS
 from const import SpotifyAuthType
 from gui.tags_jobs import TagJobs
 from downloader import ADVICE, SpotifyDownloader, friendly_reason, plan_filenames, reason_category, suggests_outdated_ytdlp
-from exceptions import (InvalidSpotifyURL, SpotifyAlbumNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
+from exceptions import (MetadataError, InvalidSpotifyURL, SpotifyAlbumNotFound, SpotifyPlaylistNotFound, SpotifyRetrievalError,
                         SpotifyTrackNotFound)
 from pathutils import sanitize_filename
 
 DEFAULT_SETTINGS = {"downloads_dir": "", "workers": 5, "skip_interludes": True, "browser": "", "name_style": const.DEFAULT_NAME_STYLE}
 MAX_WORKERS = 8
+MAX_VIEWS = 12                 # lists kept so that "back" from an album to its artist still downloads into the right folder
+MAX_CARDS = 400
 TEXT_RESULTS = 5               # songs offered when the user types a name instead of pasting a link
 LINK = re.compile(r"https?://|spotify[:.]|/(?:track|album|playlist)/", re.I)   # anything else is a song name to search
 BEST_QUALITY_BPS = 320000      # "the best YouTube has": the real bitrate is whatever the best stream is (~130 kbps)
@@ -50,6 +56,10 @@ class Api:
         self._events = []
         self._login = {"state": "idle", "message": ""}
         self._pending = None        # the list the user is looking at (songs, folder, Spotify session)
+        self._views = OrderedDict() # every recent list by id: each one has its own songs and folder
+        self._view_count = 0
+        self._cards = OrderedDict() # album and artist cards offered to the window: key -> (AlbumInfo or ArtistInfo, what was typed)
+        self._catalog = Catalog()
         self._downloader = None     # the running download, if any
         self._busy = False
         self._window = None
@@ -206,7 +216,13 @@ class Api:
             songs, problems = search_songs(text, TEXT_RESULTS)
         except Exception as error:
             return {"error": f"Algo salió mal al buscar ({type(error).__name__})."}
-        if not songs:
+        cards = []
+        try:   # an album or an artist named by the text: a card above the songs. It must never break the song search.
+            albums, artist, _problems = self._catalog.cards(text, songs)
+            cards = ([self._card(artist, text)] if artist else []) + [self._card(album, text) for album in albums]
+        except Exception:
+            cards = []
+        if not songs and not cards:
             if problems:
                 return {"error": f"No pude buscar esa canción: {problems[0]}"}
             return {"error": "No encontré esa canción. Prueba con el título y el artista, por ejemplo «badtrip mora»."}
@@ -223,20 +239,121 @@ class Api:
                 "saved": "", "already": helper.already_downloaded(track, name, output_path),
             })
 
-        self._show_covers(items, {t.resource_id: t for _i, t, _n in plan})
-        self._pending = {"spotify": None, "tracks": {t.resource_id: t for _i, t, _n in plan}, "output_path": output_path,
-                         "kind": "search"}
-        first = items[0]
-        return {"kind": "search", "title": text, "cover": first["cover"], "items": items, "total": len(items), "folder": output_path,
-                "interludes": [], "repeated": 0, "limited": False, "preselect": [] if first["already"] else [first["key"]]}
+        tracks = {t.resource_id: t for _i, t, _n in plan}
+        self._show_covers(items, tracks)
+        view = self._new_view(spotify=None, tracks=tracks, output_path=output_path, kind="search",
+                              infos={k: t.song_info for k, t in tracks.items()})
+        first = items[0] if items else None
+        return {"kind": "search", "title": text, "cover": first["cover"] if first else None, "items": items, "total": len(items),
+                "folder": output_path, "interludes": [], "repeated": 0, "limited": False,
+                "preselect": [first["key"]] if first and not first["already"] else [],
+                "view": view, "cards": cards}
+
+    # --- views: every list the window shows, with its own songs and folder -------------------------------------------
+
+    def _new_view(self, **view):
+        """Register a list. The window sends the view's id back with the download, so that after going from an artist to an album
+        and back, 'download' still means the list the user is looking at and its own folder."""
+        self._view_count += 1
+        view["id"] = f"v{self._view_count}"
+        self._views[view["id"]] = view
+        while len(self._views) > MAX_VIEWS:
+            self._views.popitem(last=False)
+        self._pending = view
+        return view["id"]
+
+    def _card(self, obj, query):
+        """What the window needs to draw an album or an artist card; the object itself stays here (the page is never trusted with it)."""
+        self._cards[obj.key] = (obj, query)
+        while len(self._cards) > MAX_CARDS:
+            self._cards.popitem(last=False)
+        if isinstance(obj, AlbumInfo):
+            return {"key": obj.key, "type": "album", "title": obj.title, "artist": obj.artist, "year": obj.year,
+                    "tracks": obj.track_total, "kind": obj.kind}
+        return {"key": obj.key, "type": "artist", "title": obj.name}
+
+    def open_card(self, key):
+        """The inside of an album or an artist card: its songs, ready to download."""
+        if self._busy:
+            return {"error": "Hay una descarga en curso. Espera a que termine o cancélala."}
+        entry = self._cards.get(key)
+        if entry is None:
+            return {"error": "Esa tarjeta ya no está disponible. Busca de nuevo."}
+        obj, query = entry
+        self._apply_settings()
+        try:
+            return self._open_album(obj, query) if isinstance(obj, AlbumInfo) else self._open_artist(obj, query)
+        except MetadataError as error:
+            return {"error": f"No pude abrirlo: {error}"}
+        except Exception as error:
+            return {"error": f"Algo salió mal al abrirlo ({type(error).__name__})."}
+
+    def _items(self, plan, helper, output_path, cover=None):
+        return [{"key": t.resource_id, "title": t.get_title(), "artists": ", ".join(t.get_metadata()["artist"][:1]),
+                 "album": t.get_metadata()["album"], "seconds": round(t.get_metadata()["duration_ms"] / 1000), "cover": cover,
+                 "saved": "", "already": helper.already_downloaded(t, name, output_path),
+                 "number": t.get_metadata()["track_num"] or None} for _i, t, name in plan]
+
+    def _open_album(self, album, query):
+        songs = self._catalog.album_tracks(album)
+        if not songs:
+            return {"error": "Ese álbum no tiene canciones disponibles."}
+        helper = self._make_downloader(spotify=None, youtube=None)
+        tracks, interludes = helper.split_interludes([TextTrack(song, asked=f"{album.title} {query}") for song in songs])
+        plan, repeated, _renamed = plan_filenames(tracks, self._settings["name_style"])
+        folder = os.path.join(self._downloads_dir(), "albums", sanitize_filename(f"{album.artist} - {album.title}")) + os.sep
+        cover = self._one_cover(songs[0])            # one picture for the whole album: one lookup, not one per song
+        items = self._items(plan, helper, folder, cover)
+        by_key = {t.resource_id: t for _i, t, _n in plan}
+        view = self._new_view(spotify=None, tracks=by_key, output_path=folder, kind="album", infos={})
+        return {"kind": "album", "title": album.title, "subtitle": f"{album.artist}" + (f" · {album.year}" if album.year else ""),
+                "cover": cover, "items": items, "total": len(songs), "folder": folder, "interludes": [t.get_title() for t in interludes],
+                "repeated": len(repeated), "limited": False, "view": view, "back": True}
+
+    def _open_artist(self, artist, query):
+        top, albums = self._catalog.artist_view(artist)
+        if not top and not albums:
+            return {"error": "No encontré canciones de este artista."}
+        helper = self._make_downloader(spotify=None, youtube=None)
+        tracks, _interludes = helper.split_interludes([TextTrack(song, asked=artist.name) for song in top])
+        plan, _repeated, _renamed = plan_filenames(tracks, self._settings["name_style"])
+        folder = os.path.join(self._downloads_dir(), "tracks") + os.sep
+        items = self._items(plan, helper, folder)      # pictures come one by one afterwards (item_cover): there can be fifty
+        by_key = {t.resource_id: t for _i, t, _n in plan}
+        view = self._new_view(spotify=None, tracks=by_key, output_path=folder, kind="artist",
+                              infos={k: t.song_info for k, t in by_key.items()})
+        return {"kind": "artist", "title": artist.name, "cover": None, "items": items, "total": len(items), "folder": folder,
+                "interludes": [], "repeated": 0, "limited": False, "view": view, "back": True, "preselect": [],
+                "albums": [self._card(album, artist.name) for album in albums]}
+
+    def _covers(self):
+        if self._cover_tagger is None:
+            from autotag import AutoTagger
+            self._cover_tagger = AutoTagger()
+        return self._cover_tagger
+
+    def _one_cover(self, song):
+        try:
+            return self._covers().preview_cover(song)[0]
+        except Exception:
+            return None
+
+    def item_cover(self, view, key):
+        """The picture of a song or an album card as a data: URL, or None. The window asks for them one by one (with a few at a time)
+        so that a list of fifty songs or sixty albums appears at once and its pictures fill in."""
+        info = (self._views.get(view) or {}).get("infos", {}).get(key)
+        if info is None and key in self._cards and isinstance(self._cards[key][0], AlbumInfo):
+            album = self._cards[key][0]
+            # No title: the cover is looked for as the album's (not as the cover of a song with the album's name).
+            info = SongInfo(source=album.source, title="", artist=album.artist, album=album.title, cover_urls=album.cover_urls)
+        return self._one_cover(info) if info is not None else None
 
     def _show_covers(self, items, tracks):
         """Replace each item's picture address by the picture itself. The window cannot load Deezer's pictures when Deezer
         refuses the connection (403 by IP or VPN), so they are asked through the cover chain, which tries other services."""
-        if self._cover_tagger is None:
-            from autotag import AutoTagger
-            self._cover_tagger = AutoTagger()
-        tagger = self._cover_tagger
+        if not items:
+            return
+        tagger = self._covers()
 
         def thumb(item):
             try:
@@ -307,11 +424,10 @@ class Api:
                 "already": helper.already_downloaded(track, name, output_path),
             })
 
-        self._pending = {"spotify": spotify, "tracks": {t.resource_id: t for _i, t, _n in plan}, "output_path": output_path,
-                         "kind": kind}
+        view = self._new_view(spotify=spotify, tracks={t.resource_id: t for _i, t, _n in plan}, output_path=output_path, kind=kind)
         return {"kind": kind, "title": title, "cover": image, "items": items, "total": total, "folder": output_path,
                 "interludes": [t.get_title() for t in interludes], "repeated": len(repeated),
-                "limited": bool(last) and total > len(items)}
+                "limited": bool(last) and total > len(items), "view": view}
 
     # --- downloading -----------------------------------------------------------------------------------------
 
@@ -330,10 +446,10 @@ class Api:
             events, self._events = self._events, []
         return events
 
-    def start_download(self, keys):
+    def start_download(self, keys, view=None):
         if self._busy:
             return {"ok": False, "error": "Ya hay una descarga en curso."}
-        pending = self._pending
+        pending = self._views.get(view) if view else self._pending
         if not pending:
             return {"ok": False, "error": "Primero pega un enlace."}
         chosen = [pending["tracks"][k] for k in (keys or []) if k in pending["tracks"]]
@@ -354,6 +470,7 @@ class Api:
             tempdirs.clean_stale()
             d = self._make_downloader(pending["spotify"], YouTube(self._settings["browser"] or None))
             d._tagger = self._cover_tagger   # searched songs are tagged with the cover already found for the preview (None: made when needed)
+            d.completer = self._catalog.complete
             self._downloader = d
             d.prep_folder(pending["output_path"])
             skipped = d.download_tracks(pending["output_path"], chosen)
