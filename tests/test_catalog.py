@@ -203,6 +203,17 @@ def test_a_refusing_service_is_skipped_for_the_rest_of_the_session():
         catalog.album_tracks(album(source="deezer"))        # an album of the refusing service cannot be opened: said, not hung
 
 
+def test_the_artist_named_exactly_beats_a_more_followed_one_with_a_similar_name():
+    def artist_for(query, names):
+        service = Service(albums=lambda q, n: [], artists=lambda q, n: [ArtistInfo(source="deezer", id=str(i), name=name) for i, name in enumerate(names)])
+        catalog = Catalog(SongSearch([("deezer", service)]))
+        return catalog.cards(query, [SongInfo(title="UNDEAD", artist=query)])[1]
+    assert artist_for("sunghanbin", ["SUNG HAN BIN", "SUNGHANBIN"]).name == "SUNGHANBIN"      # more followers, but a different spelling
+    assert artist_for("SUNGHANBIN", ["Sunghanbin", "SUNG HAN BIN"]).name == "Sunghanbin"       # capitals and accents do not matter
+    assert artist_for("sunghanbin", ["SUNG HAN BIN"]).name == "SUNG HAN BIN"                    # nobody exact: the similar one is still offered
+    assert artist_for("mora", ["Mora", "M.O.R.A."]).name == "Mora"
+
+
 def test_cards_ask_for_the_artist_only_when_a_song_found_is_by_someone_with_that_name():
     asked = []
     service = Service(albums=lambda q, n: [album()], artists=lambda q, n: asked.append(q) or [ArtistInfo(source="deezer", id="1", name="Mora")])

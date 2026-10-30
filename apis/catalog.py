@@ -111,7 +111,8 @@ class Catalog:
             found_albums, problems = albums.result()
             found_artists, more = artists.result() if artists else ([], [])
         chosen = [a for a in tidy_albums(found_albums) if album_matches(a, query)][:MAX_ALBUM_CARDS]
-        artist = next((a for a in found_artists if artist_matches(a, query)), None)
+        similar = [a for a in found_artists if artist_matches(a, query)]       # most followed first
+        artist = next((a for a in similar if normalize(a.name) == normalize(query)), similar[0] if similar else None)   # 'SUNGHANBIN' before 'SUNG HAN BIN'
         return chosen, artist, problems + more
 
     # --- inside an album or an artist ---
