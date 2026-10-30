@@ -279,6 +279,21 @@ input[type=checkbox]:disabled { opacity: .55; cursor: default; }
 .panel.good { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .panel .btn-row { margin-top: 12px; }
 
+/* panels with an icon: errors, summaries, empty results */
+.panel.with-ic { display: flex; gap: 14px; align-items: flex-start; }
+.panel-ic { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--surface-2); color: var(--muted); }
+.panel.warn .panel-ic { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.panel.bad .panel-ic { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.panel.good .panel-ic { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-text); }
+.panel-body { min-width: 0; flex: 1; }
+.panel-body p:last-child { margin-bottom: 0; }
+.btn svg { width: 16px; height: 16px; margin: 0 6px -3px -2px; }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.chip-btn { border: 0; border-radius: 99px; padding: 6px 14px; font-size: 13.5px; background: var(--surface-2); color: var(--text);
+  transition: background var(--t-fast) ease, transform var(--t-fast) var(--ease-out); }
+.chip-btn:active { transform: scale(.96); }
+@media (hover: hover) and (pointer: fine) { .chip-btn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); } }
+
 /* loading skeleton (replaces the lone spinner) */
 .skeleton { margin: 16px 0; }
 .sk-status { display: flex; align-items: center; gap: 10px; color: var(--muted); margin-bottom: 14px; }
@@ -360,6 +375,13 @@ code { background: var(--surface-2); border-radius: 8px; padding: 4px 9px; font:
 .drop { border: 2px dashed color-mix(in srgb, var(--muted) 40%, transparent); border-radius: var(--radius); padding: 28px 20px; display: flex; flex-direction: column;
   align-items: center; gap: 12px; text-align: center; margin: 18px 0; background: var(--surface); transition: border-color var(--t-fast) ease, background var(--t-med) ease, transform var(--t-med) var(--ease-out); }
 .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); transform: scale(1.01); }
+.drop-ic { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: var(--surface-2); color: var(--muted);
+  transition: transform var(--t-med) var(--ease-out), background var(--t-med) ease, color var(--t-med) ease; }
+.drop-ic svg { width: 24px; height: 24px; }
+.drop.over .drop-ic { transform: translateY(-4px); background: var(--accent); color: var(--accent-ink); }
+.over-t { display: none; }
+.drop.over .over-t { display: inline; }
+.drop.over .idle-t { display: none; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
 .two label { display: grid; gap: 5px; font-size: 13px; color: var(--muted); }
 .two input { height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); padding: 0 12px; outline: 0; color: var(--text); }

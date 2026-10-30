@@ -1742,3 +1742,22 @@ def test_the_window_only_opens_the_exact_known_pages(tmp_path, monkeypatch):
     for url in bad:
         assert api.open_external(url) is False, url
     assert opened == good
+
+
+def test_the_window_script_only_uses_elements_that_exist_and_parses():
+    """A mistyped #id makes $() return null and the window dies on first use; neither the tests nor Python would notice."""
+    import re
+    import shutil
+    import subprocess
+    import const
+    web = os.path.join(const.resource_dir(), "gui", "web")
+    read = lambda name: open(os.path.join(web, name), encoding="utf-8").read()
+    html, scripts = read("index.html"), {name: read(name) for name in ("app.js", "tags.js")}
+    known = set(re.findall(r'\bid="([\w-]+)"', html + "".join(scripts.values())))   # the page's own ids and the ones the scripts write in
+    missing = {f"{name}: #{i}" for name, code in scripts.items() for i in re.findall(r'\$\(\s*["\']#([\w-]+)["\']', code) if i not in known}
+    assert not missing, sorted(missing)
+    node = shutil.which("node")
+    if node:
+        for name in scripts:
+            check = subprocess.run([node, "--check", os.path.join(web, name)], capture_output=True, text=True)
+            assert check.returncode == 0, check.stderr

@@ -26,6 +26,14 @@ function toast(text, bad = false) {
   setTimeout(() => { el.classList.replace("in", "out"); setTimeout(() => el.remove(), 200); }, 4200);
 }
 
+const ICONS = {
+  alert: '<svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5h.01"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  retry: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+};
+const SEARCH_EXAMPLES = ["badtrip mora", "Blinding Lights The Weeknd", "Starboy"];
+
 /* A sliding highlight under the active item: moves with a transform, first placement without animation. */
 function placeInd(ind, target, vertical) {
   if (!ind || !target || !target.offsetWidth) return;
@@ -91,6 +99,7 @@ async function submitLink() {
   setHero("home", true);
   clearOther("home");
   S.stack = [];
+  S.retry = () => { $("#link").value = url; submitLink(); };
   const isLink = /https?:\/\/|spotify[:.]|\/(track|album|playlist)\//i.test(url);
   showLoading("home", isLink ? "Leyendo el enlace en Spotify…" : "Buscando la canción…");
   const r = await call("preview", url);
@@ -102,6 +111,7 @@ async function submitFavorites() {
   if (S.running) return toast("Hay una descarga en curso. Espera a que termine o cancélala.", true);
   const custom = parseInt($("#fav-custom").value, 10);
   const n = custom > 0 ? custom : S.favCount;
+  S.retry = submitFavorites;
   $("#fav-go").disabled = true;
   setHero("favorites", true);
   clearOther("favorites");
@@ -121,11 +131,26 @@ function handlePreview(view, r) {
   if (r.error) {
     S.cur = null;
     const needsSetup = r.error === "login_required" || r.error === "setup_required";
-    box.innerHTML = `<div class="panel ${needsSetup ? "warn" : "bad"}"><h3>${needsSetup ? "Falta un paso" : "No se pudo leer"}</h3>
+    const notFound = view === "home" && typeof r.error === "string" && r.error.startsWith("No encontré esa canción");
+    if (notFound) {
+      const asked = $("#link").value.trim();
+      box.innerHTML = `<div class="panel with-ic empty"><div class="panel-ic">${ICONS.search}</div><div class="panel-body">
+        <h3>No encontré «${esc(asked)}»</h3>
+        <p class="muted">Escribe el título y el artista juntos. Por ejemplo:</p>
+        <div class="suggest">${SEARCH_EXAMPLES.map(e => `<button type="button" class="chip-btn" data-fill="${esc(e)}">${esc(e)}</button>`).join("")}</div>
+        <p class="muted small">También puedes pegar el enlace de la canción, el álbum o la playlist en Spotify.</p></div></div>`;
+      $$("[data-fill]", box).forEach(b => b.onclick = () => { $("#link").value = b.dataset.fill; submitLink(); });
+      return;
+    }
+    box.innerHTML = `<div class="panel with-ic ${needsSetup ? "warn" : "bad"}"><div class="panel-ic">${ICONS.alert}</div><div class="panel-body">
+      <h3>${needsSetup ? "Falta un paso" : "No se pudo leer"}</h3>
       <p>${esc(r.message || r.error)}</p>
-      ${needsSetup ? '<div class="btn-row"><button class="btn primary" id="go-tutorial">Ir al tutorial</button></div>' : ""}</div>`;
+      ${needsSetup ? '<div class="btn-row"><button class="btn primary" id="go-tutorial">Ir al tutorial</button></div>'
+        : S.retry ? `<div class="btn-row"><button class="btn" id="retry">${ICONS.retry} Reintentar</button></div>` : ""}</div></div>`;
     const go = $("#go-tutorial", box);
     if (go) go.onclick = () => show("tutorial");
+    const again = $("#retry", box);
+    if (again) again.onclick = () => S.retry();
     return;
   }
   S.cur = { view, data: r, selected: new Set(r.preselect || r.items.filter(i => !i.already).map(i => i.key)), status: {}, phase: "idle", summary: null };
