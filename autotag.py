@@ -6,6 +6,7 @@ once a candidate is chosen, write its tags and cover into the file."""
 import copy
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 
 import const
@@ -29,6 +30,7 @@ MAX_CANDIDATES = 5
 #   ytmusic  17 right, 1.0 s, finds them all, but gives a single's cover when the album's differs (2 of 19)
 #   caa       9 right, 3.0 s, never wrong, but only has about half
 #   itunes    4 right, 3.4 s, hardly has this music and is the slowest
+PICTURES_KEPT = 32    # artist photos remembered (a few KB each)
 COVER_ORDER = ("deezer", "ytmusic", "caa", "itunes")
 SURE_TITLE = 0.92             # how alike the titles must be to apply a match without asking
 SURE_ARTIST = 0.80
@@ -154,6 +156,8 @@ class AutoTagger:
         self.rename = renamer or tagwriter.rename_to_title
         services = {"deezer": self.deezer, "itunes": self.itunes, "ytmusic": self.ytmusic, "caa": self.musicbrainz}
         self.covers = covers or CoverFinder([(name, services[name]) for name in COVER_ORDER], self.images)
+        self._pictures = {}
+        self._pictures_lock = threading.Lock()
 
     def identify(self, path, title=None, artist=None):
         """Look the song up. Never raises for 'nothing found' (that is an answer); raises MetadataError for network trouble."""
@@ -267,6 +271,21 @@ class AutoTagger:
         """(a small picture as a data: URL or None, problem or None): the cover that WOULD be written, so the window can show it."""
         found = self.covers.find(info)
         return (tagwriter.cover_thumbnail(found.data) if found.data else None), found.problem
+
+    def preview_picture(self, url):
+        """A small picture (an artist's photo) from its address as a data: URL, or None. Remembered: going back to a list does not download it again."""
+        with self._pictures_lock:
+            if url in self._pictures:
+                return self._pictures[url]
+        try:
+            picture = tagwriter.cover_thumbnail(self.images.get_image(url))
+        except MetadataError:
+            return None                        # not remembered: a refusal or a lost connection may pass
+        with self._pictures_lock:
+            self._pictures[url] = picture
+            while len(self._pictures) > PICTURES_KEPT:
+                self._pictures.pop(next(iter(self._pictures)))
+        return picture
 
 
 def collect_audio_files(paths):

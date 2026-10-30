@@ -93,7 +93,8 @@ class Deezer:
 
     def artists(self, query, limit=5):
         """Artists matching the name, the most followed first (several artists share a name: 'M.O.R.A.' and 'Mora')."""
-        found = [ArtistInfo(source="deezer", id=str(i["id"]), name=i.get("name") or "", popularity=int(i.get("nb_fan") or 0))
+        found = [ArtistInfo(source="deezer", id=str(i["id"]), name=i.get("name") or "", popularity=int(i.get("nb_fan") or 0),
+                            picture_url=i.get("picture_medium") or "")
                  for i in self._get("search/artist", {"q": query, "limit": limit}).get("data") or [] if isinstance(i, dict) and i.get("id")]
         return sorted(found, key=lambda a: -a.popularity)
 

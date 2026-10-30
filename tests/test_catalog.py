@@ -14,7 +14,7 @@ from apis.itunes import ITunes
 from apis.song_info import SongInfo
 from apis.text_search import SongSearch
 from apis.text_track import TextTrack
-from exceptions import MetadataNetworkError, MetadataRefused
+from exceptions import MetadataNetworkError, MetadataNotFound, MetadataRefused
 
 
 def album(title="MICRODOSIS", artist="Mora", tracks=15, kind="album", year="2022", source="deezer", ident="1"):
@@ -94,6 +94,39 @@ def test_deezer_lists_are_read_page_after_page():
 def test_deezer_homonymous_artists_are_ordered_by_followers():
     deezer, _ = deezer_with(lambda path, params: {"data": [{"id": 1, "name": "M.O.R.A.", "nb_fan": 30}, {"id": 2, "name": "Mora", "nb_fan": 244937}]})
     assert [a.name for a in deezer.artists("mora")] == ["Mora", "M.O.R.A."]
+
+
+def test_deezer_artists_keep_the_picture_the_search_already_gave():
+    deezer, calls = deezer_with(lambda path, params: {"data": [{"id": 2, "name": "Mora", "nb_fan": 9, "picture_medium": "https://c/mora250.jpg"},
+                                                              {"id": 3, "name": "Sin foto", "nb_fan": 1}]})
+    assert [(a.name, a.picture_url) for a in deezer.artists("mora")] == [("Mora", "https://c/mora250.jpg"), ("Sin foto", "")]
+    assert len(calls) == 1                                       # the picture costs no request of its own
+
+
+def test_an_artist_card_loads_its_picture_afterwards_and_only_when_there_is_one(tmp_path, monkeypatch):
+    api = window(tmp_path, monkeypatch)
+    asked = []
+    api._cover_tagger = type("T", (), {"preview_picture": lambda self, url: asked.append(url) or "data:image/jpeg;base64,FOTO"})()
+    with_photo = api._card(ArtistInfo(source="deezer", id="1", name="Mora", picture_url="https://c/mora250.jpg"), "mora")
+    without = api._card(ArtistInfo(source="itunes", id="2", name="Mora"), "mora")
+    assert with_photo["picture"] is True and without["picture"] is False
+    assert asked == []                                            # drawing the card downloads nothing
+    assert api.item_cover("v0", with_photo["key"]) == "data:image/jpeg;base64,FOTO" and asked == ["https://c/mora250.jpg"]
+    assert api.item_cover("v0", without["key"]) is None and asked == ["https://c/mora250.jpg"]     # no picture: no request
+
+
+def test_the_autotagger_turns_an_artist_picture_into_a_small_data_url_and_remembers_it():
+    import io
+    from PIL import Image
+    from autotag import AutoTagger
+    out = io.BytesIO()
+    Image.new("RGB", (250, 250), "red").save(out, "JPEG")
+    images = type("I", (), {"asked": [], "get_image": lambda self, url: self.asked.append(url) or out.getvalue()})()
+    tagger = AutoTagger(musicbrainz=object(), deezer=object(), itunes=object(), ytmusic=object(), images=images, covers=object())
+    first = tagger.preview_picture("https://c/a.jpg")
+    assert first.startswith("data:image/jpeg;base64,") and tagger.preview_picture("https://c/a.jpg") == first and images.asked == ["https://c/a.jpg"]
+    failing = type("I", (), {"get_image": lambda self, url: (_ for _ in ()).throw(MetadataNotFound("404"))})()
+    assert AutoTagger(musicbrainz=object(), deezer=object(), itunes=object(), ytmusic=object(), images=failing, covers=object()).preview_picture("x") is None
 
 
 def test_popular_songs_get_their_missing_data_and_credited_artists_when_downloaded():

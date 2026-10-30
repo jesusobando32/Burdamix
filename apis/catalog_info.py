@@ -30,6 +30,7 @@ class ArtistInfo:
     id: str = ""
     name: str = ""
     popularity: int = 0       # fans (Deezer) or how many of the found songs are theirs (iTunes): only to choose between homonyms
+    picture_url: str = ""     # a small photo for the card; "" when the service has none (iTunes gives no artist photos)
 
     @property
     def key(self):

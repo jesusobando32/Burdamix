@@ -288,7 +288,7 @@ class Api:
         if isinstance(obj, AlbumInfo):
             return {"key": obj.key, "type": "album", "title": obj.title, "artist": obj.artist, "year": obj.year,
                     "tracks": obj.track_total, "kind": obj.kind}
-        return {"key": obj.key, "type": "artist", "title": obj.name}
+        return {"key": obj.key, "type": "artist", "title": obj.name, "picture": bool(obj.picture_url)}   # the photo itself comes afterwards, by item_cover
 
     def open_card(self, key):
         """The inside of an album or an artist card: its songs, ready to download."""
@@ -360,6 +360,12 @@ class Api:
         """The picture of a song or an album card as a data: URL, or None. The window asks for them one by one (with a few at a time)
         so that a list of fifty songs or sixty albums appears at once and its pictures fill in."""
         info = (self._views.get(view) or {}).get("infos", {}).get(key)
+        if info is None and key in self._cards and isinstance(self._cards[key][0], ArtistInfo):
+            url = self._cards[key][0].picture_url
+            try:
+                return self._covers().preview_picture(url) if url else None
+            except Exception:
+                return None
         if info is None and key in self._cards and isinstance(self._cards[key][0], AlbumInfo):
             album = self._cards[key][0]
             # No title: the cover is looked for as the album's (not as the cover of a song with the album's name).
