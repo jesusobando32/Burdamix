@@ -15,3 +15,4 @@ tekore_cfg.ini
 *.mp3
 *.part
 build_out/
+.impeccable/
