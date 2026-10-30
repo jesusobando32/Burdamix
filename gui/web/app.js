@@ -22,8 +22,22 @@ function toast(text, bad = false) {
   el.className = "toast" + (bad ? " bad" : "");
   el.textContent = text;
   $("#toasts").append(el);
-  setTimeout(() => el.remove(), 4200);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("in")));
+  setTimeout(() => { el.classList.replace("in", "out"); setTimeout(() => el.remove(), 200); }, 4200);
 }
+
+/* A sliding highlight under the active item: moves with a transform, first placement without animation. */
+function placeInd(ind, target, vertical) {
+  if (!ind || !target || !target.offsetWidth) return;
+  ind.style.opacity = "";
+  const first = !ind.classList.contains("ready");
+  if (first) ind.style.transition = "none";
+  if (vertical) ind.style.transform = `translateY(${target.offsetTop}px)`;
+  else { ind.style.width = target.offsetWidth + "px"; ind.style.transform = `translateX(${target.offsetLeft}px)`; }
+  if (first) { void ind.offsetWidth; ind.style.transition = ""; ind.classList.add("ready"); }
+}
+const moveNavInd = () => placeInd($("#nav-ind"), $(".nav.active"), true);
+const moveSegInd = () => placeInd($("#fav-counts .seg-ind"), $("#fav-counts button.on"), false);
 
 /* ---------- navigation ---------- */
 function show(view) {
@@ -34,6 +48,8 @@ function show(view) {
   if (view === "settings") loadSettings();
   if (view === "tags") refreshRenameExample();
   if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");
+  moveNavInd();
+  if (view === "favorites") requestAnimationFrame(moveSegInd);
 }
 
 function setSidebar(open) {
@@ -62,8 +78,9 @@ function setHero(view, compact) {
 }
 
 function showLoading(view, text) {
+  const row = `<div class="sk-row"><div class="sk img"></div><div><div class="sk l1"></div><div class="sk l2"></div></div><div class="sk l3"></div></div>`;
   $(view === "home" ? "#home-results" : "#fav-results").innerHTML =
-    `<div class="panel"><div class="state busy" style="justify-content:flex-start"><i class="spin"></i> ${esc(text)}</div></div>`;
+    `<div class="skeleton" role="status"><div class="sk-status"><i class="spin"></i><span>${esc(text)}</span></div><div class="sk-list">${row.repeat(4)}</div></div>`;
 }
 
 async function submitLink() {
@@ -126,11 +143,11 @@ const avatar = (text, extra = "") => `<div class="cover-lg avatar ${extra}">${es
 
 function cardHTML(card) {
   if (card.type === "artist") {
-    return `<button class="card" data-key="${esc(card.key)}"><span class="card-cover round">${esc((card.title || "?").charAt(0).toUpperCase())}</span>
+    return `<button class="card" data-key="${esc(card.key)}" title="${esc(card.title)}"><span class="card-cover round"><span class="initial">${esc((card.title || "?").charAt(0).toUpperCase())}</span>${card.picture ? `<img src="${BLANK}" alt="" data-cover="${esc(card.key)}">` : ""}</span>
       <span class="card-t"><span class="kind">Artista</span><b>${esc(card.title)}</b><span class="muted small">Sus canciones populares y toda su discografía</span></span></button>`;
   }
   const bits = [card.artist, card.year, card.tracks ? plural(card.tracks, "canción", "canciones") : ""].filter(Boolean).join(" · ");
-  return `<button class="card" data-key="${esc(card.key)}"><span class="card-cover"><img src="${BLANK}" alt="" data-cover="${esc(card.key)}"></span>
+  return `<button class="card" data-key="${esc(card.key)}" title="${esc(card.title)}"><span class="card-cover"><img src="${BLANK}" alt="" data-cover="${esc(card.key)}"></span>
     <span class="card-t"><span class="kind">${KIND_LABEL[card.kind] || "Álbum"} completo</span><b>${esc(card.title)}</b><span class="muted small">${esc(bits)}</span></span></button>`;
 }
 
@@ -165,7 +182,7 @@ function renderResults() {
   box.innerHTML = `
     ${d.back ? '<button class="linkish back" id="back">← Volver</button>' : ""}
     <div class="list-head">${cover}<div>
-      <div class="kind">${KIND[d.kind]}</div><h2>${esc(title)}</h2>${d.subtitle ? `<div class="muted">${esc(d.subtitle)}</div>` : ""}
+      <div class="kind">${KIND[d.kind]}</div><h2 title="${esc(title)}">${esc(title)}</h2>${d.subtitle ? `<div class="muted">${esc(d.subtitle)}</div>` : ""}
       <div class="muted">${esc(meta)} · <span title="${esc(d.folder)}">se guarda en ${esc(d.folder)}</span></div></div></div>
     <div id="summary-slot"></div>${notes}
     ${(d.cards || []).length ? `<div class="cards">${d.cards.map(cardHTML).join("")}</div>` : ""}
@@ -179,12 +196,13 @@ function renderResults() {
   const jobs = [];
   const list = $("#tracks", box);
   S.rows = {};
-  d.items.forEach(item => {
+  d.items.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = "row";
+    row.style.setProperty("--i", index);
     row.innerHTML = `<input type="checkbox" aria-label="Marcar">
       <img src="${esc(item.cover || BLANK)}" alt="" loading="lazy">
-      <div class="t"><b>${item.number ? `<span class="tno">${item.number}</span>` : ""}${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span></div>
+      <div class="t"><b title="${esc(item.title)}">${item.number ? `<span class="tno">${item.number}</span>` : ""}${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span></div>
       <div class="dur">${fmt(item.seconds)}</div><div class="state"></div>`;
     $("input", row).onchange = ev => { ev.target.checked ? c.selected.add(item.key) : c.selected.delete(item.key); paintBar(); paintRow(item.key); };
     S.rows[item.key] = row;
@@ -256,9 +274,12 @@ function paintRow(key) {
   state.className = "state";
   why.classList.add("hidden");
   if (!st) { state.textContent = item.already ? "Ya descargada" : ""; return; }
-  if (st.state === "done") { state.className = "state ok"; state.textContent = st.existed ? "✓ Ya estaba" : "✓ Listo"; }
+  if (st.state === "done") {
+    state.className = "state ok"; state.textContent = st.existed ? "Ya estaba" : "Listo";
+    if (!st.flashed) { st.flashed = true; row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash"); }
+  }
   else if (st.state === "failed") {
-    state.className = "state bad"; state.textContent = "✕ No se pudo";
+    state.className = "state bad"; state.textContent = "No se pudo";
     why.textContent = st.reason || ""; why.classList.remove("hidden");
   } else { state.className = "state busy"; state.innerHTML = `<i class="spin"></i>${STATE_TEXT[st.state] || ""}`; }
 }
@@ -277,14 +298,23 @@ function paintBar() {
   const selCount = $("#sel-count");
   if (selCount) selCount.textContent = `${n} de ${all} marcadas${already ? ` · ${already} ya descargadas` : ""}`;
 
+  const changed = bar.dataset.phase !== c.phase;
+  if (c.phase === "running" && !changed && $(".progress i", bar)) {
+    const k = counts(), done = k.ok + k.bad, total = Object.keys(c.status).length;
+    $("#bar-text", bar).innerHTML = `<b>Descargando</b> · ${done} de ${total}${k.bad ? ` · ${k.bad} con problemas` : ""}`;
+    $(".progress i", bar).style.width = (total ? Math.round(done / total * 100) : 0) + "%";
+    return;
+  }
+  bar.dataset.phase = c.phase;
+  if (changed) { bar.classList.remove("swap"); void bar.offsetWidth; bar.classList.add("swap"); }
   if (c.phase === "idle") {
     bar.innerHTML = `<div class="grow"><b>${plural(n, "canción", "canciones")}</b> para descargar<div class="muted small">MP3 con la mejor calidad que da YouTube</div></div>
       <button class="btn primary big" style="margin:0" id="go" ${n ? "" : "disabled"}>Descargar ${n || ""}</button>`;
     $("#go").onclick = startDownload;
   } else if (c.phase === "running") {
     const k = counts(), done = k.ok + k.bad, total = Object.keys(c.status).length;
-    bar.innerHTML = `<div class="grow"><b>Descargando</b> · ${done} de ${total}${k.bad ? ` · ${k.bad} con problemas` : ""}
-      <div class="progress"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></div>
+    bar.innerHTML = `<div class="grow"><span id="bar-text"><b>Descargando</b> · ${done} de ${total}${k.bad ? ` · ${k.bad} con problemas` : ""}</span>
+      <div class="progress" role="progressbar" aria-label="Progreso de la descarga"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></div>
       <button class="btn danger" id="cancel">Cancelar</button>`;
     $("#cancel").onclick = async () => { await call("cancel_download"); toast("Cancelando: terminan las que ya empezaron."); };
   } else {
@@ -370,7 +400,7 @@ function onEvent(e) {
   }
   if (!e.key) return;
   if (e.kind === "stage") c.status[e.key] = { state: e.stage };
-  else if (e.kind === "done") c.status[e.key] = { state: "done", existed: e.existed };
+  else if (e.kind === "done") c.status[e.key] = { state: "done", existed: e.existed, flashed: (c.status[e.key] || {}).flashed };
   else if (e.kind === "failed") c.status[e.key] = { state: "failed", reason: e.reason };
   paintRow(e.key);
   paintBar();
@@ -535,6 +565,8 @@ function init() {
   $("#toggle2").onclick = () => setSidebar(true);
   $("#conn").onclick = () => show("tutorial");
   try { if (localStorage.getItem("sidebar") === "0") setSidebar(false); } catch (e) { /* default: open */ }
+  if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");   // on a narrow window the menu is a drawer: starts closed
+  $("#main").addEventListener("click", ev => { if (innerWidth <= 760 && $("#app").classList.contains("sidebar-open") && !ev.target.closest("#toggle2")) { ev.stopPropagation(); setSidebar(false); } }, true);
 
   $("#composer").onsubmit = ev => { ev.preventDefault(); submitLink(); };
   $("#paste").onclick = async () => {
@@ -548,9 +580,12 @@ function init() {
 
   $$("#fav-counts button").forEach(b => b.onclick = () => {
     $$("#fav-counts button").forEach(x => x.classList.toggle("on", x === b));
+    moveSegInd();
     S.favCount = +b.dataset.n; $("#fav-custom").value = "";
   });
-  $("#fav-custom").oninput = () => { if ($("#fav-custom").value) $$("#fav-counts button").forEach(x => x.classList.remove("on")); };
+  $("#fav-custom").oninput = () => {
+    if ($("#fav-custom").value) { $$("#fav-counts button").forEach(x => x.classList.remove("on")); $("#fav-counts .seg-ind").style.opacity = 0; }
+  };
   $("#fav-go").onclick = submitFavorites;
 
   $("#open-dash").onclick = () => call("open_external", S.state.dashboard_url || "https://developer.spotify.com/dashboard");
@@ -573,6 +608,14 @@ function init() {
 
   buildFaq();
   initTags();
+  moveNavInd();
+  let wasNarrow = innerWidth <= 760;
+  addEventListener("resize", () => {
+    const narrow = innerWidth <= 760;
+    if (narrow && !wasNarrow) $("#app").classList.remove("sidebar-open");
+    wasNarrow = narrow; moveNavInd(); moveSegInd();
+  });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { moveNavInd(); moveSegInd(); });
   refreshState().then(st => {
     if (st && st.configured === false) { show("tutorial"); toast("Primero conecta el programa con Spotify."); }
   });
