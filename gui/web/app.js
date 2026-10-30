@@ -162,6 +162,7 @@ function handlePreview(view, r) {
 /* ---------- the list ---------- */
 const KIND = { song: "Canción", album: "Álbum", playlist: "Playlist", liked: "Mis favoritos", search: "Resultados", artist: "Artista" };
 const KIND_LABEL = { album: "Álbum", ep: "EP", single: "Sencillo", other: "Disco", compilation: "Recopilatorio", live: "En vivo" };
+const STAGE_AT = { queued: 0, searching: 1, downloading: 2, converting: 3 };
 const STATE_TEXT = { queued: "En cola", searching: "Buscando…", downloading: "Descargando…", converting: "Convirtiendo…" };
 
 const avatar = (text, extra = "") => `<div class="cover-lg avatar ${extra}">${esc((text || "?").trim().charAt(0).toUpperCase())}</div>`;
@@ -227,7 +228,8 @@ function renderResults() {
     row.style.setProperty("--i", index);
     row.innerHTML = `<input type="checkbox" aria-label="Marcar">
       <img src="${esc(item.cover || BLANK)}" alt="" loading="lazy">
-      <div class="t"><b title="${esc(item.title)}">${item.number ? `<span class="tno">${item.number}</span>` : ""}${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span></div>
+      <div class="t"><b title="${esc(item.title)}">${item.number ? `<span class="tno">${item.number}</span>` : ""}${esc(item.title)}</b><span>${esc(item.artists)}${item.saved ? " · guardada " + esc(item.saved) : ""}</span><span class="why hidden"></span>
+        <div class="stages hidden" aria-hidden="true"><i></i><i></i><i></i></div></div>
       <div class="dur">${fmt(item.seconds)}</div><div class="state"></div>`;
     $("input", row).onchange = ev => { ev.target.checked ? c.selected.add(item.key) : c.selected.delete(item.key); paintBar(); paintRow(item.key); };
     S.rows[item.key] = row;
@@ -291,7 +293,8 @@ function paintRow(key) {
   const c = S.cur, row = S.rows[key];
   if (!c || !row) return;
   const item = c.data.items.find(i => i.key === key);
-  const st = c.status[key], box = $("input", row), state = $(".state", row), why = $(".why", row);
+  const st = c.status[key], box = $("input", row), state = $(".state", row), why = $(".why", row), stages = $(".stages", row);
+  stages.classList.add("hidden");
   const running = c.phase === "running";
   box.checked = c.selected.has(key);
   box.disabled = running || c.phase === "finished";
@@ -306,12 +309,21 @@ function paintRow(key) {
   else if (st.state === "failed") {
     state.className = "state bad"; state.textContent = "No se pudo";
     why.textContent = st.reason || ""; why.classList.remove("hidden");
-  } else { state.className = "state busy"; state.innerHTML = `<i class="spin"></i>${STATE_TEXT[st.state] || ""}`; }
+  } else {
+    state.className = "state busy"; state.innerHTML = `<i class="spin"></i>${STATE_TEXT[st.state] || ""}`;
+    stages.dataset.at = STAGE_AT[st.state] ?? 0; stages.classList.remove("hidden");
+  }
 }
 
 function counts() {
   const c = S.cur, vals = Object.values(c.status);
   return { total: Object.keys(c.status).length, ok: vals.filter(v => v.state === "done").length, bad: vals.filter(v => v.state === "failed").length };
+}
+
+function queueSummary(c) {
+  const all = Object.values(c.status), count = state => all.filter(v => v.state === state).length;
+  const active = count("searching") + count("downloading") + count("converting"), queued = count("queued"), ok = count("done");
+  return [ok ? plural(ok, "lista", "listas") : "", active ? `${active} en curso` : "", queued ? `${queued} en cola` : ""].filter(Boolean).join(" · ");
 }
 
 function paintBar() {
@@ -327,6 +339,7 @@ function paintBar() {
   if (c.phase === "running" && !changed && $(".progress i", bar)) {
     const k = counts(), done = k.ok + k.bad, total = Object.keys(c.status).length;
     $("#bar-text", bar).innerHTML = `<b>Descargando</b> · ${done} de ${total}${k.bad ? ` · ${k.bad} con problemas` : ""}`;
+    $("#bar-sub", bar).textContent = queueSummary(c);
     $(".progress i", bar).style.width = (total ? Math.round(done / total * 100) : 0) + "%";
     return;
   }
@@ -339,6 +352,7 @@ function paintBar() {
   } else if (c.phase === "running") {
     const k = counts(), done = k.ok + k.bad, total = Object.keys(c.status).length;
     bar.innerHTML = `<div class="grow"><span id="bar-text"><b>Descargando</b> · ${done} de ${total}${k.bad ? ` · ${k.bad} con problemas` : ""}</span>
+      <div class="muted small" id="bar-sub">${esc(queueSummary(c))}</div>
       <div class="progress" role="progressbar" aria-label="Progreso de la descarga"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></div>
       <button class="btn danger" id="cancel">Cancelar</button>`;
     $("#cancel").onclick = async () => { await call("cancel_download"); toast("Cancelando: terminan las que ya empezaron."); };
@@ -365,38 +379,64 @@ function paintSummary() {
   if (!s || !slot) return;
   const k = counts();
   let html = "";
-  if (s.error) html = `<div class="panel bad"><h3>La descarga se detuvo</h3><p>${esc(s.error)}</p></div>`;
+  if (s.error) html = `<div class="panel with-ic bad"><div class="panel-ic">${ICONS.alert}</div><div class="panel-body"><h3>La descarga se detuvo</h3><p>${esc(s.error)}</p></div></div>`;
   else {
     const kind = s.failed.length || s.blocked || s.cancelled ? "warn" : "good";
-    html = `<div class="panel ${kind}"><h3>${s.cancelled ? "Descarga cancelada" : s.blocked ? "YouTube te está bloqueando" : s.failed.length ? "Listo, con algunos problemas" : "¡Listo!"}</h3>
+    html = `<div class="panel with-ic ${kind}"><div class="panel-ic">${kind === "good" ? ICONS.check : ICONS.alert}</div><div class="panel-body"><h3>${s.cancelled ? "Descarga cancelada" : s.blocked ? "YouTube te está bloqueando" : s.failed.length ? "Listo, con algunos problemas" : "¡Listo!"}</h3>
       <p>${plural(k.ok, "canción descargada", "canciones descargadas")} en <b>${esc(s.folder)}</b>.</p>`;
     if (s.blocked) html += `<p class="muted">Paré para no empeorarlo. Espera un rato (a veces una hora) o cambia de red, y pega el mismo enlace: lo que ya se bajó se salta.</p>`;
     if (s.failed.length) {
       html += `<p>No se pudieron descargar ${s.failed.length}:</p><ul>${s.failed.map(f => `<li><b>${esc(f.artists)} – ${esc(f.title)}</b>: ${esc(f.reason)}</li>`).join("")}</ul>`;
       if (s.advice.length) html += `<p style="margin-top:12px"><b>Qué hacer</b></p><ul>${s.advice.map(a => `<li>${esc(a)}</li>`).join("")}</ul>`;
     }
-    if (s.outdated_ytdlp) html += `<div class="btn-row"><button class="btn primary" id="sum-update">Actualizar yt-dlp</button></div>`;
-    html += "</div>";
+    const buttons = [];
+    if (s.outdated_ytdlp) buttons.push(`<button class="btn primary" id="sum-update">Actualizar yt-dlp</button>`);
+    if (s.failed.length) buttons.push(`<button class="btn${s.outdated_ytdlp ? "" : " primary"}" id="sum-retry">${ICONS.retry} Reintentar las fallidas (${s.failed.length})</button>`);
+    if (buttons.length) html += `<div class="btn-row">${buttons.join("")}</div>`;
+    html += "</div></div>";
   }
   slot.innerHTML = html;
   const up = $("#sum-update", slot);
   if (up) up.onclick = updateYtdlp;
+  const again = $("#sum-retry", slot);
+  if (again) again.onclick = retryFailed;
 }
 
 /* ---------- downloading ---------- */
-async function startDownload() {
+async function startDownload(retry = false) {
   const c = S.cur;
-  if (!c || !c.selected.size) return;
+  if (!c || !c.selected.size) return false;
   const keys = [...c.selected];
   const r = await call("start_download", keys, c.data.view);
-  if (!r.ok) return toast(r.error || "No se pudo empezar.", true);
+  if (!r.ok) { toast(r.error || "No se pudo empezar.", true); return false; }
   c.phase = "running";
-  c.status = {};
+  // a retry keeps what already came out right: the bar counts everything, not only the second round
+  const kept = retry ? Object.entries(c.status).filter(([, v]) => v.state === "done") : [];
+  c.status = Object.fromEntries(kept);
+  kept.forEach(([k]) => c.selected.add(k));
   keys.forEach(k => { c.status[k] = { state: "queued" }; });
   S.running = true;
   c.data.items.forEach(i => paintRow(i.key));
   paintBar();
   S.poll = setInterval(pollEvents, 500);
+  return true;
+}
+
+async function retryFailed() {
+  const c = S.cur;
+  if (!c || c.phase !== "finished" || !c.summary || S.running) return;
+  const known = new Set(c.data.items.map(i => i.key));
+  const keys = c.summary.failed.map(f => f.key).filter(k => known.has(k));
+  if (!keys.length) return;
+  const before = { summary: c.summary, phase: c.phase, selected: c.selected };
+  c.selected = new Set(keys); c.summary = null; c.phase = "idle";
+  const slot = $("#summary-slot");
+  if (slot) slot.innerHTML = "";
+  if (!await startDownload(true)) {   // could not start: everything stays as it was
+    Object.assign(c, before);
+    paintSummary(); paintBar();
+    c.data.items.forEach(i => paintRow(i.key));
+  }
 }
 
 let polling = false;
@@ -569,8 +609,8 @@ function demoApi() {
         setTimeout(() => push(i === 2 ? "failed" : "done", i === 2 ? { key: k, reason: "YouTube pidió comprobar que no eres un robot (demasiadas solicitudes seguidas)." } : { key: k, existed: false }), at(1800));
       });
       setTimeout(() => push("finished", { folder: "C:\\Users\\Tú\\Music\\Burdamix\\albums\\After Hours\\", blocked: false, cancelled: false, outdated_ytdlp: false, error: null,
-        failed: [{ key: keys[2], title: names[2], artists: "The Weeknd", reason: "YouTube pidió comprobar que no eres un robot (demasiadas solicitudes seguidas).", category: "robot" }],
-        advice: ["Las del aviso de robot: YouTube recibió muchas solicitudes. Espera unos minutos y ejecuta de nuevo el mismo enlace: solo bajará las que faltan."] }), 1200 + keys.length * 900 + 1800);
+        failed: keys[2] ? [{ key: keys[2], title: names[2], artists: "The Weeknd", reason: "YouTube pidió comprobar que no eres un robot (demasiadas solicitudes seguidas).", category: "robot" }] : [],
+        advice: keys[2] ? ["Las del aviso de robot: YouTube recibió muchas solicitudes. Espera unos minutos y ejecuta de nuevo el mismo enlace: solo bajará las que faltan."] : [] }), 1200 + keys.length * 900 + 1800);
       return { ok: true, count: keys.length };
     },
     get_events: async () => { const e = queue; queue = []; return e; },

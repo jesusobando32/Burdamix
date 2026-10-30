@@ -1744,6 +1744,30 @@ def test_the_window_only_opens_the_exact_known_pages(tmp_path, monkeypatch):
     assert opened == good
 
 
+def test_a_download_can_be_restarted_with_only_some_of_the_songs(tmp_path, monkeypatch):
+    """"Reintentar las fallidas" in the window sends just the failed keys of the same list again."""
+    import time
+    api = _window_api(tmp_path, monkeypatch)
+    a, b, c = object(), object(), object()
+    api._pending = {"tracks": {"a": a, "b": b, "c": c}, "output_path": "out/", "spotify": None}
+    seen = []
+    monkeypatch.setattr(api, "_run_download", lambda pending, chosen: seen.append(chosen))
+
+    def wait_for(count):
+        for _ in range(200):
+            if len(seen) >= count:
+                return
+            time.sleep(0.01)
+
+    assert api.start_download(["b"]) == {"ok": True, "count": 1}
+    wait_for(1)
+    api._busy = False                                    # the stub does not finish a download the way the real one does
+    assert api.start_download(["c", "a", "not-in-the-list"]) == {"ok": True, "count": 2}
+    wait_for(2)
+    assert seen == [[b], [c, a]]                         # only the asked songs, in the asked order, unknown keys dropped
+    assert api.start_download(["a"])["ok"] is False      # control: while one runs, another cannot start
+
+
 def test_the_window_script_only_uses_elements_that_exist_and_parses():
     """A mistyped #id makes $() return null and the window dies on first use; neither the tests nor Python would notice."""
     import re
