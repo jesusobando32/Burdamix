@@ -340,9 +340,16 @@ class Api:
         by_key = {t.resource_id: t for _i, t, _n in plan}
         view = self._new_view(spotify=None, tracks=by_key, output_path=folder, kind="artist",
                               infos={k: t.song_info for k, t in by_key.items()})
-        return {"kind": "artist", "title": artist.name, "cover": None, "items": items, "total": len(items), "folder": folder,
+        return {"kind": "artist", "title": artist.name, "cover": self._artist_picture(artist), "items": items, "total": len(items), "folder": folder,
                 "interludes": [], "repeated": 0, "limited": False, "view": view, "back": True, "preselect": [],
                 "albums": [self._card(album, artist.name) for album in albums]}
+
+    def _artist_picture(self, artist):
+        """The artist's photo as a data: URL, or None (the window then shows their initial). The card already asked for it: it comes from memory."""
+        try:
+            return self._covers().preview_picture(artist.picture_url) if artist.picture_url else None
+        except Exception:
+            return None
 
     def _covers(self):
         if self._cover_tagger is None:
@@ -361,11 +368,7 @@ class Api:
         so that a list of fifty songs or sixty albums appears at once and its pictures fill in."""
         info = (self._views.get(view) or {}).get("infos", {}).get(key)
         if info is None and key in self._cards and isinstance(self._cards[key][0], ArtistInfo):
-            url = self._cards[key][0].picture_url
-            try:
-                return self._covers().preview_picture(url) if url else None
-            except Exception:
-                return None
+            return self._artist_picture(self._cards[key][0])
         if info is None and key in self._cards and isinstance(self._cards[key][0], AlbumInfo):
             album = self._cards[key][0]
             # No title: the cover is looked for as the album's (not as the cover of a song with the album's name).

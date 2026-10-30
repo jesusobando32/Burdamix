@@ -115,6 +115,20 @@ def test_an_artist_card_loads_its_picture_afterwards_and_only_when_there_is_one(
     assert api.item_cover("v0", without["key"]) is None and asked == ["https://c/mora250.jpg"]     # no picture: no request
 
 
+def test_the_artist_view_shows_the_same_photo_as_the_card(tmp_path, monkeypatch):
+    api = window(tmp_path, monkeypatch)
+    api._catalog = FakeCatalog()
+    api._catalog.mora.picture_url = "https://c/mora250.jpg"
+    asked = []
+    api._cover_tagger = type("T", (), {"preview_picture": lambda self, url: asked.append(url) or "data:image/jpeg;base64,FOTO",
+                                       "preview_cover": lambda self, info: ("data:image/jpeg;base64,AA", None)})()
+    monkeypatch.setattr("gui.backend.search_songs", lambda text, limit: (songs_of("s", 1), []))
+    search = api.preview("mora")
+    assert api.open_card(next(c["key"] for c in search["cards"] if c["type"] == "artist"))["cover"] == "data:image/jpeg;base64,FOTO"
+    api._cover_tagger = type("T", (), {"preview_picture": lambda self, url: None})()          # the photo cannot be had: the initial stays
+    assert api.open_card(next(c["key"] for c in search["cards"] if c["type"] == "artist"))["cover"] is None
+
+
 def test_the_autotagger_turns_an_artist_picture_into_a_small_data_url_and_remembers_it():
     import io
     from PIL import Image
