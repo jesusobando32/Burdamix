@@ -13,6 +13,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import webbrowser
+from urllib.parse import urlparse
 
 import const
 import downloader
@@ -42,7 +43,24 @@ LINK = re.compile(r"https?://|spotify[:.]|/(?:track|album|playlist)/", re.I)   #
 BEST_QUALITY_BPS = 320000      # "the best YouTube has": the real bitrate is whatever the best stream is (~130 kbps)
 
 # Pages the window may open in the user's browser; nothing else is ever opened from a link in the page.
-ALLOWED_LINKS = ("https://developer.spotify.com/", "https://github.com/jesusobando32/Burdamix", "https://open.spotify.com/")
+# (site, path prefix): the site must be exactly that one, and the path that folder or page itself, not a name that merely starts with it.
+ALLOWED_LINKS = (("developer.spotify.com", "/"), ("github.com", "/jesusobando32/Burdamix"), ("open.spotify.com", "/"))
+
+
+def _is_allowed_link(url):
+    if not isinstance(url, str):
+        return False
+    try:
+        parts = urlparse(url)
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return False
+    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443):
+        return False
+    for site, path in ALLOWED_LINKS:
+        if host == site and (path == "/" and parts.path.startswith("/") or parts.path == path or parts.path.startswith(path + "/")):
+            return True
+    return False
 
 
 def _validate_spotify_url(url):
@@ -180,7 +198,7 @@ class Api:
         return dict(self._login)
 
     def open_external(self, url):
-        if isinstance(url, str) and url.startswith(ALLOWED_LINKS):
+        if _is_allowed_link(url):
             webbrowser.open(url)
             return True
         return False

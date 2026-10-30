@@ -1726,3 +1726,19 @@ def test_a_zip_member_with_a_drive_letter_is_never_extracted(tmp_path, monkeypat
     assert not (tmp_path / "evil").exists()
     assert updater._version_in(str(lib)) == "2099.01.01"
 
+
+def test_the_window_only_opens_the_exact_known_pages(tmp_path, monkeypatch):
+    import gui.backend as backend
+    opened = []
+    monkeypatch.setattr(backend.webbrowser, "open", opened.append)
+    api = _window_api(tmp_path, monkeypatch)
+    good = ["https://developer.spotify.com/dashboard", "https://open.spotify.com/track/abc",
+            "https://github.com/jesusobando32/Burdamix", "https://github.com/jesusobando32/Burdamix/issues"]
+    bad = ["https://github.com/jesusobando32/BurdamixFake", "https://github.com/jesusobando32/Burdamix-evil/x",
+           "https://open.spotify.com.evil.example/", "https://developer.spotify.com@evil.example/",
+           "http://open.spotify.com/track/abc", "https://OPEN.spotify.com.evil.example/x"]
+    for url in good:
+        assert api.open_external(url) is True, url
+    for url in bad:
+        assert api.open_external(url) is False, url
+    assert opened == good
