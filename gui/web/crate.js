@@ -3,7 +3,8 @@
    song. A collection is only a way of looking at the same files: nothing is moved or copied.
    Uses player.js (P, trackOf, playList, renderSongList, ...) and the helpers of app.js ($, $$, esc, fmt, plural, call, toast, placeInd). */
 
-const L = { tab: "albums", open: null, groups: { albums: [], playlists: [] }, byKey: new Map(), focus: "", moved: false };
+const L = { tab: "albums", open: null, groups: { albums: [], playlists: [] }, byKey: new Map(), focus: "", moved: false,
+  liked: new Set(), mine: [] };            // the ids of the songs you like; your own playlists ({ id, name, ids })
 const TABS = [["albums", "Álbumes"], ["playlists", "Playlists"], ["likes", "Me gusta"], ["songs", "Canciones"]];
 const CRATE_TABS = ["albums", "playlists"];
 
@@ -19,10 +20,13 @@ function mostCommon(values, share) {
   return most / (values.length || 1) >= share ? best : "";
 }
 
-function makeGroup(kind, name, tracks) {
-  tracks.sort((a, b) => (a.disc || 1) - (b.disc || 1) || (a.number || 999) - (b.number || 999) || a.title.localeCompare(b.title));
+/* `order`: an album goes by disc and track number; a playlist downloaded from Spotify by the order it was downloaded in; one of
+   your own keeps the order you put its songs in. */
+function makeGroup(kind, name, tracks, order = "tracks", extra = {}) {
+  if (order === "tracks") tracks.sort((a, b) => (a.disc || 1) - (b.disc || 1) || (a.number || 999) - (b.number || 999) || a.title.localeCompare(b.title));
+  else if (order === "added") tracks.sort((a, b) => a.added - b.added);
   return {
-    key: kind + ":" + name, kind, name, tracks, ids: tracks.map(t => t.id), count: tracks.length,
+    ...extra, key: (extra.mine ? "mine" : kind) + ":" + (extra.pid || name), kind, name, tracks, ids: tracks.map(t => t.id), count: tracks.length,
     seconds: tracks.reduce((s, t) => s + (t.duration || 0), 0),
     title: kind === "album" ? mostCommon(tracks.map(t => t.album), .5) || name : name,                  // the album's own name when the songs agree on it
     artist: kind === "album" ? mostCommon(tracks.map(t => t.artist), .6) || "Varios artistas" : "",
@@ -36,16 +40,18 @@ function buildGroups() {
     const bucket = t.kind === "album" ? albums : t.kind === "playlist" ? lists : null;
     if (bucket && t.group) (bucket.get(t.group) || bucket.set(t.group, []).get(t.group)).push(t);
   }
+  const mine = L.mine.map(p => makeGroup("playlist", p.name, p.ids.map(id => P.byId.get(id)).filter(Boolean), "keep", { mine: true, pid: p.id }));
   L.groups = {
     albums: [...albums].map(([name, tracks]) => makeGroup("album", name, tracks)).sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title)),
-    playlists: [...lists].map(([name, tracks]) => makeGroup("playlist", name, tracks)).sort((a, b) => a.title.localeCompare(b.title)),
+    playlists: [...mine, ...[...lists].map(([name, tracks]) => makeGroup("playlist", name, tracks, "added")).sort((a, b) => a.title.localeCompare(b.title))],   // yours first
   };
   L.byKey = new Map([...L.groups.albums, ...L.groups.playlists].map(g => [g.key, g]));
   if (L.open && !L.byKey.has(L.open)) L.open = null;
 }
 
-/* Songs the user likes. For now: the ones downloaded into liked/. One row per song even if it exists as several files. */
-const isLiked = track => track.kind === "liked";
+/* Songs the user likes (the program side decides: hearts given, the liked/ folder, and every copy of a liked song). One row per
+   song even if it exists as several files. */
+const isLiked = track => L.liked.has(track.id);
 const KIND_RANK = { album: 0, playlist: 1, track: 2, liked: 3, other: 4 };
 function likedTracks() {
   const best = new Map();
@@ -140,9 +146,10 @@ function visibleGroups() {
 
 function renderCrate() {
   const crate = $("#crate"), list = visibleGroups(), empty = $("#lib-empty");
-  empty.classList.toggle("hidden", !!list.length);
-  $("#crate-box").classList.toggle("hidden", !list.length);
-  if (!list.length) {
+  const addTile = L.tab === "playlists" && !P.q.trim();         // the first sleeve of the playlists makes a new one
+  empty.classList.toggle("hidden", !!list.length || addTile);
+  $("#crate-box").classList.toggle("hidden", !list.length && !addTile);
+  if (!list.length && !addTile) {
     crate.innerHTML = "";
     const none = !(L.groups[L.tab] || []).length;
     empty.innerHTML = `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>${none ? (L.tab === "albums" ? "Todavía no tienes álbumes" : "Todavía no tienes playlists") : `Nada coincide con «${esc(P.q)}»`}</h3>
@@ -152,7 +159,9 @@ function renderCrate() {
     return;
   }
   const playing = current() && current().id;
-  crate.innerHTML = list.map(g => `<button type="button" class="crate-item${g.ids.includes(playing) ? " playing" : ""}" role="option" data-key="${esc(g.key)}" title="${esc(g.title)}">
+  const newTile = addTile ? `<button type="button" class="crate-item new" role="option" data-key="new" title="Crear una playlist">
+      <span class="sleeve"><span class="new-art"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></span><b>Nueva playlist</b><span class="muted small">Con las canciones que quieras</span></button>` : "";
+  crate.innerHTML = newTile + list.map(g => `<button type="button" class="crate-item${g.ids.includes(playing) ? " playing" : ""}" role="option" data-key="${esc(g.key)}" title="${esc(g.title)}">
       <span class="sleeve"${labelStyle(g)}>${DISC}${groupArt(g)}</span><b>${esc(g.title)}</b><span class="muted small">${esc(groupSub(g))}</span></button>`).join("");
   const target = L.focus && $$(".crate-item", crate).find(el => el.dataset.key === L.focus);
   crate.scrollLeft = target ? target.offsetLeft + target.offsetWidth / 2 - crate.clientWidth / 2 : 0;
@@ -225,6 +234,7 @@ function wireCrate() {
 
 /* ---------- the page of an album or a playlist ---------- */
 function openGroup(key) {
+  if (key === "new") return newPlaylist();
   if (!L.byKey.has(key)) return;
   L.open = key; P.q = ""; $("#lib-q").value = "";
   renderLibrary();
@@ -247,10 +257,88 @@ function renderDetail() {
         <span class="kind">${album ? "Álbum" : "Playlist"}</span>
         <h2>${esc(g.title)}</h2>
         <p class="muted">${esc([album ? g.artist : "", plural(g.count, "canción", "canciones"), g.seconds ? durationText(g.seconds) : ""].filter(Boolean).join(" · "))}</p>
-        <div class="btn-row"><button class="btn primary" id="detail-play" type="button">Reproducir</button><button class="btn" id="detail-shuffle" type="button">Aleatorio</button></div>
+        <div class="btn-row"><button class="btn primary" id="detail-play" type="button"${g.count ? "" : " disabled"}>Reproducir</button><button class="btn" id="detail-shuffle" type="button"${g.count ? "" : " disabled"}>Aleatorio</button>
+          ${g.mine ? '<button class="btn" id="detail-rename" type="button">Cambiar el nombre</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : ""}</div>
       </div>
     </div>`;
   $("#detail-back").onclick = closeGroup;
   $("#detail-play").onclick = () => playList(g.ids);
   $("#detail-shuffle").onclick = () => { P.shuffle = true; playList(g.ids, g.ids[Math.floor(Math.random() * g.ids.length)]); render(); };
+  if (g.mine) { $("#detail-rename").onclick = () => renamePlaylist(g); $("#detail-delete").onclick = () => deletePlaylist(g); }
+}
+
+/* ---------- likes and your playlists ---------- */
+const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+
+async function loadCollections() {
+  const state = await call("collections_get");
+  if (!state || state.error) return;
+  L.liked = new Set(Array.isArray(state.liked) ? state.liked : []);
+  L.mine = Array.isArray(state.playlists) ? state.playlists : [];
+}
+
+async function refreshCollections() {
+  await loadCollections();
+  renderLibrary();
+  render();                                    // the heart of the bar
+}
+
+/* Hearts: the program side decides what changes (a song kept as two files is liked in both). */
+async function toggleLike(id, button) {
+  const result = await call("like_toggle", id);
+  if (!result.ok) return toast(result.error || "No pude cambiarlo.", true);
+  await refreshCollections();
+  toast(result.liked ? "Añadida a Me gusta." : "Quitada de Me gusta.");
+  if (result.liked && !reduced()) [$(`.lib-row[data-id="${CSS.escape(id)}"] .heart`), current() && current().id === id ? $("#pl-like") : null].forEach(el => {
+    if (el) el.animate([{ transform: "scale(1)" }, { transform: "scale(1.45)" }, { transform: "scale(1)" }], { duration: 380, easing: "cubic-bezier(.23, 1, .32, 1)" });
+  });
+}
+
+function openPlaylistMenu(x, y, ids) {
+  const items = L.mine.map(p => ({ label: p.name, icon: ICON_PLAYLIST, run: () => addToPlaylist(p.id, ids) }));
+  if (items.length) items.push({ sep: true });
+  items.push({ label: "Nueva playlist…", icon: ICON_PLUS, run: () => newPlaylist(ids) });
+  openMenu(x, y, items);
+}
+
+async function addToPlaylist(playlistId, ids) {
+  const playlist = L.mine.find(p => p.id === playlistId);
+  const result = await call("playlist_add", playlistId, ids);
+  if (!result.ok) return toast(result.error || "No pude añadirla.", true);
+  await refreshCollections();
+  toast(ids.length === 1 ? `Añadida a «${playlist ? playlist.name : "la playlist"}».` : `${ids.length} canciones añadidas a «${playlist ? playlist.name : "la playlist"}».`);
+}
+
+async function newPlaylist(ids = []) {
+  const name = await confirmDialog({ title: "Nueva playlist", ok: "Crear", input: { value: "" } });
+  if (name === null) return;
+  if (!name) return toast("Ponle un nombre a la playlist.", true);
+  const result = await call("playlist_create", name, ids);
+  if (!result.ok) return toast(result.error || "No pude crear la playlist.", true);
+  await refreshCollections();
+  toast(ids.length ? `Playlist «${name}» creada con ${plural(ids.length, "canción", "canciones")}.` : `Playlist «${name}» creada.`, false,
+        { label: "Abrir", run: () => { L.tab = "playlists"; L.open = "mine:" + result.id; show("library"); renderLibrary(); } });
+}
+
+async function removeFromPlaylist(playlistId, ids) {
+  for (const id of ids) await call("playlist_remove", playlistId, id);
+  await refreshCollections();
+  toast(ids.length === 1 ? "Quitada de la playlist." : `${ids.length} canciones quitadas de la playlist.`);
+}
+
+async function renamePlaylist(group) {
+  const name = await confirmDialog({ title: "Cambiar el nombre", ok: "Guardar", input: { value: group.title } });
+  if (name === null || name === group.title) return;
+  const result = await call("playlist_rename", group.pid, name);
+  if (!result.ok) return toast(result.error || "No pude cambiar el nombre.", true);
+  await refreshCollections();
+}
+
+async function deletePlaylist(group) {
+  const ok = await confirmDialog({ title: "¿Eliminar la playlist?", text: `«${group.title}» desaparece, pero sus canciones se quedan en tu biblioteca.`, ok: "Eliminar playlist", danger: true });
+  if (!ok) return;
+  const result = await call("playlist_delete", group.pid);
+  if (!result.ok) return toast(result.error || "No pude eliminarla.", true);
+  L.open = null;
+  await refreshCollections();
 }

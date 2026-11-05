@@ -340,6 +340,9 @@ function render() {
   if (!track) return paintArm();
   $("#pl-title").textContent = track.title;
   $("#pl-artist").textContent = track.artist || "Artista desconocido";
+  const liked = L.liked.has(track.id);
+  $("#pl-like").classList.toggle("on", liked); $("#pl-like").setAttribute("aria-pressed", liked);
+  $("#pl-like").title = liked ? "Quitar de Me gusta" : "Me gusta";
   $("#pl-play").setAttribute("aria-label", playing ? "Pausa" : "Reproducir");
   $("#pl-play").title = playing ? "Pausa" : "Reproducir";
   $("#pl-shuffle").setAttribute("aria-pressed", P.shuffle);
@@ -929,7 +932,8 @@ function visibleTracks() {
 }
 
 const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h6M4 18h6"/><path d="M14 11.5v9l7-4.5z" class="fill"/></svg>';
-const ICON_TAG = '<svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
+const ICON_HEART = '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
+const ICON_TAG ='<svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
 const ICON_ADD ='<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
 
 function renderSongList() {
@@ -939,8 +943,11 @@ function renderSongList() {
   if (!list.length) {
     box.innerHTML = "";
     const none = !baseTracks().length;
-    empty.innerHTML = none
-      ? `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>${L.tab === "likes" ? "Todavía no te gusta ninguna canción" : "Aún no hay canciones en tu biblioteca"}</h3><p class="muted">${L.tab === "likes" ? "Las canciones que bajaste como «Me gusta» de Spotify aparecen aquí." : "Aquí aparece todo lo que descargues en tu carpeta de descargas, listo para escuchar."}</p><div class="btn-row"><button class="btn primary" id="lib-go-home" type="button">Descargar canciones</button></div></div>`
+    const emptyOwn = L.open && (L.byKey.get(L.open) || {}).mine;       // a playlist of yours with nothing in it yet
+    empty.innerHTML = emptyOwn
+      ? `<div class="panel-ic">${ICON_PLAYLIST}</div><div class="panel-body"><h3>Esta playlist está vacía</h3><p class="muted">Añade canciones desde el menú «⋯» de cualquier canción de tu biblioteca: elige «Añadir a playlist».</p></div>`
+      : none
+      ? `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>${L.tab === "likes" ? "Todavía no te gusta ninguna canción" : "Aún no hay canciones en tu biblioteca"}</h3><p class="muted">${L.tab === "likes" ? "Dale al corazón de una canción y aparece aquí; las que bajaste como «Me gusta» de Spotify ya están." : "Aquí aparece todo lo que descargues en tu carpeta de descargas, listo para escuchar."}</p><div class="btn-row"><button class="btn primary" id="lib-go-home" type="button">Descargar canciones</button></div></div>`
       : `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>Nada coincide con «${esc(P.q)}»</h3><p class="muted">Prueba con otra parte del título, el artista o el álbum.</p></div>`;
     const go = $("#lib-go-home"); if (go) go.onclick = () => show("home");
     return;
@@ -955,6 +962,7 @@ function renderSongList() {
       <button type="button" class="icon-btn" data-act="add" title="Añadir a la cola" aria-label="Añadir a la cola">${ICON_ADD}</button>
       <button type="button" class="icon-btn" data-act="tags" title="Completar etiquetas de esta canción" aria-label="Completar etiquetas de esta canción">${ICON_TAG}</button>
       <button type="button" class="icon-btn" data-act="more" title="Más opciones" aria-label="Más opciones" aria-haspopup="menu">${ICON_MORE}</button></span>
+    <button type="button" class="icon-btn heart${L.liked.has(t.id) ? " on" : ""}" data-act="like" aria-pressed="${L.liked.has(t.id)}" title="${L.liked.has(t.id) ? "Quitar de Me gusta" : "Me gusta"}" aria-label="Me gusta">${ICON_HEART}</button>
     <span class="lib-dur muted">${t.duration ? fmt(t.duration) : "—"}</span></div>`).join("");
 }
 
@@ -989,6 +997,7 @@ async function loadLibrary() {
   P.tracks = r.tracks || [];
   P.byId = new Map(P.tracks.map(t => [t.id, t]));
   P.tracks.forEach(t => P.seen.set(t.id, t));   // a song that plays keeps its bar even if the next scan no longer lists it
+  await loadCollections();
   return true;
 }
 
@@ -998,7 +1007,9 @@ async function openLibrary() {
 
 /* ---------- the small menu of a song, the confirmation dialog, and deleting ---------- */
 const ICON_MORE = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>';
-const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const ICON_PLAYLIST = '<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7M18 14v6M15 17h6"/></svg>';
+const ICON_MINUS = '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>';
+const ICON_TRASH ='<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 
 function closeMenu() { const menu = $("#ctx"); if (menu) menu.remove(); }
 
@@ -1028,30 +1039,39 @@ document.addEventListener("click", ev => { if (!ev.target.closest("#ctx") && !ev
 addEventListener("resize", closeMenu);
 document.addEventListener("scroll", closeMenu, true);
 
+/* What a song can be done from its menu: add it to a playlist of yours (a second menu, with «Nueva playlist…»), take it out of
+   the playlist whose page is open, delete it. */
 function openSongMenu(x, y, ids) {
-  openMenu(x, y, [
-    { label: ids.length > 1 ? `Eliminar ${ids.length} canciones…` : "Eliminar de la biblioteca…", icon: ICON_TRASH, danger: true, run: () => deleteTracks(ids) },
-  ]);
+  const mine = L.open && (L.byKey.get(L.open) || {}).mine ? L.byKey.get(L.open) : null;
+  const items = [{ label: "Añadir a playlist…", icon: ICON_PLAYLIST, run: () => openPlaylistMenu(x, y, ids) }];
+  if (mine) items.push({ label: `Quitar de «${mine.title}»`, icon: ICON_MINUS, run: () => removeFromPlaylist(mine.pid, ids) });
+  items.push({ sep: true }, { label: ids.length > 1 ? `Eliminar ${ids.length} canciones…` : "Eliminar de la biblioteca…", icon: ICON_TRASH, danger: true, run: () => deleteTracks(ids) });
+  openMenu(x, y, items);
 }
 
-/* Resolves true or false: the window's own question box (the system's would look out of place). Escape or a click outside says no. */
-function confirmDialog({ title, text, ok, danger = false }) {
+/* Resolves true or false: the window's own question box (the system's would look out of place). Escape or a click outside says no.
+   With `input` ({ value }) it asks for a text instead: it resolves the text typed, or null when cancelled. */
+function confirmDialog({ title, text = "", ok, danger = false, input = null }) {
   return new Promise(resolve => {
-    const box = $("#dialog"), yes = $("#dialog-yes"), no = $("#dialog-no");
+    const box = $("#dialog"), yes = $("#dialog-yes"), no = $("#dialog-no"), field = $("#dialog-input");
     $("#dialog-title").textContent = title; $("#dialog-text").textContent = text;
+    $("#dialog-text").classList.toggle("hidden", !text);
     yes.textContent = ok; yes.classList.toggle("danger", danger);
+    field.classList.toggle("hidden", !input);
+    if (input) field.value = input.value || "";
     box.classList.remove("hidden");
     const done = answer => {
       box.classList.add("hidden");
-      yes.onclick = no.onclick = box.onclick = null;
+      yes.onclick = no.onclick = box.onclick = field.onkeydown = null;
       document.removeEventListener("keydown", onKey, true);
-      resolve(answer);
+      resolve(input ? (answer ? field.value.trim() : null) : answer);
     };
     const onKey = ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); done(false); } };
     document.addEventListener("keydown", onKey, true);
     yes.onclick = () => done(true); no.onclick = () => done(false);
+    field.onkeydown = ev => { if (ev.key === "Enter") { ev.preventDefault(); done(true); } };
     box.onclick = ev => { if (ev.target === box) done(false); };
-    no.focus();        // the safe answer has the focus
+    if (input) { field.focus(); field.select(); } else no.focus();        // the safe answer has the focus
   });
 }
 
@@ -1091,6 +1111,7 @@ function wireLibrary() {
     if (!row) return;
     const act = ev.target.closest("[data-act]");
     if (act && act.dataset.act === "tags") return sendToTags([row.dataset.id]);
+    if (act && act.dataset.act === "like") return toggleLike(row.dataset.id, act);
     if (act && act.dataset.act === "more") { const r = act.getBoundingClientRect(); return openSongMenu(r.left, r.bottom + 4, [row.dataset.id]); }
     if (act) return enqueue(row.dataset.id, act.dataset.act === "next", $(".lib-cover", row));
     play(row.dataset.id);
@@ -1177,6 +1198,7 @@ function wireKeys() {
 /* ---------- start ---------- */
 function wireBar() {
   $("#pl-play").onclick = toggle;
+  $("#pl-like").onclick = () => { const t = current(); if (t) toggleLike(t.id, $("#pl-like")); };
   $("#pl-next").onclick = () => advance(false);
   $("#pl-prev").onclick = previous;
   $("#pl-shuffle").onclick = () => setShuffle(!P.shuffle);
@@ -1242,7 +1264,15 @@ function demoPlayerApi(art) {
   const playlists = [["Rock", ["Thunderstruck", "Crazy", "Paranoid", "Hells Bells", "Highway to Hell", "Livin' On A Prayer"]],
     ["Para correr", ["Blinding Lights", "Take On Me", "Eye of the Tiger", "Stronger", "Levitating"]], ["Noche", ["Volando", "Cabernet", "Sin Miedo", "Luna"]]];
   const cover = seed => art(`hsl(${seed * 47 % 360} 55% 36%)`, `hsl(${(seed * 47 + 55) % 360} 65% 60%)`);
-  let tracks = null, saved = {};
+  let tracks = null, saved = {}, likes = null;
+  const mine = [];                                                       // the user's playlists, in memory
+  const collections = async () => {                                      // what the program side answers: liked ids (copies of a liked song count) and playlists
+    if (!tracks) tracks = makeTracks();
+    if (!likes) likes = new Set(tracks.filter(t => t.kind === "liked").map(t => t.id));
+    const identity = t => `${t.artist}|${t.title}`;
+    const known = new Set([...likes].map(id => tracks.find(t => t.id === id)).filter(Boolean).map(identity));
+    return { liked: tracks.filter(t => likes.has(t.id) || known.has(identity(t))).map(t => t.id), playlists: mine.map(p => ({ ...p, ids: [...p.ids] })) };
+  };
   const tones = [], toneFor = i => tones[i] || (tones[i] = tone(scales[i], 24));      // six sounds shared by all the demo songs
   const makeTracks = () => {
     const list = []; let n = 0;
@@ -1265,8 +1295,27 @@ function demoPlayerApi(art) {
     library_delete: async ids => {
       const gone = (tracks || []).filter(t => ids.includes(t.id));
       tracks = (tracks || []).filter(t => !ids.includes(t.id));
+      likes.forEach(id => { if (ids.includes(id)) likes.delete(id); });
+      mine.forEach(p => { p.ids = p.ids.filter(id => !ids.includes(id)); });
       return { ok: true, deleted: gone.length, failed: [] };
     },
+    collections_get: collections,
+    like_toggle: async id => {
+      const t = (tracks || []).find(x => x.id === id);
+      if (!t) return { ok: false, error: "Esa canción ya no está en la biblioteca." };
+      if ((await collections()).liked.includes(id)) { tracks.filter(x => `${x.artist}|${x.title}` === `${t.artist}|${t.title}`).forEach(x => likes.delete(x.id)); return { ok: true, liked: false }; }
+      likes.add(id); return { ok: true, liked: true };
+    },
+    playlist_create: async (name, ids) => {
+      name = String(name || "").trim().replace(/\s+/g, " ");
+      if (!name) return { ok: false, error: "Ponle un nombre a la playlist." };
+      const id = "mine" + (mine.length + 1) + name.length; mine.push({ id, name, ids: (ids || []).filter((x, i, a) => a.indexOf(x) === i) });
+      return { ok: true, id };
+    },
+    playlist_rename: async (pid, name) => { const p = mine.find(x => x.id === pid); name = String(name || "").trim(); if (!p || !name) return { ok: false, error: "Ponle un nombre a la playlist." }; p.name = name; return { ok: true }; },
+    playlist_delete: async pid => { const at = mine.findIndex(x => x.id === pid); if (at >= 0) mine.splice(at, 1); return { ok: true }; },
+    playlist_add: async (pid, ids) => { const p = mine.find(x => x.id === pid); if (!p) return { ok: false, error: "Esa playlist ya no existe." }; ids.forEach(i => { if (!p.ids.includes(i)) p.ids.push(i); }); return { ok: true }; },
+    playlist_remove: async (pid, id) => { const p = mine.find(x => x.id === pid); if (p) p.ids = p.ids.filter(i => i !== id); return { ok: true }; },
     library_paths: async ids => ids.map(id => tracks && tracks.find(t => t.id === id)).filter(Boolean).map(t => `C:/Música/${t.artist ? t.artist + " - " : ""}${t.title}.mp3`),
     get_player: async () => saved,
     save_player: async data => { saved = JSON.parse(JSON.stringify(data)); return { ok: true }; },

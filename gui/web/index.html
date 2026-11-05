@@ -297,6 +297,9 @@
       <div class="pl-now">
         <div class="pl-cover"><span class="initial" id="pl-initial">♪</span><img id="pl-cover" alt="" hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></div>
         <div class="pl-text"><b id="pl-title">—</b><span id="pl-artist" class="muted small"></span></div>
+      <button class="icon-btn heart" id="pl-like" type="button" aria-pressed="false" aria-label="Me gusta" title="Me gusta">
+        <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+      </button>
       </div>
       <div class="pl-mid">
         <div class="pl-ctrl">
@@ -361,6 +364,7 @@
   <div class="dialog-card">
     <h3 id="dialog-title"></h3>
     <p class="muted" id="dialog-text"></p>
+    <input id="dialog-input" class="dialog-input hidden" type="text" maxlength="60" autocomplete="off" spellcheck="false" aria-label="Nombre">
     <div class="btn-row"><button class="btn" id="dialog-no" type="button">Cancelar</button><button class="btn danger" id="dialog-yes" type="button"></button></div>
   </div>
 </div>

@@ -67,3 +67,10 @@
 
 /* the mosaic of a playlist stays a 2x2 grid also in its page (this must come after the rules that make covers blocks) */
 .sleeve.big .mosaic { display: grid; }
+
+/* the first sleeve of the playlists: an empty one that makes a new playlist */
+.crate-item.new .sleeve { box-shadow: none; }
+.new-art { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--accent); transition: background var(--t-med) ease, transform var(--t-med) var(--ease-out); }
+.new-art svg { width: 44px; height: 44px; stroke-width: 1.6; }
+.crate-item.new:hover .new-art, .crate-item.new.focus .new-art { background: color-mix(in srgb, var(--accent) 14%, transparent); }

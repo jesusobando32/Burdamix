@@ -82,6 +82,19 @@ Para **tus playlists y tus favoritos** hace falta además iniciar sesión (paso 
 
 La pestaña **Biblioteca** lista todo lo que hay en tu carpeta de descargas (mp3, flac, m4a, ogg y opus), con buscador y orden por artista, título o recientes. Al pulsar una canción empieza a sonar y la **barra de abajo** la sigue reproduciendo aunque cambies de pestaña.
 
+### Cómo se ordena
+
+La biblioteca tiene cuatro secciones, que son solo formas de mirar los mismos archivos (no se mueve ni se copia nada):
+
+- **Álbumes y Playlists** son una caja de discos: las fundas, con su vinilo, se recorren con la rueda del ratón, las flechas o arrastrando. Salen de las carpetas `albums/` y `playlists/` de tus descargas; la portada de un álbum es la suya, y la de una playlist es un mosaico de sus cuatro primeras canciones. Al pulsar una funda se abre su página.
+- **Me gusta:** las canciones a las que les das el corazón (en la lista o en la barra del reproductor) y las que bajaste como «Me gusta» de Spotify (carpeta `liked/`). Si una canción existe como dos archivos (por ejemplo en un álbum y en `liked/`), cuenta como una sola canción: el corazón se ve en las dos y quitarlo lo quita de las dos.
+- **Playlists tuyas:** la primera funda de Playlists crea una nueva; en el menú «⋯» de cualquier canción eliges «Añadir a playlist». Se guardan en un archivo aparte (`collections.json`, en la carpeta de datos del programa) y solo apuntan a los archivos: si renombras una canción desde Completar etiquetas, sigue en sus playlists.
+- **Canciones:** todos los archivos, con buscador y orden.
+
+**Eliminar una canción:** menú «⋯» de la fila (o clic derecho) → «Eliminar de la biblioteca». Pide confirmación y la manda a la **Papelera de Reciclaje** de Windows, así que se puede recuperar desde allí.
+
+### Reproductor
+
 - **Controles:** reproducir/pausa, anterior/siguiente, barra de progreso con salto exacto, volumen, aleatorio y repetir (nada, toda la cola o una canción).
 - **Cola:** se ve y se edita (arrastra para reordenar, quita canciones; en la biblioteca puedes añadir a continuación o al final).
 - **Teclado:** espacio (pausa), flechas izquierda y derecha (±5 s), Mayús + flechas (anterior y siguiente), flechas arriba y abajo (volumen), M (silenciar) y las teclas multimedia.
