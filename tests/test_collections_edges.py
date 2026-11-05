@@ -118,3 +118,22 @@ def test_a_song_deleted_while_a_scan_is_running_does_not_come_back_from_that_sca
     assert lib.scan(str(tmp_path)) == [] and lib.path_of(library.Library._id(str(path))) is None and lib.listing() == []
     monkeypatch.setattr(library.tagwriter, "read_tags", lambda p: TagInfo(path=p, title="A", artist="B", duration=10))
     assert len(lib.scan(str(tmp_path))) == 1                               # a later scan lists it again (restored from the bin)
+
+
+def test_a_file_locked_for_a_moment_is_never_overwritten_by_the_session(tmp_path, monkeypatch):
+    """An antivirus holding collections.json at start-up must not make the program begin empty and then write over the good file."""
+    path = tmp_path / "collections.json"
+    good = '{"liked": [], "unliked": [], "playlists": [{"id": "x", "name": "Mis cosas", "paths": []}]}'
+    path.write_text(good, encoding="utf-8")
+    real_open = open
+
+    def locked(file, *args, **kwargs):
+        if str(file) == str(path) and "w" not in (args[0] if args else kwargs.get("mode", "r")):
+            raise PermissionError("en uso por otro proceso")
+        return real_open(file, *args, **kwargs)
+    monkeypatch.setattr("builtins.open", locked)
+    store = collections_store.Collections(str(path))
+    monkeypatch.undo()
+    store.like(str(tmp_path / "a.mp3"))
+    store.playlist_create("Otra")
+    assert path.read_text(encoding="utf-8") == good and not (tmp_path / "collections.json.bad").exists()

@@ -26,6 +26,7 @@ class Collections:
         self.liked = set()          # files the user liked
         self.unliked = set()        # files of the liked/ folder the user took the like off: they are liked unless listed here
         self.playlists = []         # [{"id", "name", "paths": [key, ...]}]
+        self._unreadable = False
         self._load()
 
     # --- the file ---
@@ -43,8 +44,11 @@ class Collections:
                 data = json.load(f)
         except FileNotFoundError:
             return                              # the first time: nothing saved yet
-        except (OSError, ValueError):
+        except ValueError:                      # not JSON: set aside
             self._keep_bad_copy()
+            return
+        except OSError:                         # locked or unreadable for now: this session writes nothing, so the good file is never overwritten
+            self._unreadable = True
             return
         if not isinstance(data, dict):
             self._keep_bad_copy()
@@ -57,6 +61,8 @@ class Collections:
                 self.playlists.append({"id": item["id"], "name": item["name"], "paths": strings(item.get("paths"))})
 
     def _save(self):
+        if self._unreadable:
+            return
         data = {"liked": sorted(self.liked), "unliked": sorted(self.unliked), "playlists": self.playlists}
         part = self._path + ".part"
         try:
