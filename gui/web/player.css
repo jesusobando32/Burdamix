@@ -82,10 +82,6 @@ body.has-player #toasts { bottom: 104px; }
 .pl-side { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0; }
 #pl-spectrum { width: clamp(44px, 7vw, 96px); height: 28px; margin-right: 8px; opacity: .9; }
 
-/* big layer behind the window: bars drawn small and blurred hard, so they read as light and not as a chart */
-.viz { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: calc(100% - var(--ph, 0px)); z-index: 0; pointer-events: none; display: none; }
-#app[data-viz="wave"] .viz { display: block; filter: blur(14px); opacity: .5; }
-#app[data-viz="center"] .viz { display: block; filter: blur(20px); opacity: .32; }
 .bg i { transition: none; }   /* the pulse moves them frame by frame */
 #pl-mute .cross { display: none; }
 #pl-mute.is-muted .cross { display: block; }
@@ -164,7 +160,8 @@ body.has-player #toasts { bottom: 104px; }
 .eq-xf { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .eq-xf > div:first-child { display: flex; flex-direction: column; }
 .eq-xf .slider { display: flex; align-items: center; gap: 12px; }
-.viz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.eq-viz-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.eq-viz-row > div:first-child { display: flex; flex-direction: column; min-width: 0; }
 .eq-xf output { min-width: 62px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* ---------- library ---------- */
@@ -374,3 +371,6 @@ body.has-player #toasts { bottom: 104px; }
 #pl-like.on { color: var(--accent); }
 .dialog-input { width: 100%; height: 44px; margin: 0 0 18px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--glass-line); background: var(--bg); color: var(--text); font-size: 15px; }
 .dialog-input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+
+.eq-xf > div.eq-viz-row:first-child { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }     /* beats the first-child rule of the crossfade block */
+.eq-viz-row .switch { flex: none; }

@@ -33,7 +33,7 @@ const P = {
   shuffle: false, repeat: "off", volume: .8, muted: false, xf: 0,
   eq: { on: true, bands: [...FLAT], preset: "flat" },
   custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
-  seen: new Map(), q: "", sort: "artist", viz: "off", discId: "", swapToken: 0, armAngle: null, armLifted: true, armBusy: false, ready: false, dragging: false, errors: 0,
+  seen: new Map(), q: "", sort: "artist", pulseOn: true, discId: "", swapToken: 0, armAngle: null, armLifted: true, armBusy: false, ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
 };
@@ -563,21 +563,11 @@ function tonesOf(pixels) {
 /* ---------- spectrum ---------- */
 /* The bars grow from the middle line up and down. Each one eases towards its level (quickly up, slowly down), so a pause
    lets them sink to a flat line instead of vanishing; the loop stops by itself once they are flat. */
-const VIZ_MODES = ["off", "wave", "center", "pulse"];
-const sizes = new WeakMap();   // canvas -> the css size it was last fitted to
-
-/* Fits a canvas to the pixels it really covers (css size x screen density, or a fraction of it for the blurred ones), so
-   the bars stay sharp on any window size and screen. */
+/* Fits a canvas to the pixels it really covers (css size x screen density), so the bars stay sharp on any window size and screen. */
 function fitCanvas(canvas, scale = 1) {
   const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   return [w, h];
-}
-
-function withAlpha(color, alpha) {
-  if (color.startsWith("hsl")) return color.replace(/\)$/, ` / ${alpha})`);
-  const n = parseInt(color.slice(1), 16);
-  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /* One level per bar, each easing towards its target (quickly up, slowly down), so a pause lets everything sink instead of
@@ -615,31 +605,6 @@ function drawSmall(data, live) {
   return moving;
 }
 
-/* The big, blurred layers behind the window (blur and opacity come from the css of each mode). */
-function drawBig(data, live) {
-  const canvas = $("#viz"), mode = P.viz;
-  if (mode === "wave" || mode === "center") {
-    const [w, h] = fitCanvas(canvas, .35);
-    const n = clamp(Math.round(w / 9), 24, 80), slot = w / n;
-    const { lv, moving } = easeLevels(viz.store, "big", n, data, live);
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, w, h);
-    const color = P.accent || DEFAULT_ACCENT;
-    const fill = ctx.createLinearGradient(0, mode === "wave" ? h : 0, 0, mode === "wave" ? 0 : h);
-    if (mode === "wave") { fill.addColorStop(0, withAlpha(color, .95)); fill.addColorStop(1, withAlpha(color, 0)); }
-    else { fill.addColorStop(0, withAlpha(color, 0)); fill.addColorStop(.5, withAlpha(color, .95)); fill.addColorStop(1, withAlpha(color, 0)); }
-    ctx.fillStyle = fill;
-    for (let i = 0; i < n; i++) {
-      const bar = Math.max(h * .02, lv[i] * h * (mode === "wave" ? .75 : .55));
-      if (mode === "wave") ctx.fillRect(i * slot, h - bar, slot - 1, bar);
-      else ctx.fillRect(i * slot, (h - bar) / 2, slot - 1, bar);
-    }
-    return moving;
-  }
-  if (mode === "pulse") return drawPulse(data, live);
-  return false;
-}
-
 /* The halos sway with the music. A kick (the bass jumping above its own recent average) moves a soft spring: the target is
    smoothed first and the spring is well damped, so the halos swell and settle gently (a hint of overshoot, no jolt). Each halo
    leans in its own direction. The vinyl does not take part: it only turns. */
@@ -673,20 +638,18 @@ function loopSpectrum() {
     P.bars = 0;
     const live = isPlaying() && !document.hidden && !reduced();
     if (live) P.analyser.getByteFrequencyData(data);
-    const small = drawSmall(data, live), big = drawBig(data, live);
-    if (live || small || big) P.bars = requestAnimationFrame(draw);
+    const small = drawSmall(data, live), halos = P.pulseOn ? drawPulse(data, live) : false;
+    if (live || small || halos) P.bars = requestAnimationFrame(draw);
   };
   P.bars = requestAnimationFrame(draw);
 }
 
-function setViz(mode) {
-  P.viz = VIZ_MODES.includes(mode) ? mode : "off";
-  $("#app").dataset.viz = P.viz;
-  const canvas = $("#viz");
-  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+/* The background that beats with the music (the halos of colour) on or off; the halos go back to rest when it is turned off. */
+function setPulse(on) {
+  P.pulseOn = !!on;
+  $("#viz-on").checked = P.pulseOn;
   $$(".bg i:not(.glow)").forEach(blob => { blob.style.scale = ""; blob.style.translate = ""; });
-  viz.store.big = null; viz.spring = null;
-  $$("#viz-chips [data-viz]").forEach(b => b.classList.toggle("on", b.dataset.viz === P.viz));
+  viz.spring = null; viz.pulse = 0;
   loopSpectrum(); saveSoon();
 }
 
@@ -867,7 +830,7 @@ function paintCrossfade() {
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, viz: P.viz, tab: L.tab,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, tab: L.tab,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
@@ -885,7 +848,8 @@ function restore(saved) {
   const num = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : d;
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
-  P.viz = VIZ_MODES.includes(saved.viz) ? saved.viz : "off";
+  // on unless it was turned off (older saves kept a mode: "off" was off, the other modes — pulse among them — become the pulse)
+  P.pulseOn = typeof saved.pulse === "boolean" ? saved.pulse : saved.viz !== "off";
   if (TABS.some(([id]) => id === saved.tab)) L.tab = saved.tab;      // the section of the library you were in
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
   if (saved.eq && typeof saved.eq === "object") {
@@ -1215,9 +1179,7 @@ function wireBar() {
   bar.addEventListener("input", () => { P.dragging = true; paint(); });   // the thumb is the user's until they let go
   bar.addEventListener("change", () => { P.dragging = false; seek(+bar.value); });
   $("#xf").oninput = ev => { P.xf = +ev.target.value; paintCrossfade(); saveSoon(); };
-  $("#viz-chips").addEventListener("click", ev => { const b = ev.target.closest("[data-viz]"); if (b) setViz(b.dataset.viz); });
-  // the big layer ends where the bar begins, whatever height the bar has in a narrow window
-  new ResizeObserver(() => $("#main").style.setProperty("--ph", $("#player").offsetHeight + "px")).observe($("#player"));
+  $("#viz-on").onchange = ev => setPulse(ev.target.checked);
   document.addEventListener("click", ev => {
     // the path is taken at the click: a button the panel redraws is already out of the page when this runs
     const inside = ev.composedPath().some(n => n.classList && (n.classList.contains("pl-panel") || n.id === "pl-queue" || n.id === "pl-eq"));
@@ -1234,7 +1196,7 @@ const Player = {
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
     wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireKeys();
-    setViz(P.viz);
+    setPulse(P.pulseOn);
     setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
     if (await loadLibrary()) restoreQueue(await call("get_player"));

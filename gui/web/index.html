@@ -60,7 +60,6 @@
   </aside>
 
   <main id="main">
-    <canvas id="viz" class="viz" aria-hidden="true"></canvas>
     <div class="vinyl" id="vinyl" aria-hidden="true"><img id="vinyl-cover" alt="" hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></div>
     <div class="tonearm" id="tonearm" aria-hidden="true">
       <i class="ta-base"></i>
@@ -347,12 +346,9 @@
           <div class="slider"><input id="xf" type="range" min="0" max="12" step="1" value="0" aria-label="Segundos de crossfade"><output id="xf-out">Apagado</output></div>
         </div>
         <div class="eq-xf eq-viz">
-          <div><b>Fondo animado</b><span class="muted small">Cómo se mueve la música detrás de la ventana</span></div>
-          <div class="viz-chips" id="viz-chips" role="group" aria-label="Fondo animado">
-            <button type="button" class="chip-btn" data-viz="off">Ninguno</button>
-            <button type="button" class="chip-btn" data-viz="wave">Ola desde la barra</button>
-            <button type="button" class="chip-btn" data-viz="center">Línea central</button>
-            <button type="button" class="chip-btn" data-viz="pulse">Pulso de los halos</button>
+          <div class="eq-viz-row">
+            <div><b>Fondo que late</b><span class="muted small">Los halos de color del fondo laten con los graves de la música</span></div>
+            <label class="switch" title="Activar o apagar el fondo que late"><input id="viz-on" type="checkbox" checked><span></span></label>
           </div>
         </div>
       </aside>
