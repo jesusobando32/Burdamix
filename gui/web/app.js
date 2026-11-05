@@ -263,18 +263,38 @@ function renderResults() {
   if (jobs.length) lazyCovers(d.view, jobs);
 }
 
-/* Pictures of a long list or of many albums come one by one, three at a time: the list shows at once and the pictures fill in. */
-async function lazyCovers(view, jobs) {
-  const queue = [...jobs];
-  const worker = async () => {
-    while (queue.length) {
-      const job = queue.shift();
-      if (!job.img.isConnected || !S.cur || S.cur.data.view !== view) return;
-      const url = await call("item_cover", view, job.key);
-      if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) job.img.src = url;
-    }
+/* Pictures of a long list or of many albums come a few at a time, and only the ones on screen (or about to be): the list shows
+   at once and the pictures fill in from the top. Each picture can take a second or two when the first service refuses us, so
+   an artist's 148 albums must not wait behind the 50 songs above them, nor all be asked for before the first one shows. */
+function lazyCovers(view, jobs) {
+  const byImg = new Map(jobs.map(job => [job.img, job]));
+  const ready = new Set();           // on screen, not asked for yet
+  let running = 0;
+  const alive = () => S.cur && S.cur.data.view === view;
+  const next = () => {
+    const first = [...ready].sort((a, b) => (a.img.compareDocumentPosition(b.img) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))[0];
+    if (first) ready.delete(first);
+    return first;
   };
-  await Promise.all([worker(), worker(), worker()]);
+  const worker = async () => {
+    running++;
+    try {
+      for (let job = next(); job; job = next()) {
+        if (!alive()) return;
+        if (!job.img.isConnected) continue;
+        byImg.delete(job.img); io.unobserve(job.img);
+        const url = await call("item_cover", view, job.key);
+        if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) job.img.src = url;
+      }
+    } finally { running--; }
+  };
+  const kick = () => { while (running < 4 && ready.size > running) worker(); };
+  const io = new IntersectionObserver(entries => {
+    if (!alive()) return io.disconnect();
+    entries.forEach(e => { const job = byImg.get(e.target); if (job) e.isIntersecting ? ready.add(job) : ready.delete(job); });
+    kick();
+  }, { rootMargin: "300px 0px" });
+  jobs.forEach(job => io.observe(job.img));
 }
 
 async function openCard(key) {

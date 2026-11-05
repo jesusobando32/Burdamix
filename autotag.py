@@ -281,11 +281,35 @@ class AutoTagger:
             picture = tagwriter.cover_thumbnail(self.images.get_image(url))
         except MetadataError:
             return None                        # not remembered: a refusal or a lost connection may pass
+        self._remember_picture(url, picture)
+        return picture
+
+    def _remember_picture(self, key, picture):
         with self._pictures_lock:
-            self._pictures[url] = picture
+            self._pictures[key] = picture
             while len(self._pictures) > PICTURES_KEPT:
                 self._pictures.pop(next(iter(self._pictures)))
-        return picture
+
+    def picture_from_youtube_music(self, name):
+        """The photo of an artist as a data: URL from YouTube Music, for when the service that found the artist refuses its
+        picture (Deezer's image server answers 403 to some connections, VPNs among them). None when it does not know them."""
+        key = ("youtube-music", normalize(name))
+        with self._pictures_lock:
+            if key in self._pictures:
+                return self._pictures[key]
+        try:
+            urls = self.ytmusic.artist_picture_urls(name)
+        except MetadataError:
+            return None
+        for url in urls:
+            try:
+                picture = tagwriter.cover_thumbnail(self.images.get_image(url))
+            except MetadataError:
+                continue
+            if picture:
+                self._remember_picture(key, picture)
+                return picture
+        return None
 
 
 def collect_audio_files(paths):

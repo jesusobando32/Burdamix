@@ -401,7 +401,8 @@ class Api:
     def _artist_picture(self, artist):
         """The artist's photo as a data: URL, or None (the window then shows their initial). The card already asked for it: it comes from memory."""
         try:
-            return self._covers().preview_picture(artist.picture_url) if artist.picture_url else None
+            picture = self._covers().preview_picture(artist.picture_url) if artist.picture_url else None
+            return picture or self._covers().picture_from_youtube_music(artist.name)    # the first service may refuse its pictures
         except Exception:
             return None
 

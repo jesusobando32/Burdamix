@@ -12,6 +12,7 @@ from apis.youtube import normalize
 SEARCH_URL = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false"
 SONGS_FILTER = "EgWKAQIIAWoQEAMQBBAJEAoQBRAQEBUQEQ=="     # "only songs" in YouTube Music's search
 ALBUMS_FILTER = "EgWKAQIYAWoMEA4QChADEAQQCRAF"            # "only albums"
+ARTISTS_FILTER = "EgWKAQIgAWoMEA4QChADEAQQCRAF"           # "only artists"
 CLIENT_VERSION = "1.20241104.01.00"
 SQUARE_SIZE = 1000                                         # the picture is asked at this size (Google's image server resizes)
 
@@ -92,6 +93,11 @@ def parse_albums(data):
     return albums
 
 
+def parse_artists(data):
+    """[(name, thumbnail url)] of the artists in a search: the details line of one reads "Artista • 34,4 M usuarios mensuales"."""
+    return [(columns[0].strip(), thumbnail) for columns, thumbnail in _items(data) if re.match(r"artista?\b", columns[1].strip(), re.I)]
+
+
 def square(url, size=SQUARE_SIZE):
     """Google's image server takes the size from the end of the address: ...=w120-h120-l90-rj -> ...=w1000-h1000-l90-rj"""
     return re.sub(r"=w\d+-h\d+", f"=w{size}-h{size}", url)
@@ -116,6 +122,13 @@ class YouTubeMusic:
                                   album_artist=found["artist"], duration=float(found["duration"]),
                                   cover_urls=(square(found["thumbnail"]), found["thumbnail"]), thumb_url=found["thumbnail"]))
         return infos
+
+    def artist_picture_urls(self, name):
+        """The photo of the artist called exactly `name` (biggest first), or (). A similar name is not taken: no photo is better than another artist's."""
+        for found, thumbnail in parse_artists(self._search(name, ARTISTS_FILTER)):
+            if normalize(found) == normalize(name):
+                return (square(thumbnail), thumbnail)
+        return ()
 
     def cover_urls(self, title, artist, album):
         """Picture urls (biggest first), or (). A song on an album gets the ALBUM's cover (what the tags say it belongs to);
