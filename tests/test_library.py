@@ -151,3 +151,32 @@ def test_audio_can_be_read_from_the_file_page(served):
     """The window is a file:// page: without this header the browser silences the equalizer."""
     server, track_id, _ = served
     assert fetch(server.audio_url(track_id)).headers["Access-Control-Allow-Origin"] == "*"
+
+
+def test_starting_the_server_twice_keeps_the_same_one(tmp_path, no_tags):
+    server = library.MediaServer(library.Library())
+    server.start()
+    try:
+        port = server.port
+        server.start()
+        assert server.port == port
+    finally:
+        server.stop()
+
+
+def test_a_cover_that_changed_is_read_again(tmp_path, monkeypatch):
+    import io
+    from PIL import Image
+    path = make(tmp_path, "a.mp3")
+    def jpeg(color):
+        out = io.BytesIO()
+        Image.new("RGB", (8, 8), color).save(out, "JPEG")
+        return out.getvalue()
+    covers = [jpeg("red"), jpeg("blue")]
+    monkeypatch.setattr(library.tagwriter, "read_cover", lambda p: covers[0])
+    server = library.MediaServer(library.Library())
+    first = server._small_cover(path)
+    monkeypatch.setattr(library.tagwriter, "read_cover", lambda p: covers[1])
+    assert server._small_cover(path) == first          # same file version: remembered
+    os.utime(path, (1_000_000, 1_000_000))              # the tags were rewritten: new version
+    assert server._small_cover(path) != first

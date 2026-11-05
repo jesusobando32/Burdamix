@@ -85,6 +85,7 @@ class Api:
         self._window = None
         self._cover_tagger = None   # finds the pictures shown for searched songs (kept: it remembers what it found)
         self._library = library.Library()
+        self._player_lock = threading.Lock()
         self._media = library.MediaServer(self._library)   # started with the first library request
         self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
@@ -171,7 +172,7 @@ class Api:
         for track in self._library.scan(self._downloads_dir()):
             track = {k: v for k, v in track.items() if k != "path"}
             track["url"] = self._media.audio_url(track["id"])
-            track["cover_url"] = self._media.cover_url(track["id"]) if track["cover"] else ""
+            track["cover_url"] = f'{self._media.cover_url(track["id"])}?v={int(track["added"])}' if track["cover"] else ""
             tracks.append(track)
         return {"tracks": tracks}
 
@@ -190,8 +191,11 @@ class Api:
             if len(text) > MAX_PLAYER_BYTES:
                 return {"ok": False}
             os.makedirs(const.data_dir(), exist_ok=True)
-            with open(self._player_path(), "w", encoding="utf-8") as f:
-                f.write(text)
+            with self._player_lock:   # written beside and swapped in: two saves at once cannot leave half a file
+                part = self._player_path() + ".part"
+                with open(part, "w", encoding="utf-8") as f:
+                    f.write(text)
+                os.replace(part, self._player_path())
         except (OSError, TypeError, ValueError):
             return {"ok": False}
         return {"ok": True}

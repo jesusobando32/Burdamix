@@ -34,7 +34,7 @@ def _from_file_name(path):
 class Library:
     def __init__(self):
         self._paths = {}
-        self._known = {}     # path -> ((mtime, size), track): files that did not change are not read again
+        self._known = {}     # path -> ((mtime, size), track): files that did not change are not read again (swapped whole by each scan)
         self._lock = threading.Lock()
 
     @staticmethod
@@ -44,6 +44,9 @@ class Library:
     def scan(self, folder):
         """Every playable file under `folder` as a dict for the window; remembers which paths may be served."""
         found = []
+        with self._lock:
+            known = self._known
+        fresh = {}
         for root, _, names in os.walk(folder):
             for name in names:
                 path = os.path.join(root, name)
@@ -54,9 +57,10 @@ class Library:
                 except OSError:
                     continue
                 stamp = (stat.st_mtime, stat.st_size)
-                known = self._known.get(path)
-                if known and known[0] == stamp:
-                    found.append(known[1])
+                kept = known.get(path)
+                if kept and kept[0] == stamp:
+                    fresh[path] = kept
+                    found.append(kept[1])
                     continue
                 title, artist, album, duration, cover = *_from_file_name(path), "", 0, False
                 try:
@@ -67,12 +71,12 @@ class Library:
                     pass
                 track = {"id": self._id(path), "path": path, "title": title, "artist": artist, "album": album,
                          "duration": duration, "cover": cover, "added": stat.st_mtime}
-                self._known[path] = (stamp, track)
+                fresh[path] = (stamp, track)
                 found.append(track)
         found.sort(key=lambda t: (t["artist"].casefold(), t["title"].casefold()))
         with self._lock:
             self._paths = {t["id"]: t["path"] for t in found}
-            self._known = {t["path"]: self._known[t["path"]] for t in found}
+            self._known = fresh
         return found
 
     def path_of(self, track_id):
@@ -89,9 +93,16 @@ class MediaServer:
         self._covers = {}
         self._covers_lock = threading.Lock()
         self._server = None
+        self._start_lock = threading.Lock()
         self.port = 0
 
     def start(self):
+        with self._start_lock:
+            if self._server:
+                return   # two requests at once (page start and opening the library) must not start two servers
+            self._start()
+
+    def _start(self):
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -203,9 +214,13 @@ class MediaServer:
             request.wfile.write(jpeg)
 
     def _small_cover(self, path):
+        try:
+            key = (path, os.path.getmtime(long_path(path)))   # a new cover (Completar etiquetas) is a new version of the file
+        except OSError:
+            return None
         with self._covers_lock:
-            if path in self._covers:
-                return self._covers[path]
+            if key in self._covers:
+                return self._covers[key]
         jpeg = None
         data = tagwriter.read_cover(path)
         if data:
@@ -217,10 +232,10 @@ class MediaServer:
                 out = io.BytesIO()
                 image.save(out, "JPEG", quality=82)
                 jpeg = out.getvalue()
-            except (UnidentifiedImageError, OSError):
+            except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
                 jpeg = None
         with self._covers_lock:
             if len(self._covers) >= COVERS_KEPT:
                 self._covers.pop(next(iter(self._covers)))
-            self._covers[path] = jpeg
+            self._covers[key] = jpeg
         return jpeg

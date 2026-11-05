@@ -50,3 +50,8 @@ def test_library_list_gives_urls_and_hides_paths(api, tmp_path, monkeypatch):
     assert (track["title"], track["artist"]) == ("Volando", "Mora")
     assert track["url"].startswith("http://127.0.0.1:") and "path" not in track
     assert track["cover_url"] == ""
+
+
+def test_saving_leaves_no_half_written_file_behind(api, tmp_path):
+    api.save_player({"volume": 0.5})
+    assert sorted(os.listdir(tmp_path / "datos")) == ["player.json"]
