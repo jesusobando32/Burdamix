@@ -86,7 +86,7 @@ body.has-player #toasts { bottom: 104px; }
 .viz { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: calc(100% - var(--ph, 0px)); z-index: 0; pointer-events: none; display: none; }
 #app[data-viz="wave"] .viz { display: block; filter: blur(14px); opacity: .5; }
 #app[data-viz="center"] .viz { display: block; filter: blur(20px); opacity: .32; }
-.bg i { transition: scale 90ms linear; }
+.bg i { transition: none; }   /* the pulse moves them frame by frame */
 #pl-mute .cross { display: none; }
 #pl-mute.is-muted .cross { display: block; }
 #pl-mute.is-muted .waves { display: none; }
@@ -301,3 +301,20 @@ body.has-player #toasts { bottom: 104px; }
 .drop.slim b { font-weight: 520; color: var(--muted); font-size: 13.5px; }
 .drop.slim.over b { color: var(--text); }
 @media (max-width: 760px) { .picker .lib-search input { width: 110px; } .pick-row { grid-template-columns: 22px 40px minmax(0, 1fr); } .pick-state { display: none; } }
+
+/* ---------- the download bar: no dark rectangle behind it ---------- */
+/* The strip under the sticky bar used to be a flat dark gradient with square corners, which showed as black edges around the
+   rounded bar. Now it is a blur that fades out at the top and at both sides, so the rows still blur away beneath the bar
+   without leaving a visible box. */
+.bar-wrap { background: none; }
+.bar-wrap::before {
+  content: ""; position: absolute; inset: 0 -18px; z-index: -1; pointer-events: none;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: linear-gradient(transparent, rgba(8, 10, 9, .3) 60%);
+  -webkit-mask-image: linear-gradient(transparent, #000 55%), linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(transparent, #000 55%), linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-composite: intersect;
+}
+.action-bar { box-shadow: 0 10px 28px rgba(0, 0, 0, .38); }
+.action-bar { background: color-mix(in srgb, #0d110e 92%, transparent); }     /* the rows that scroll beneath it must not show through */

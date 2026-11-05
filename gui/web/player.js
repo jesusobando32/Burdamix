@@ -57,7 +57,10 @@ function buildAudio() {
     node.frequency.value = f; node.Q.value = 1.4;
     return node;
   });
-  P.analyser = P.ctx.createAnalyser(); P.analyser.fftSize = 128; P.analyser.smoothingTimeConstant = .8;
+  // 512 samples = bands of ~94 Hz (the bass gets its own bands); the default range tops out at -30 dB, where loud music's bass
+  // saturates and every hit looks the same
+  P.analyser = P.ctx.createAnalyser(); P.analyser.fftSize = 512; P.analyser.smoothingTimeConstant = .6;
+  P.analyser.minDecibels = -90; P.analyser.maxDecibels = -8;
   P.master = P.ctx.createGain();
   P.decks = [0, 1].map(() => {
     const el = new Audio();
@@ -472,14 +475,14 @@ function easeLevels(store, key, n, data, live) {
   const lv = store[key];
   let moving = false;
   for (let i = 0; i < n; i++) {
-    const v = live ? (data[Math.floor(Math.pow(i / n, 1.4) * data.length * .7) + 1] / 255) ** 2 : 0;
+    const v = live ? Math.min(1, (data[Math.floor(Math.pow(i / n, 1.4) * data.length * .7) + 1] / 255) ** 1.7 * 1.25) : 0;
     lv[i] += (v - lv[i]) * (v > lv[i] ? .5 : .1);
     if (lv[i] > .01) moving = true; else if (!live) lv[i] = 0;
   }
   return { lv, moving };
 }
 
-const viz = { store: {}, beat: 0 };
+const viz = { store: {}, spring: null, pulse: 0, K: .3, D: .66, mem: .1, size: .28, reach: 52 };   // K/D: how stiff and how damped the pulse spring is
 
 /* The little bars in the player bar: from the middle line up and down; as many as fit in the width. */
 function drawSmall(data, live) {
@@ -521,14 +524,35 @@ function drawBig(data, live) {
     }
     return moving;
   }
-  if (mode === "pulse") {
-    const bass = live ? (data[0] + data[1] + data[2] + data[3]) / 1020 : 0;
-    viz.beat += (bass - viz.beat) * (bass > viz.beat ? .5 : .08);
-    $$(".bg i:not(.glow)").forEach((blob, i) => { blob.style.scale = String(1 + viz.beat * (.16 + i * .06)); });
-    if (viz.beat < .005) viz.beat = 0;
-    return viz.beat > 0;
-  }
+  if (mode === "pulse") return drawPulse(data, live);
   return false;
+}
+
+/* The halos bounce with the music. A kick (the bass jumping above its own recent average) gives the spring a shove; the
+   spring is a little loose, so the halos overshoot and settle back instead of just swelling. Each halo is pushed in its own
+   direction and the vinyl breathes with them. */
+const BLOB_PUSH = [[-1, -.8], [1, -.3], [.4, 1]];     // where each of the three halos leans on a hit (x, y)
+function drawPulse(data, live) {
+  const spring = viz.spring || (viz.spring = { x: 0, v: 0, avg: 0, peak: .05 });
+  const bass = live ? (data[0] + data[1] + data[2]) / 765 : 0;      // up to ~280 Hz: kick and bass line
+  // A hit is the bass rising above what it was a moment ago, judged against the biggest recent rise: loud and compressed music
+  // (bass always near the top) and quiet music both give hits that fill the range.
+  const rise = live ? Math.max(0, bass - spring.avg) : 0;
+  spring.avg += (bass - spring.avg) * viz.mem;
+  spring.peak = Math.max(rise, spring.peak * .99, .03);
+  const target = live ? Math.min(1, rise / spring.peak) : 0;
+  spring.v = (spring.v + (target - spring.x) * viz.K) * viz.D;
+  spring.x += spring.v;
+  const x = Math.abs(spring.x) < .003 && Math.abs(spring.v) < .003 ? 0 : spring.x;
+  if (!x) spring.x = spring.v = 0;
+  $$(".bg i:not(.glow)").forEach((blob, i) => {
+    const [dx, dy] = BLOB_PUSH[i % BLOB_PUSH.length];
+    blob.style.scale = x ? String(1 + x * (viz.size + i * .06)) : "";
+    blob.style.translate = x ? `${dx * x * viz.reach}px ${dy * x * viz.reach}px` : "";
+  });
+  $("#vinyl").style.scale = x ? String(1 + x * .07) : "";
+  viz.pulse = x;               // read by the tests
+  return x !== 0;
 }
 
 function loopSpectrum() {
@@ -549,8 +573,9 @@ function setViz(mode) {
   $("#app").dataset.viz = P.viz;
   const canvas = $("#viz");
   canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-  $$(".bg i:not(.glow)").forEach(blob => { blob.style.scale = ""; });
-  viz.store.big = null; viz.beat = 0;
+  $$(".bg i:not(.glow)").forEach(blob => { blob.style.scale = ""; blob.style.translate = ""; });
+  $("#vinyl").style.scale = "";
+  viz.store.big = null; viz.spring = null;
   $$("#viz-chips [data-viz]").forEach(b => b.classList.toggle("on", b.dataset.viz === P.viz));
   loopSpectrum(); saveSoon();
 }
@@ -880,6 +905,7 @@ function wireLibrary() {
   $("#lib-shuffle").onclick = () => { P.shuffle = true; const ids = visibleTracks().map(t => t.id); playList(ids, ids[Math.floor(Math.random() * ids.length)]); render(); };
   let timer = 0;
   $("#lib-q").oninput = ev => { clearTimeout(timer); timer = setTimeout(() => { P.q = ev.target.value; renderLibrary(); }, 120); };
+  $("#lib-folder").onclick = async () => { if (!(await call("open_folder"))) toast("No pude abrir la carpeta de descargas.", true); };
   dropdown($("#lib-sort"));
   $("#lib-sort").onchange = ev => { P.sort = ev.target.value; renderLibrary(); };
 }

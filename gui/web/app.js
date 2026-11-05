@@ -411,9 +411,12 @@ function paintBar() {
   } else {
     const k = counts();
     bar.innerHTML = `<div class="grow"><b>${plural(k.ok, "canción descargada", "canciones descargadas")}</b>${k.bad ? ` · ${k.bad} con problemas` : ""}</div>
-      <button class="btn" id="again">Otra búsqueda</button><button class="btn primary" id="open">Abrir carpeta</button>`;
+      <button class="btn" id="again">Otra búsqueda</button><button class="btn" id="open">Abrir carpeta</button>
+      ${k.ok ? '<button class="btn primary" id="to-library">Ver en la biblioteca</button>' : ""}`;
     $("#open").onclick = () => call("open_folder", c.data.folder);
     $("#again").onclick = newSearch;
+    const toLibrary = $("#to-library");
+    if (toLibrary) toLibrary.onclick = () => show("library");
   }
 }
 
