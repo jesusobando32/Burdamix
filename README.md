@@ -78,6 +78,15 @@ Tu usuario y contraseña de Spotify **nunca** se piden. El Client ID, el Client 
 
 Para **tus playlists y tus favoritos** hace falta además iniciar sesión (paso 2 del Tutorial): se abre el navegador para que pulses **Aceptar**. Tienes 3 minutos. Si cambias de app de Spotify, vuelve a pasar por el Tutorial.
 
+## Biblioteca y reproductor
+
+La pestaña **Biblioteca** lista todo lo que hay en tu carpeta de descargas (mp3, flac, m4a, ogg y opus), con buscador y orden por artista, título o recientes. Al pulsar una canción empieza a sonar y la **barra de abajo** la sigue reproduciendo aunque cambies de pestaña.
+
+- **Controles:** reproducir/pausa, anterior/siguiente, barra de progreso con salto exacto, volumen, aleatorio y repetir (nada, toda la cola o una canción).
+- **Cola:** se ve y se edita (arrastra para reordenar, quita canciones; en la biblioteca puedes añadir a continuación o al final).
+- **Teclado:** espacio (pausa), flechas izquierda y derecha (±5 s), Mayús + flechas (anterior y siguiente), flechas arriba y abajo (volumen), M (silenciar) y las teclas multimedia.
+- Al abrir de nuevo, recuerda la última canción, el volumen y la cola.
+
 ## Completar etiquetas y portadas
 
 Sirve para canciones que ya tienes (de Burdamix o de cualquier otro sitio) y que no muestran bien su nombre, artista o portada

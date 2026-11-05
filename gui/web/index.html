@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Burdamix</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="player.css">
 </head>
 <body>
 <div id="app" class="sidebar-open">
@@ -27,6 +28,10 @@
       <button class="nav" data-view="favorites" title="Mis favoritos">
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
         <span>Mis favoritos</span>
+      </button>
+      <button class="nav" data-view="library" title="Biblioteca">
+        <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+        <span>Biblioteca</span>
       </button>
       <button class="nav" data-view="tags" title="Completar etiquetas">
         <svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>
@@ -108,6 +113,26 @@
           <button class="btn primary big" id="fav-go">Ver mi lista</button>
         </div>
         <div class="results" id="fav-results"></div>
+      </div>
+    </section>
+
+    <!-- Biblioteca -->
+    <section class="view" id="view-library">
+      <div class="scroll lib" id="lib-scroll">
+        <header class="lib-head">
+          <div class="lib-title"><h1>Biblioteca</h1><p class="muted" id="lib-count"></p></div>
+          <div class="lib-tools">
+            <button class="btn primary" id="lib-play-all" type="button">Reproducir todo</button>
+            <button class="btn" id="lib-shuffle" type="button">Aleatorio</button>
+            <label class="lib-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="lib-q" type="search" placeholder="Buscar canciones" autocomplete="off" spellcheck="false"></label>
+            <select id="lib-sort" aria-label="Ordenar">
+              <option value="artist">Artista</option><option value="title">Título</option><option value="recent">Recientes</option>
+            </select>
+          </div>
+        </header>
+        <div id="lib-list" class="lib-list" role="list"></div>
+        <div id="lib-empty" class="panel with-ic empty hidden"></div>
       </div>
     </section>
 
@@ -232,12 +257,52 @@
         <p class="muted small about" id="about"></p>
       </div>
     </section>
+
+    <!-- Reproductor: siempre abajo -->
+    <footer id="player" class="player hidden" aria-label="Reproductor">
+      <div class="pl-now">
+        <div class="pl-cover"><span class="initial" id="pl-initial">♪</span><img id="pl-cover" alt="" hidden></div>
+        <div class="pl-text"><b id="pl-title">—</b><span id="pl-artist" class="muted small"></span></div>
+      </div>
+      <div class="pl-mid">
+        <div class="pl-ctrl">
+          <button class="icon-btn pl-toggle" id="pl-shuffle" type="button" aria-label="Aleatorio" aria-pressed="false" title="Aleatorio">
+            <svg viewBox="0 0 24 24"><path d="M3 7h3.5c5 0 5 10 10 10H21M3 17h3.5c1.7 0 2.9-.9 3.8-2.2M21 7h-4.5c-1.7 0-2.9.9-3.8 2.2M18 4l3 3-3 3M18 14l3 3-3 3"/></svg></button>
+          <button class="icon-btn" id="pl-prev" type="button" aria-label="Anterior" title="Anterior"><svg viewBox="0 0 24 24" class="fill"><path d="M7 5v14M19 5.5v13L9 12z"/></svg></button>
+          <button class="pl-play" id="pl-play" type="button" aria-label="Reproducir" title="Reproducir">
+            <svg viewBox="0 0 24 24" class="fill ic-play"><path d="M8 5.5v13l11-6.5z"/></svg>
+            <svg viewBox="0 0 24 24" class="fill ic-pause"><path d="M8 5v14M16 5v14"/></svg></button>
+          <button class="icon-btn" id="pl-next" type="button" aria-label="Siguiente" title="Siguiente"><svg viewBox="0 0 24 24" class="fill"><path d="M17 5v14M5 5.5v13L15 12z"/></svg></button>
+          <button class="icon-btn pl-toggle" id="pl-repeat" type="button" aria-label="Repetir" aria-pressed="false" title="Repetir">
+            <svg viewBox="0 0 24 24"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4"/></svg><i class="one">1</i></button>
+        </div>
+        <div class="pl-seek">
+          <span id="pl-cur" class="muted small">0:00</span>
+          <input id="pl-progress" type="range" min="0" max="1" step="0.1" value="0" aria-label="Progreso">
+          <span id="pl-dur" class="muted small">0:00</span>
+        </div>
+      </div>
+      <div class="pl-side">
+        <button class="icon-btn" id="pl-queue" type="button" aria-label="Cola" aria-expanded="false" title="Cola">
+          <svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7M17 15v6l5-3z"/></svg></button>
+        <button class="icon-btn" id="pl-mute" type="button" aria-label="Silenciar" title="Silenciar">
+          <svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" class="waves"/><path d="M16 9l5 6M21 9l-5 6" class="cross"/></svg></button>
+        <input id="pl-volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volumen">
+      </div>
+
+      <aside id="pl-queue-panel" class="pl-panel queue hidden" aria-label="Cola de reproducción">
+        <div class="pl-panel-head"><h3>Cola</h3><button class="btn small-btn" id="q-clear" type="button">Vaciar</button></div>
+        <div id="q-list" class="q-list"></div>
+      </aside>
+
+    </footer>
   </main>
 </div>
 
 <div id="toasts" aria-live="polite"></div>
 <script src="fx.js"></script>
 <script src="tags.js"></script>
+<script src="player.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

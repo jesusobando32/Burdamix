@@ -68,6 +68,7 @@ function show(view) {
   if (view === "tutorial") refreshState();
   if (view === "settings") loadSettings();
   if (view === "tags") refreshRenameExample();
+  if (view === "library") Player.open();
   if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");
   moveNavInd();
   if (view === "favorites") requestAnimationFrame(moveSegInd);
@@ -641,11 +642,13 @@ function demoApi() {
     get_login_state: async () => (cfg.logged_in ? { state: "ok", message: "Demo" } : { state: "waiting", message: "" }),
     update_ytdlp: async () => ({ ok: true, message: "Ya tienes la versión más nueva de yt-dlp." }),
     ...demoTagsApi(art),
+    ...demoPlayerApi(art),
   };
 }
 
 /* ---------- start ---------- */
 function init() {
+  Player.init();
   $$(".nav").forEach(n => n.onclick = () => show(n.dataset.view));
   $("#toggle").onclick = () => setSidebar(!$("#app").classList.contains("sidebar-open"));
   $("#toggle2").onclick = () => setSidebar(true);
