@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import const
 import downloader
+import library
 import login
 import tempdirs
 import updater
@@ -36,6 +37,7 @@ from pathutils import sanitize_filename
 
 DEFAULT_SETTINGS = {"downloads_dir": "", "workers": 5, "skip_interludes": True, "browser": "", "name_style": const.DEFAULT_NAME_STYLE}
 MAX_WORKERS = 8
+MAX_PLAYER_BYTES = 200_000     # what the player remembers (volume, equalizer, queue): small, so a bad value cannot grow it
 MAX_VIEWS = 12                 # lists kept so that "back" from an album to its artist still downloads into the right folder
 MAX_CARDS = 400
 TEXT_RESULTS = 5               # songs offered when the user types a name instead of pasting a link
@@ -82,6 +84,8 @@ class Api:
         self._busy = False
         self._window = None
         self._cover_tagger = None   # finds the pictures shown for searched songs (kept: it remembers what it found)
+        self._library = library.Library()
+        self._media = library.MediaServer(self._library)   # started with the first library request
         self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
         self._apply_settings()
@@ -153,6 +157,44 @@ class Api:
         except OSError:
             return {"ok": False, "error": "No pude guardar los ajustes."}
         return {"ok": True, **self.get_settings()}
+
+    # --- player ---------------------------------------------------------------------------------------------
+
+    def _player_path(self):
+        return os.path.join(const.data_dir(), "player.json")
+
+    def library_list(self):
+        """Every song in the downloads folder, with the local addresses the page plays and shows covers from."""
+        if not self._media.port:
+            self._media.start()
+        tracks = []
+        for track in self._library.scan(self._downloads_dir()):
+            track = {k: v for k, v in track.items() if k != "path"}
+            track["url"] = self._media.audio_url(track["id"])
+            track["cover_url"] = self._media.cover_url(track["id"]) if track["cover"] else ""
+            tracks.append(track)
+        return {"tracks": tracks}
+
+    def get_player(self):
+        """What the player remembered last time (volume, last song, equalizer, crossfade); {} the first time."""
+        try:
+            with open(self._player_path(), encoding="utf-8") as f:
+                saved = json.load(f)
+            return saved if isinstance(saved, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save_player(self, data):
+        try:
+            text = json.dumps(data if isinstance(data, dict) else {})
+            if len(text) > MAX_PLAYER_BYTES:
+                return {"ok": False}
+            os.makedirs(const.data_dir(), exist_ok=True)
+            with open(self._player_path(), "w", encoding="utf-8") as f:
+                f.write(text)
+        except (OSError, TypeError, ValueError):
+            return {"ok": False}
+        return {"ok": True}
 
     # --- state ------------------------------------------------------------------------------------------------
 

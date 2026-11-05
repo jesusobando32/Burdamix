@@ -128,6 +128,27 @@ def read_tags(path):
     return info
 
 
+def read_cover(path):
+    """The picture embedded in the file as raw bytes, or None when it has none (or cannot be read)."""
+    try:
+        extension = _check_format(path)
+        real = long_path(path)
+        if extension == ".mp3":
+            tags = MP3(real).tags
+            frames = [tags[key] for key in tags.keys() if key.startswith("APIC")] if tags is not None else []
+            return frames[0].data if frames else None
+        if extension == ".m4a":
+            covers = (MP4(real).tags or {}).get("covr")
+            return bytes(covers[0]) if covers else None
+        audio = FLAC(real) if extension == ".flac" else _open_ogg(real, extension)
+        if extension == ".flac":
+            return audio.pictures[0].data if audio.pictures else None
+        blocks = (audio.tags or {}).get("metadata_block_picture")
+        return Picture(base64.b64decode(blocks[0])).data if blocks else None
+    except (UnsupportedAudioFormat, MetadataError, mutagen.MutagenError, OSError, KeyError, ValueError, IndexError):
+        return None
+
+
 def _plays_everywhere(image):
     """A JPEG every player can show: RGB, baseline (not progressive), 4:2:0 colour like the ones Spotify and Apple serve,
     and small enough. Players that choke on the other kinds (4:4:4, progressive, CMYK) show no cover at all."""
