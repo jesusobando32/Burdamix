@@ -560,3 +560,33 @@ button.card:active { transform: scale(.985); }
   button.card:hover, .album:hover img { transform: none !important; }
 }
 @keyframes fade-only { from { opacity: 0; } }
+
+/* ---------- albums: a sleeve with the vinyl tucked inside; on hover the record slides out a little ---------- */
+.sleeve { position: relative; display: block; }
+.sleeve img { position: relative; z-index: 1; }
+.disc {
+  position: absolute; z-index: 0; top: 4%; left: 5%; width: 90%; aspect-ratio: 1; border-radius: 50%; pointer-events: none;
+  background:
+    conic-gradient(from 25deg, transparent 0 8%, rgba(255, 255, 255, .16) 13%, transparent 20% 58%, rgba(255, 255, 255, .11) 64%, transparent 71%),   /* the light on the grooves */
+    repeating-radial-gradient(circle at center, #121513 0 2px, #222623 3px 4px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .09), 4px 6px 16px rgba(0, 0, 0, .55);
+  transition: transform 620ms var(--ease-out);
+}
+.disc::before {                    /* the label: the album's own cover once it has arrived */
+  content: ""; position: absolute; inset: 33%; border-radius: 50%;
+  background: var(--cover, conic-gradient(#b5ef4a, #3aa220, #7a3cff, #b5ef4a)) center / cover;
+}
+.disc::after { content: ""; position: absolute; inset: 48.5%; border-radius: 50%; background: var(--bg); }   /* the spindle hole */
+.album .sleeve { margin-bottom: 4px; }
+.album .sleeve img { margin-bottom: 0; border-radius: 6px; }
+.card-cover.sleeve { overflow: visible; background: transparent; }
+.card-cover.sleeve img { border-radius: 8px; background: var(--surface-2); box-shadow: var(--shadow-sm); }
+.album, button.card { position: relative; }
+@media (hover: hover) and (pointer: fine) {
+  .album:hover, button.card:hover { z-index: 2; }
+  .album:hover .disc { transform: translateX(36%) rotate(70deg); }
+  button.card:hover .disc { transform: translateX(22%) rotate(70deg); }     /* the card's cover is small and its title is close */
+}
+.album:focus-visible .disc { transform: translateX(36%) rotate(70deg); }
+button.card:focus-visible .disc { transform: translateX(22%) rotate(70deg); }
+@media (prefers-reduced-motion: reduce) { .disc { transition: none; } }

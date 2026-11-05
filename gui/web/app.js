@@ -188,12 +188,17 @@ function cardHTML(card) {
       <span class="card-t"><span class="kind">Artista</span><b>${esc(card.title)}</b><span class="muted small">Sus canciones populares y toda su discografía</span></span></button>`;
   }
   const bits = [card.artist, card.year, card.tracks ? plural(card.tracks, "canción", "canciones") : ""].filter(Boolean).join(" · ");
-  return `<button class="card" data-key="${esc(card.key)}" title="${esc(card.title)}"><span class="card-cover"><img src="${BLANK}" alt="" data-cover="${esc(card.key)}"></span>
+  return `<button class="card" data-key="${esc(card.key)}" title="${esc(card.title)}"><span class="card-cover sleeve">${DISC}<img src="${BLANK}" alt="" data-cover="${esc(card.key)}"></span>
     <span class="card-t"><span class="kind">${KIND_LABEL[card.kind] || "Álbum"} completo</span><b>${esc(card.title)}</b><span class="muted small">${esc(bits)}</span></span></button>`;
 }
 
+/* A record is an album, an EP, a compilation or a live disc: it comes in a sleeve with the vinyl tucked inside (it slides out a
+   little on hover). A single does not: it stays a plain cover. */
+const DISC = '<i class="disc" aria-hidden="true"></i>';
+
 function albumTile(album) {
-  return `<button class="album" data-key="${esc(album.key)}" title="${esc(album.title)}"><img src="${BLANK}" alt="" data-cover="${esc(album.key)}">
+  const cover = `<img src="${BLANK}" alt="" data-cover="${esc(album.key)}">`;
+  return `<button class="album${album.kind === "single" ? " single" : ""}" data-key="${esc(album.key)}" title="${esc(album.title)}">${album.kind === "single" ? cover : `<span class="sleeve">${DISC}${cover}</span>`}
     <b>${esc(album.title)}</b><span class="muted small">${[album.year, KIND_LABEL[album.kind] || "Álbum"].filter(Boolean).join(" · ")}</span></button>`;
 }
 
@@ -284,7 +289,11 @@ function lazyCovers(view, jobs) {
         if (!job.img.isConnected) continue;
         byImg.delete(job.img); io.unobserve(job.img);
         const url = await call("item_cover", view, job.key);
-        if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) job.img.src = url;
+        if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) {
+          job.img.src = url;
+          const sleeve = job.img.closest(".sleeve");
+          if (sleeve) sleeve.style.setProperty("--cover", `url("${url}")`);   // the vinyl's label is the album's cover
+        }
       }
     } finally { running--; }
   };
