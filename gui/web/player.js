@@ -951,7 +951,8 @@ function renderLibrary() {
     <span class="lib-album muted">${esc(t.album)}</span>
     <span class="lib-act"><button type="button" class="icon-btn" data-act="next" title="Reproducir a continuación" aria-label="Reproducir a continuación">${ICON_NEXT}</button>
       <button type="button" class="icon-btn" data-act="add" title="Añadir a la cola" aria-label="Añadir a la cola">${ICON_ADD}</button>
-      <button type="button" class="icon-btn" data-act="tags" title="Completar etiquetas de esta canción" aria-label="Completar etiquetas de esta canción">${ICON_TAG}</button></span>
+      <button type="button" class="icon-btn" data-act="tags" title="Completar etiquetas de esta canción" aria-label="Completar etiquetas de esta canción">${ICON_TAG}</button>
+      <button type="button" class="icon-btn" data-act="more" title="Más opciones" aria-label="Más opciones" aria-haspopup="menu">${ICON_MORE}</button></span>
     <span class="lib-dur muted">${t.duration ? fmt(t.duration) : "—"}</span></div>`).join("");
 }
 
@@ -993,6 +994,93 @@ async function openLibrary() {
   if (await loadLibrary()) renderLibrary();
 }
 
+/* ---------- the small menu of a song, the confirmation dialog, and deleting ---------- */
+const ICON_MORE = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+
+function closeMenu() { const menu = $("#ctx"); if (menu) menu.remove(); }
+
+/* A menu of actions at a point of the window: items are { label, icon, danger, run } or { sep: true }. */
+function openMenu(x, y, items) {
+  closeMenu();
+  const menu = document.createElement("div");
+  menu.id = "ctx"; menu.className = "ctx"; menu.setAttribute("role", "menu");
+  menu.innerHTML = items.map((it, i) => it.sep ? '<i class="ctx-sep"></i>'
+    : `<button type="button" role="menuitem" class="ctx-item${it.danger ? " danger" : ""}" data-i="${i}">${it.icon || ""}<span>${esc(it.label)}</span></button>`).join("");
+  document.body.append(menu);
+  const box = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(x, innerWidth - box.width - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(y, innerHeight - box.height - 8)) + "px";
+  menu.addEventListener("click", ev => { const b = ev.target.closest(".ctx-item"); if (b) { closeMenu(); items[+b.dataset.i].run(); } });
+  menu.addEventListener("keydown", ev => {
+    const all = $$(".ctx-item", menu), at = all.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") all[(at + 1) % all.length].focus();
+    else if (ev.key === "ArrowUp") all[(at - 1 + all.length) % all.length].focus();
+    else if (ev.key === "Escape" || ev.key === "Tab") closeMenu();
+    else return;
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  $(".ctx-item", menu).focus();
+}
+document.addEventListener("click", ev => { if (!ev.target.closest("#ctx") && !ev.target.closest('[data-act="more"]')) closeMenu(); });
+addEventListener("resize", closeMenu);
+document.addEventListener("scroll", closeMenu, true);
+
+function openSongMenu(x, y, ids) {
+  openMenu(x, y, [
+    { label: ids.length > 1 ? `Eliminar ${ids.length} canciones…` : "Eliminar de la biblioteca…", icon: ICON_TRASH, danger: true, run: () => deleteTracks(ids) },
+  ]);
+}
+
+/* Resolves true or false: the window's own question box (the system's would look out of place). Escape or a click outside says no. */
+function confirmDialog({ title, text, ok, danger = false }) {
+  return new Promise(resolve => {
+    const box = $("#dialog"), yes = $("#dialog-yes"), no = $("#dialog-no");
+    $("#dialog-title").textContent = title; $("#dialog-text").textContent = text;
+    yes.textContent = ok; yes.classList.toggle("danger", danger);
+    box.classList.remove("hidden");
+    const done = answer => {
+      box.classList.add("hidden");
+      yes.onclick = no.onclick = box.onclick = null;
+      document.removeEventListener("keydown", onKey, true);
+      resolve(answer);
+    };
+    const onKey = ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); done(false); } };
+    document.addEventListener("keydown", onKey, true);
+    yes.onclick = () => done(true); no.onclick = () => done(false);
+    box.onclick = ev => { if (ev.target === box) done(false); };
+    no.focus();        // the safe answer has the focus
+  });
+}
+
+/* Songs leave the queue first (the player lets go of their files), then they go to the Recycle Bin. A file that is still being
+   read by the audio element is refused by Windows, so a refusal is tried once more a moment later. */
+async function deleteTracks(ids) {
+  const tracks = ids.map(trackOf).filter(Boolean);
+  if (!tracks.length) return;
+  const one = tracks.length === 1;
+  const ok = await confirmDialog({
+    title: one ? "¿Eliminar esta canción?" : `¿Eliminar ${tracks.length} canciones?`,
+    text: one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se manda a la Papelera de Reciclaje: puedes recuperarla desde allí.`
+              : "Se mandan a la Papelera de Reciclaje: puedes recuperarlas desde allí.",
+    ok: "Mandar a la Papelera", danger: true,
+  });
+  if (!ok) return;
+  for (let i = P.queue.length - 1; i >= 0; i--) if (ids.includes(P.queue[i])) removeFromQueue(i);
+  releaseFile(ids);
+  await wait(700);
+  let result = await call("library_delete", ids);
+  if (result && result.failed && result.failed.length) {
+    await wait(900);
+    const again = await call("library_delete", result.failed.map(f => f.id));
+    result = { deleted: result.deleted + (again.deleted || 0), failed: again.failed || [] };
+  }
+  await openLibrary();
+  if (!result || result.error) return toast("No pude eliminar la canción.", true);
+  if (result.failed.length) toast(`${result.failed[0].error}${result.failed.length > 1 ? ` (y ${result.failed.length - 1} más)` : ""}`, true);
+  if (result.deleted) toast(result.deleted === 1 ? "Canción enviada a la Papelera." : `${result.deleted} canciones enviadas a la Papelera.`);
+}
+
 function wireLibrary() {
   const list = $("#lib-list");
   const play = id => playList(visibleTracks().map(t => t.id), id);
@@ -1001,8 +1089,13 @@ function wireLibrary() {
     if (!row) return;
     const act = ev.target.closest("[data-act]");
     if (act && act.dataset.act === "tags") return sendToTags([row.dataset.id]);
+    if (act && act.dataset.act === "more") { const r = act.getBoundingClientRect(); return openSongMenu(r.left, r.bottom + 4, [row.dataset.id]); }
     if (act) return enqueue(row.dataset.id, act.dataset.act === "next", $(".lib-cover", row));
     play(row.dataset.id);
+  });
+  list.addEventListener("contextmenu", ev => {
+    const row = ev.target.closest(".lib-row");
+    if (row) { ev.preventDefault(); openSongMenu(ev.clientX, ev.clientY, [row.dataset.id]); }
   });
   list.addEventListener("keydown", ev => {
     const row = ev.target.closest(".lib-row");
@@ -1058,7 +1151,7 @@ function dropdown(select) {
 /* ---------- keys ---------- */
 function wireKeys() {
   document.addEventListener("keydown", ev => {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || !current()) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || !current() || !$("#dialog").classList.contains("hidden")) return;
     const t = ev.target;
     if (t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]")) return;
     const onRange = t.type === "range";
@@ -1152,6 +1245,11 @@ function demoPlayerApi(art) {
         url: tone(scales[i], 24), cover_url: i < 5 ? art(...colors[i]) : "",
       }));
       return { tracks };
+    },
+    library_delete: async ids => {
+      const gone = (tracks || []).filter(t => ids.includes(t.id));
+      tracks = (tracks || []).filter(t => !ids.includes(t.id));
+      return { ok: true, deleted: gone.length, failed: [] };
     },
     library_paths: async ids => ids.map(id => tracks && tracks.find(t => t.id === id)).filter(Boolean).map(t => `C:/Música/${t.artist ? t.artist + " - " : ""}${t.title}.mp3`),
     get_player: async () => saved,

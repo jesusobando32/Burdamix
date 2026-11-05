@@ -341,3 +341,23 @@ body.has-player #toasts { bottom: 104px; }
 #app[data-view="home"]:has(#home-hero.compact) .tonearm { opacity: 0; }
 @media (max-width: 760px) { .tonearm { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ta-arm { transition: none !important; } }
+
+/* ---------- a menu at a point, and the confirmation box ---------- */
+.ctx { position: fixed; z-index: 60; min-width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: rgba(14, 19, 15, .97);
+  border: 1px solid var(--glass-line); border-radius: 14px; box-shadow: var(--shadow); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  animation: panel-in var(--t-med) var(--ease-out) both; transform-origin: top left; }
+.ctx-item { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; white-space: nowrap; }
+.ctx-item svg { width: 18px; height: 18px; color: var(--muted); }
+.ctx-item:hover, .ctx-item:focus-visible { background: var(--glass-2); outline: 0; }
+.ctx-item.danger { color: var(--danger); }
+.ctx-item.danger svg { color: var(--danger); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.dialog { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(4, 6, 5, .6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: fade-only var(--t-med) ease both; }
+.dialog-card { width: min(440px, 100%); padding: 22px 24px 20px; border-radius: 20px; background: rgba(16, 22, 18, .97); border: 1px solid var(--glass-line); box-shadow: var(--shadow);
+  animation: panel-in var(--t-med) var(--ease-out) both; transform-origin: center; }
+.dialog-card h3 { font-size: 18px; margin: 0 0 8px; }
+.dialog-card p { margin: 0 0 18px; }
+.dialog-card .btn-row { justify-content: flex-end; }
+.btn.danger { border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); }
+.dialog .btn.danger { background: color-mix(in srgb, var(--danger) 85%, #000); color: #fff; border-color: transparent; font-weight: 650; }
