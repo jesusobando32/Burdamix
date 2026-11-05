@@ -33,7 +33,7 @@ const P = {
   shuffle: false, repeat: "off", volume: .8, muted: false, xf: 0,
   eq: { on: true, bands: [...FLAT], preset: "flat" },
   custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
-  seen: new Map(), q: "", sort: "artist", viz: "off", ready: false, dragging: false, errors: 0,
+  seen: new Map(), q: "", sort: "artist", viz: "off", discId: "", swapToken: 0, ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
 };
@@ -356,10 +356,36 @@ function paintCover(track) {
   $("#pl-initial").textContent = track ? (track.title || "♪").trim().charAt(0).toUpperCase() : "♪";
   $(".pl-cover").classList.toggle("ph", !has);
   if (track) $(".pl-cover").style.setProperty("--h", hueOf(track));
-  for (const el of [img, disc]) {
-    if (has) { el.src = track.cover_url; el.hidden = false; }
-    else { el.hidden = true; el.removeAttribute("src"); }
+  const paintDisc = () => {
+    if (has) { disc.src = track.cover_url; disc.hidden = false; }
+    else { disc.hidden = true; disc.removeAttribute("src"); }
+  };
+  if (has) { img.src = track.cover_url; img.hidden = false; }
+  else { img.hidden = true; img.removeAttribute("src"); }
+  const id = track ? track.id : "";
+  if (id !== P.discId) { const first = !P.discId; P.discId = id; swapVinyl(paintDisc, first); }
+  else paintDisc();
+}
+
+/* Changing song changes the record, as on a turntable: the one on the platter lifts off to the side and fades, the new one
+   (its label is the new cover) drops in from above and settles, turning all the while. The turning is the css animation on
+   `transform`; these use the separate `translate`, `scale` and `opacity` properties, so the two do not fight. */
+async function swapVinyl(apply, first) {
+  const disc = $("#vinyl");
+  const token = ++P.swapToken;
+  disc.getAnimations().forEach(a => { if (a.id === "swap") a.cancel(); });
+  const opacity = parseFloat(getComputedStyle(disc).opacity);
+  if (reduced() || getComputedStyle(disc).display === "none" || opacity < .05) return apply();   // not on screen: just change it
+  const run = (keyframes, options) => { const a = disc.animate(keyframes, { id: "swap", ...options }); return a.finished.catch(() => {}); };
+  if (!first) {
+    await run([{ translate: "0 0", scale: "1", opacity }, { translate: "90px -46px", scale: ".9", opacity: 0 }],
+              { duration: 340, easing: "cubic-bezier(.5, 0, .9, .45)", fill: "forwards" });
+    if (token !== P.swapToken) return;
   }
+  apply();
+  disc.getAnimations().forEach(a => { if (a.id === "swap") a.cancel(); });
+  await run([{ translate: "-30px -80px", scale: "1.08", opacity: 0 }, { translate: "0 0", scale: "1", opacity, offset: .7 }, { translate: "0 0", scale: "1", opacity }],
+            { duration: 620, easing: "cubic-bezier(.23, 1, .32, 1)", fill: "backwards" });
 }
 
 function paint() {
