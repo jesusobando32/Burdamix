@@ -333,3 +333,17 @@ def test_a_failing_catalog_never_breaks_the_song_search(tmp_path, monkeypatch):
     monkeypatch.setattr("gui.backend.search_songs", lambda text, limit: (songs_of("s", 2), []))
     result = api.preview("mora")
     assert result["cards"] == [] and len(result["items"]) == 2
+
+
+def test_y_and_ampersand_are_the_same_in_an_artist_name_and_the_most_followed_one_wins():
+    """«chino y nacho» found a small profile spelled exactly like that before the famous «Chino & Nacho» (Deezer lists both)."""
+    def artist_for(query, names):
+        service = Service(albums=lambda q, n: [], artists=lambda q, n: [ArtistInfo(source="deezer", id=str(i), name=name) for i, name in enumerate(names)])
+        catalog = Catalog(SongSearch([("deezer", service)]))
+        return catalog.cards(query, [SongInfo(title="Andas En Mi Cabeza", artist=names[0])])[1]      # the songs found are by the first one
+    names = ["Chino & Nacho", "Chino y Nacho", "Made famous by Chino y Nacho"]          # most followed first, as Deezer gives them
+    assert artist_for("chino y nacho", names).name == "Chino & Nacho"
+    assert artist_for("chino & nacho", names).name == "Chino & Nacho"
+    assert artist_for("chino and nacho", names).name == "Chino & Nacho"
+    assert artist_for("sunghanbin", ["SUNG HAN BIN", "SUNGHANBIN"]).name == "SUNGHANBIN"      # spelling still counts when no connector is involved
+    assert artist_for("Simon y Garfunkel", ["Simon & Garfunkel", "Simon y Garfunkel"]).name == "Simon & Garfunkel"

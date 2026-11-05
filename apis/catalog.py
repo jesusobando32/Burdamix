@@ -14,6 +14,7 @@ MIN_ALBUM_TRACKS = 3
 MAX_ALBUM_CARDS = 2
 ARTIST_NAME_MATCH = 0.85           # how alike the whole query and the artist's name must be
 FILLER = {"album", "disco", "ep", "completo", "full", "discografia"}   # words that say "the album" without naming it
+CONNECTORS = {"y", "and", "e", "et"}        # «Chino y Nacho» and «Chino & Nacho» are the same duo ("&" is dropped by normalize)
 TOP_SONGS = 50
 
 
@@ -21,9 +22,14 @@ def _words(text):
     return [w for w in normalize(text).split() if len(w) >= 2 or w.isdigit()]
 
 
+def name_key(text):
+    """An artist's name for comparing: no accents, capitals or punctuation, and without the «y» / «and» / «&» between names."""
+    return " ".join(w for w in normalize(text).split() if w not in CONNECTORS)
+
+
 def same_name(a, b):
     """The whole of one is the other (not 'contains it'): 'mora' is Mora, 'badtrip mora' is not. A letter or two off still counts."""
-    a, b = normalize(a), normalize(b)
+    a, b = name_key(a), name_key(b)
     return bool(a) and bool(b) and SequenceMatcher(None, a, b).ratio() >= ARTIST_NAME_MATCH
 
 
@@ -112,7 +118,7 @@ class Catalog:
             found_artists, more = artists.result() if artists else ([], [])
         chosen = [a for a in tidy_albums(found_albums) if album_matches(a, query)][:MAX_ALBUM_CARDS]
         similar = [a for a in found_artists if artist_matches(a, query)]       # most followed first
-        artist = next((a for a in similar if normalize(a.name) == normalize(query)), similar[0] if similar else None)   # 'SUNGHANBIN' before 'SUNG HAN BIN'
+        artist = next((a for a in similar if name_key(a.name) == name_key(query)), similar[0] if similar else None)   # 'SUNGHANBIN' before 'SUNG HAN BIN'; «Chino & Nacho» (most followed) before «Chino y Nacho»
         return chosen, artist, problems + more
 
     # --- inside an album or an artist ---
