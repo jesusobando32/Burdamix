@@ -1081,9 +1081,12 @@ async function deleteTracks(ids) {
   const tracks = ids.map(trackOf).filter(Boolean);
   if (!tracks.length) return;
   const one = tracks.length === 1;
+  // the same song can be kept as another file (in an album and in liked/): only the one chosen goes, and the user is told
+  const copies = one ? P.tracks.filter(o => o.id !== tracks[0].id && songKey(o) === songKey(tracks[0]) && tracks[0].artist) : [];
+  const copyNote = copies.length ? ` Tiene ${copies.length === 1 ? "otra copia" : copies.length + " copias más"} en tu biblioteca (${[...new Set(copies.map(c => c.group || { liked: "Me gusta", track: "Canciones sueltas" }[c.kind] || "otra carpeta"))].join(", ")}) que no se borra${copies.length === 1 ? "" : "n"}.` : "";
   const ok = await confirmDialog({
     title: one ? "¿Eliminar esta canción?" : `¿Eliminar ${tracks.length} canciones?`,
-    text: one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se manda a la Papelera de Reciclaje: puedes recuperarla desde allí.`
+    text: one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se manda a la Papelera de Reciclaje: puedes recuperarla desde allí.${copyNote}`
               : "Se mandan a la Papelera de Reciclaje: puedes recuperarlas desde allí.",
     ok: "Mandar a la Papelera", danger: true,
   });
