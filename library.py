@@ -62,15 +62,15 @@ class Library:
                     fresh[path] = kept
                     found.append(kept[1])
                     continue
-                title, artist, album, duration, cover = *_from_file_name(path), "", 0, False
+                title, artist, album, duration, cover, complete = *_from_file_name(path), "", 0, False, False
                 try:
                     tags = tagwriter.read_tags(path)
                     title, artist, album = tags.title or title, tags.artist or artist, tags.album
-                    duration, cover = int(round(tags.duration)), tags.has_cover
+                    duration, cover, complete = int(round(tags.duration)), tags.has_cover, tagwriter.is_complete(tags)
                 except (MetadataError, UnsupportedAudioFormat):
                     pass
                 track = {"id": self._id(path), "path": path, "title": title, "artist": artist, "album": album,
-                         "duration": duration, "cover": cover, "added": stat.st_mtime}
+                         "duration": duration, "cover": cover, "complete": complete, "added": stat.st_mtime}
                 fresh[path] = (stamp, track)
                 found.append(track)
         found.sort(key=lambda t: (t["artist"].casefold(), t["title"].casefold()))

@@ -55,3 +55,17 @@ def test_library_list_gives_urls_and_hides_paths(api, tmp_path, monkeypatch):
 def test_saving_leaves_no_half_written_file_behind(api, tmp_path):
     api.save_player({"volume": 0.5})
     assert sorted(os.listdir(tmp_path / "datos")) == ["player.json"]
+
+
+def test_library_paths_are_given_only_for_songs_the_library_listed(api, tmp_path, monkeypatch):
+    songs = tmp_path / "canciones"
+    songs.mkdir()
+    (songs / "Mora - Volando.mp3").write_bytes(b"x" * 100)
+    monkeypatch.setattr(api, "_downloads_dir", lambda: str(songs))
+    try:
+        [track] = api.library_list()["tracks"]
+    finally:
+        api._media.stop()
+    assert api.library_paths([track["id"], "no-existe", 5]) == [str(songs / "Mora - Volando.mp3")]
+    assert api.library_paths("no es una lista") == []
+    assert "complete" in track

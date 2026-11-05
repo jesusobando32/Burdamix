@@ -180,3 +180,21 @@ def test_a_cover_that_changed_is_read_again(tmp_path, monkeypatch):
     assert server._small_cover(path) == first          # same file version: remembered
     os.utime(path, (1_000_000, 1_000_000))              # the tags were rewritten: new version
     assert server._small_cover(path) != first
+
+
+def test_scan_says_which_songs_already_have_all_their_tags(tmp_path, monkeypatch):
+    make(tmp_path, "Completa.mp3")
+    make(tmp_path, "Incompleta.mp3")
+    def read(path):
+        if "Completa" in os.path.basename(path) and "In" not in os.path.basename(path):
+            return TagInfo(path=path, title="A", artist="B", album="C", year="2020", track=1, has_cover=True, duration=10)
+        return TagInfo(path=path, title="A", artist="B", duration=10)
+    monkeypatch.setattr(library.tagwriter, "read_tags", read)
+    by_title = {t["path"].split(os.sep)[-1]: t["complete"] for t in library.Library().scan(str(tmp_path))}
+    assert by_title == {"Completa.mp3": True, "Incompleta.mp3": False}
+
+
+def test_a_song_without_readable_tags_is_not_complete(tmp_path, no_tags):
+    make(tmp_path, "a.mp3")
+    [track] = library.Library().scan(str(tmp_path))
+    assert track["complete"] is False

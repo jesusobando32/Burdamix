@@ -164,6 +164,14 @@ class Api:
     def _player_path(self):
         return os.path.join(const.data_dir(), "player.json")
 
+    def library_paths(self, ids):
+        """The files behind some songs of the library, to hand them to "Completar etiquetas". The page only knows ids
+        (never paths), and only the songs the last scan listed can be asked for."""
+        if not isinstance(ids, (list, tuple)):
+            return []
+        paths = (self._library.path_of(i) for i in ids if isinstance(i, str))
+        return [p for p in paths if p]
+
     def library_list(self):
         """Every song in the downloads folder, with the local addresses the page plays and shows covers from."""
         if not self._media.port:
