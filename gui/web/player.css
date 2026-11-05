@@ -46,7 +46,7 @@ body.has-player #toasts { bottom: 104px; }
 
 /* ---------- the bar ---------- */
 .player {
-  position: relative; z-index: 6; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1.5fr) minmax(0, 1fr);
+  position: relative; z-index: 6; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1.4fr) auto;
   align-items: center; gap: 16px; padding: 10px 20px 12px; border-top: 1px solid var(--glass-line);
   background: linear-gradient(90deg, color-mix(in srgb, var(--pc) 14%, transparent), transparent 55%), rgba(9, 12, 10, .82);
   backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
@@ -80,7 +80,13 @@ body.has-player #toasts { bottom: 104px; }
 .pl-seek { display: flex; align-items: center; gap: 10px; }
 .pl-seek span { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
 .pl-side { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0; }
-#pl-spectrum { width: 96px; height: 28px; margin-right: 8px; opacity: .9; }
+#pl-spectrum { width: clamp(44px, 7vw, 96px); height: 28px; margin-right: 8px; opacity: .9; }
+
+/* big layer behind the window: bars drawn small and blurred hard, so they read as light and not as a chart */
+.viz { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: calc(100% - var(--ph, 0px)); z-index: 0; pointer-events: none; display: none; }
+#app[data-viz="wave"] .viz { display: block; filter: blur(14px); opacity: .5; }
+#app[data-viz="center"] .viz { display: block; filter: blur(20px); opacity: .32; }
+.bg i { transition: scale 90ms linear; }
 #pl-mute .cross { display: none; }
 #pl-mute.is-muted .cross { display: block; }
 #pl-mute.is-muted .waves { display: none; }
@@ -158,6 +164,7 @@ body.has-player #toasts { bottom: 104px; }
 .eq-xf { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .eq-xf > div:first-child { display: flex; flex-direction: column; }
 .eq-xf .slider { display: flex; align-items: center; gap: 12px; }
+.viz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .eq-xf output { min-width: 62px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* ---------- library ---------- */
@@ -235,7 +242,17 @@ body.has-player #toasts { bottom: 104px; }
 @media (max-width: 900px) {
   .lib-row { grid-template-columns: 30px 40px minmax(0, 1fr) auto 52px; }
   .lib-album { display: none; }
-  #pl-spectrum, #pl-volume { display: none; }
+}
+/* What the bar shows depends on the width the bar itself has (the menu on the left takes a part of the window), not on the
+   window's: the right column drops its extras in order, so nothing ever lands on top of the controls. */
+.player { container: player / inline-size; }
+/* (the widths are the bar's inner width: 40 px less than the bar) */
+@container player (max-width: 960px) { #pl-spectrum { display: none; } }
+@container player (max-width: 780px) { #pl-volume { display: none; } }
+@container player (max-width: 640px) {      /* too narrow for three columns: the controls go to a row of their own */
+  .player { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "now side" "mid mid"; gap: 6px 8px; padding: 8px 12px 10px; }
+  .pl-now { grid-area: now; } .pl-side { grid-area: side; } .pl-mid { grid-area: mid; }
+  .pl-cover { width: 44px; height: 44px; }
 }
 @media (max-width: 760px) {
   .player { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "now side" "mid mid"; gap: 6px 8px; padding: 8px 12px 10px; }

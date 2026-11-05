@@ -33,7 +33,7 @@ const P = {
   shuffle: false, repeat: "off", volume: .8, muted: false, xf: 0,
   eq: { on: true, bands: [...FLAT], preset: "flat" },
   custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
-  seen: new Map(), q: "", sort: "artist", ready: false, dragging: false, errors: 0,
+  seen: new Map(), q: "", sort: "artist", viz: "off", ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
 };
@@ -445,30 +445,111 @@ function tonesOf(r, g, b) {
 /* ---------- spectrum ---------- */
 /* The bars grow from the middle line up and down. Each one eases towards its level (quickly up, slowly down), so a pause
    lets them sink to a flat line instead of vanishing; the loop stops by itself once they are flat. */
-const BARS = 20;
-const levels = new Float32Array(BARS);
+const VIZ_MODES = ["off", "wave", "center", "pulse"];
+const sizes = new WeakMap();   // canvas -> the css size it was last fitted to
+
+/* Fits a canvas to the pixels it really covers (css size x screen density, or a fraction of it for the blurred ones), so
+   the bars stay sharp on any window size and screen. */
+function fitCanvas(canvas, scale = 1) {
+  const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  return [w, h];
+}
+
+function withAlpha(color, alpha) {
+  if (color.startsWith("hsl")) return color.replace(/\)$/, ` / ${alpha})`);
+  const n = parseInt(color.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/* One level per bar, each easing towards its target (quickly up, slowly down), so a pause lets everything sink instead of
+   vanishing. Bars are spread over the lower 70 % of the spectrum, where the music is. */
+function easeLevels(store, key, n, data, live) {
+  if (!store[key] || store[key].length !== n) store[key] = new Float32Array(n);
+  const lv = store[key];
+  let moving = false;
+  for (let i = 0; i < n; i++) {
+    const v = live ? (data[Math.floor(Math.pow(i / n, 1.4) * data.length * .7) + 1] / 255) ** 2 : 0;
+    lv[i] += (v - lv[i]) * (v > lv[i] ? .5 : .1);
+    if (lv[i] > .01) moving = true; else if (!live) lv[i] = 0;
+  }
+  return { lv, moving };
+}
+
+const viz = { store: {}, beat: 0 };
+
+/* The little bars in the player bar: from the middle line up and down; as many as fit in the width. */
+function drawSmall(data, live) {
+  const canvas = $("#pl-spectrum");
+  if (!canvas.clientWidth) return false;           // hidden in narrow windows
+  const dpr = devicePixelRatio || 1;
+  const [w, h] = fitCanvas(canvas, dpr);
+  const n = clamp(Math.floor(canvas.clientWidth / 5), 6, 24), slot = w / n, gap = Math.max(1, Math.round(slot * .3));
+  const { lv, moving } = easeLevels(viz.store, "small", n, data, live);
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = P.accent || DEFAULT_ACCENT;
+  for (let i = 0; i < n; i++) {
+    const bar = Math.max(2 * dpr, lv[i] * h);
+    ctx.globalAlpha = .4 + lv[i] * .6;
+    ctx.fillRect(i * slot + gap / 2, (h - bar) / 2, slot - gap, bar);
+  }
+  return moving;
+}
+
+/* The big, blurred layers behind the window (blur and opacity come from the css of each mode). */
+function drawBig(data, live) {
+  const canvas = $("#viz"), mode = P.viz;
+  if (mode === "wave" || mode === "center") {
+    const [w, h] = fitCanvas(canvas, .35);
+    const n = clamp(Math.round(w / 9), 24, 80), slot = w / n;
+    const { lv, moving } = easeLevels(viz.store, "big", n, data, live);
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, w, h);
+    const color = P.accent || DEFAULT_ACCENT;
+    const fill = ctx.createLinearGradient(0, mode === "wave" ? h : 0, 0, mode === "wave" ? 0 : h);
+    if (mode === "wave") { fill.addColorStop(0, withAlpha(color, .95)); fill.addColorStop(1, withAlpha(color, 0)); }
+    else { fill.addColorStop(0, withAlpha(color, 0)); fill.addColorStop(.5, withAlpha(color, .95)); fill.addColorStop(1, withAlpha(color, 0)); }
+    ctx.fillStyle = fill;
+    for (let i = 0; i < n; i++) {
+      const bar = Math.max(h * .02, lv[i] * h * (mode === "wave" ? .75 : .55));
+      if (mode === "wave") ctx.fillRect(i * slot, h - bar, slot - 1, bar);
+      else ctx.fillRect(i * slot, (h - bar) / 2, slot - 1, bar);
+    }
+    return moving;
+  }
+  if (mode === "pulse") {
+    const bass = live ? (data[0] + data[1] + data[2] + data[3]) / 1020 : 0;
+    viz.beat += (bass - viz.beat) * (bass > viz.beat ? .5 : .08);
+    $$(".bg i:not(.glow)").forEach((blob, i) => { blob.style.scale = String(1 + viz.beat * (.16 + i * .06)); });
+    if (viz.beat < .005) viz.beat = 0;
+    return viz.beat > 0;
+  }
+  return false;
+}
+
 function loopSpectrum() {
   if (P.bars || !P.analyser) return;
-  const canvas = $("#pl-spectrum"), ctx2 = canvas.getContext("2d"), data = new Uint8Array(P.analyser.frequencyBinCount);
+  const data = new Uint8Array(P.analyser.frequencyBinCount);
   const draw = () => {
     P.bars = 0;
     const live = isPlaying() && !document.hidden && !reduced();
     if (live) P.analyser.getByteFrequencyData(data);
-    const w = canvas.width / BARS, mid = canvas.height / 2;
-    let moving = false;
-    ctx2.clearRect(0, 0, canvas.width, canvas.height);
-    ctx2.fillStyle = P.accent || DEFAULT_ACCENT;
-    for (let i = 0; i < BARS; i++) {
-      const v = live ? (data[Math.floor(i * (data.length * .7) / BARS) + 1] / 255) ** 2 : 0;
-      levels[i] += (v - levels[i]) * (v > levels[i] ? .5 : .1);
-      if (levels[i] > .01) moving = true; else if (!live) levels[i] = 0;
-      const h = Math.max(2, levels[i] * canvas.height);
-      ctx2.globalAlpha = .4 + levels[i] * .6;
-      ctx2.fillRect(i * w + 1, mid - h / 2, w - 3, h);
-    }
-    if (live || moving) P.bars = requestAnimationFrame(draw);
+    const small = drawSmall(data, live), big = drawBig(data, live);
+    if (live || small || big) P.bars = requestAnimationFrame(draw);
   };
   P.bars = requestAnimationFrame(draw);
+}
+
+function setViz(mode) {
+  P.viz = VIZ_MODES.includes(mode) ? mode : "off";
+  $("#app").dataset.viz = P.viz;
+  const canvas = $("#viz");
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  $$(".bg i:not(.glow)").forEach(blob => { blob.style.scale = ""; });
+  viz.store.big = null; viz.beat = 0;
+  $$("#viz-chips [data-viz]").forEach(b => b.classList.toggle("on", b.dataset.viz === P.viz));
+  loopSpectrum(); saveSoon();
 }
 
 /* ---------- panels ---------- */
@@ -648,7 +729,7 @@ function paintCrossfade() {
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, viz: P.viz,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
@@ -666,6 +747,7 @@ function restore(saved) {
   const num = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : d;
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
+  P.viz = VIZ_MODES.includes(saved.viz) ? saved.viz : "off";
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
   if (saved.eq && typeof saved.eq === "object") {
     P.eq.on = saved.eq.on !== false; P.eq.bands = bands(saved.eq.bands) || [...FLAT];
@@ -854,6 +936,9 @@ function wireBar() {
   bar.addEventListener("input", () => { P.dragging = true; paint(); });   // the thumb is the user's until they let go
   bar.addEventListener("change", () => { P.dragging = false; seek(+bar.value); });
   $("#xf").oninput = ev => { P.xf = +ev.target.value; paintCrossfade(); saveSoon(); };
+  $("#viz-chips").addEventListener("click", ev => { const b = ev.target.closest("[data-viz]"); if (b) setViz(b.dataset.viz); });
+  // the big layer ends where the bar begins, whatever height the bar has in a narrow window
+  new ResizeObserver(() => $("#main").style.setProperty("--ph", $("#player").offsetHeight + "px")).observe($("#player"));
   document.addEventListener("click", ev => {
     // the path is taken at the click: a button the panel redraws is already out of the page when this runs
     const inside = ev.composedPath().some(n => n.classList && (n.classList.contains("pl-panel") || n.id === "pl-queue" || n.id === "pl-eq"));
@@ -870,6 +955,7 @@ const Player = {
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
     wireBar(); wireQueue(); wireLibrary(); wireKeys();
+    setViz(P.viz);
     P.timer = setInterval(tick, TICK);
     if (await loadLibrary()) restoreQueue(await call("get_player"));
     P.ready = true;

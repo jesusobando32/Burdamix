@@ -59,6 +59,7 @@
   </aside>
 
   <main id="main">
+    <canvas id="viz" class="viz" aria-hidden="true"></canvas>
     <div class="vinyl" id="vinyl" aria-hidden="true"><img id="vinyl-cover" alt="" hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></div>
     <button class="icon-btn float-toggle" id="toggle2" aria-label="Abrir el menú" title="Menú">
       <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -308,6 +309,15 @@
         <div class="eq-xf">
           <div><b>Crossfade</b><span class="muted small" id="xf-hint">Mezcla el final de una canción con el inicio de la siguiente</span></div>
           <div class="slider"><input id="xf" type="range" min="0" max="12" step="1" value="0" aria-label="Segundos de crossfade"><output id="xf-out">Apagado</output></div>
+        </div>
+        <div class="eq-xf eq-viz">
+          <div><b>Fondo animado</b><span class="muted small">Cómo se mueve la música detrás de la ventana</span></div>
+          <div class="viz-chips" id="viz-chips" role="group" aria-label="Fondo animado">
+            <button type="button" class="chip-btn" data-viz="off">Ninguno</button>
+            <button type="button" class="chip-btn" data-viz="wave">Ola desde la barra</button>
+            <button type="button" class="chip-btn" data-viz="center">Línea central</button>
+            <button type="button" class="chip-btn" data-viz="pulse">Pulso de los halos</button>
+          </div>
         </div>
       </aside>
     </footer>
