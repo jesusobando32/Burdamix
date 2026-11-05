@@ -483,7 +483,7 @@ button.card:active { transform: scale(.985); }
 .vinyl::before { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: conic-gradient(#b5ef4a, #3aa220, #7a3cff, #b5ef4a); }
 .vinyl::after { content: ""; position: absolute; inset: 48.5%; border-radius: 50%; background: var(--bg); }
 @keyframes vinyl-spin { to { transform: rotate(360deg); } }
-#view-home:has(.hero.compact) .vinyl { opacity: 0; animation-play-state: paused; }
+#app[data-view="home"]:has(#home-hero.compact) .vinyl { opacity: 0; animation-play-state: paused; }
 #view-home .scroll, #view-home .dock { position: relative; z-index: 1; }
 
 .hero h1 { font-size: clamp(44px, 6.4vw, 72px); letter-spacing: -.04em; line-height: 1; }

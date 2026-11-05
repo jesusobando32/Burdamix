@@ -63,6 +63,7 @@ const moveSegInd = () => placeInd($("#fav-counts .seg-ind"), $("#fav-counts butt
 /* ---------- navigation ---------- */
 function show(view) {
   S.view = view;
+  $("#app").dataset.view = view;
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
   $$(".nav").forEach(n => n.classList.toggle("active", n.dataset.view === view));
   if (view === "tutorial") refreshState();
@@ -648,6 +649,7 @@ function demoApi() {
 
 /* ---------- start ---------- */
 function init() {
+  $("#app").dataset.view = S.view;
   Player.init();
   $$(".nav").forEach(n => n.onclick = () => show(n.dataset.view));
   $("#toggle").onclick = () => setSidebar(!$("#app").classList.contains("sidebar-open"));

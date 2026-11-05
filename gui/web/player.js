@@ -236,13 +236,35 @@ function cycleRepeat() {
   render(); saveSoon();
 }
 
-function enqueue(id, asNext) {
+function enqueue(id, asNext, source) {
   if (!trackOf(id)) return;
   if (!P.queue.length) return playList([id], id);
   P.original = null;
   P.queue.splice(asNext ? P.pos + 1 : P.queue.length, 0, id);
+  flyToQueue(source);
   toast(asNext ? "Sonará a continuación." : "Añadida a la cola.");
   renderQueue(); saveSoon();
+}
+
+/* The song's cover leaves its row, curves down and shrinks into the queue button, which then gives a little bump. */
+function flyToQueue(source) {
+  const target = $("#pl-queue");
+  if (!source || reduced() || $("#player").classList.contains("hidden")) return;
+  const from = source.getBoundingClientRect(), to = target.getBoundingClientRect();
+  const ghost = source.cloneNode(true);
+  Object.assign(ghost.style, { position: "fixed", left: from.left + "px", top: from.top + "px", width: from.width + "px", height: from.height + "px",
+    margin: 0, zIndex: 40, pointerEvents: "none", borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,.5)" });
+  document.body.append(ghost);
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  const fly = ghost.animate([
+    { transform: "translate(0, 0) scale(1)", opacity: 1, offset: 0 },
+    { transform: `translate(${dx * .35}px, ${dy * .1 - 40}px) scale(1.12) rotate(-6deg)`, opacity: 1, offset: .35 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.3) rotate(8deg)`, opacity: .35, offset: 1 },
+  ], { duration: 650, easing: "cubic-bezier(.45, 0, .55, 1)", fill: "forwards" });
+  fly.onfinish = () => {
+    ghost.remove();
+    target.animate([{ transform: "scale(1)" }, { transform: "scale(1.35)" }, { transform: "scale(1)" }], { duration: 360, easing: "cubic-bezier(.23, 1, .32, 1)" });
+  };
 }
 
 function removeFromQueue(index) {
@@ -279,12 +301,20 @@ function clearQueue() {
 }
 
 /* ---------- the bar ---------- */
+/* A song without a cover gets a gradient whose hue comes from its name, so the same song always looks the same. */
+function hueOf(track) {
+  let h = 0;
+  for (const c of `${track.artist}|${track.title}`) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
+
 function coverHTML(track) {
   return track.cover_url ? `<img src="${esc(track.cover_url)}" alt="" loading="lazy" decoding="async">` : "";
 }
 
 function trackChanged() {
   const track = current();
+  if (!track) extractAccent({});
   paintCover(track);
   render();
   paintLibraryMarks();
@@ -300,6 +330,7 @@ function render() {
   $("#app").classList.toggle("has-player", !!track);
   document.body.classList.toggle("has-player", !!track);   // the toasts rise above the bar
   $("#player").classList.toggle("is-playing", playing);
+  $("#app").classList.toggle("audio-on", playing);   // the vinyl and the little bars move only while it sounds
   if (!track) return;
   $("#pl-title").textContent = track.title;
   $("#pl-artist").textContent = track.artist || "Artista desconocido";
@@ -315,10 +346,14 @@ function render() {
 }
 
 function paintCover(track) {
-  const img = $("#pl-cover");
+  const img = $("#pl-cover"), disc = $("#vinyl-cover"), has = !!(track && track.cover_url);
   $("#pl-initial").textContent = track ? (track.title || "♪").trim().charAt(0).toUpperCase() : "♪";
-  if (track && track.cover_url) { img.src = track.cover_url; img.hidden = false; }
-  else { img.hidden = true; img.removeAttribute("src"); }
+  $(".pl-cover").classList.toggle("ph", !has);
+  if (track) $(".pl-cover").style.setProperty("--h", hueOf(track));
+  for (const el of [img, disc]) {
+    if (has) { el.src = track.cover_url; el.hidden = false; }
+    else { el.hidden = true; el.removeAttribute("src"); }
+  }
 }
 
 function paint() {
@@ -364,8 +399,14 @@ function setMediaSession(track) {
 /* ---------- colour from the cover ---------- */
 const DEFAULT_ACCENT = "#b5ef4a";
 function extractAccent(track) {
-  const apply = color => { P.accent = color; $("#app").style.setProperty("--pc", color); };
-  if (!track.cover_url) return apply(DEFAULT_ACCENT);
+  const style = $("#app").style;
+  const apply = tones => {
+    if (!tones) { P.accent = DEFAULT_ACCENT; ["--pc", "--blob1", "--blob2", "--blob3"].forEach(k => style.removeProperty(k)); return; }
+    P.accent = tones.accent;
+    style.setProperty("--pc", tones.accent);
+    style.setProperty("--blob1", tones.b1); style.setProperty("--blob2", tones.b2); style.setProperty("--blob3", tones.b3);
+  };
+  if (!track.cover_url) return apply(null);
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
@@ -381,22 +422,24 @@ function extractAccent(track) {
         const weight = 0.05 + (max - min) / 255;
         r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
       }
-      apply(legible(r / w, g / w, b / w));
-    } catch (e) { apply(DEFAULT_ACCENT); }
+      apply(tonesOf(r / w, g / w, b / w));
+    } catch (e) { apply(null); }
   };
-  img.onerror = () => apply(DEFAULT_ACCENT);
+  img.onerror = () => apply(null);
   img.src = track.cover_url;
 }
 
-/* A cover's average can be muddy or nearly black: bring it to a colour that reads on the dark bar. */
-function legible(r, g, b) {
+/* A cover's average can be muddy or nearly black: bring it to a colour that reads on the dark bar. The three blobs of the
+   background take neighbouring hues, so the whole window changes with the song and not just one corner. */
+function tonesOf(r, g, b) {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
   let h = 0;
   if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   h = Math.round(((h * 60) + 360) % 360);
   const s = clamp(d ? d / (1 - Math.abs(max + min - 1)) : 0, .45, .85) * 100;
-  return `hsl(${h} ${Math.round(s)}% 62%)`;
+  const hsl = (hue, light) => `hsl(${(hue + 360) % 360} ${Math.round(s)}% ${light}%)`;
+  return { accent: hsl(h, 62), b1: hsl(h, 52), b2: hsl(h + 55, 56), b3: hsl(h - 50, 58) };
 }
 
 /* ---------- spectrum ---------- */
@@ -442,7 +485,7 @@ function renderQueue() {
     const t = trackOf(id);
     if (!t) return "";
     return `<div class="q-row${i === P.pos ? " now" : ""}" draggable="true" data-i="${i}">
-      <span class="q-cover"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
+      <span class="q-cover${t.cover_url ? "" : " ph"}" style="--h:${hueOf(t)}"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
       <span class="q-t"><b>${esc(t.title)}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
       <button class="icon-btn q-rm" type="button" data-rm="${i}" aria-label="Quitar de la cola" title="Quitar de la cola"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;
   }).join("");
@@ -656,7 +699,7 @@ function visibleTracks() {
   return list.sort(by);
 }
 
-const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M5 6h11M5 12h11M5 18h6M18 14v6M15 17h6"/></svg>';
+const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h6M4 18h6"/><path d="M14 11.5v9l7-4.5z" class="fill"/></svg>';
 const ICON_ADD = '<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
 
 function renderLibrary() {
@@ -678,7 +721,7 @@ function renderLibrary() {
   const playing = current() && current().id;
   box.innerHTML = list.map((t, i) => `<div class="lib-row${t.id === playing ? " playing" : ""}" role="listitem" tabindex="0" data-id="${esc(t.id)}" style="--i:${i}">
     <span class="lib-n">${i + 1}</span>
-    <span class="lib-cover"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
+    <span class="lib-cover${t.cover_url ? "" : " ph"}" style="--h:${hueOf(t)}"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
     <span class="lib-t"><b>${esc(t.title)}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
     <span class="lib-album muted">${esc(t.album)}</span>
     <span class="lib-act"><button type="button" class="icon-btn" data-act="next" title="Reproducir a continuación" aria-label="Reproducir a continuación">${ICON_NEXT}</button>
@@ -712,7 +755,7 @@ function wireLibrary() {
     const row = ev.target.closest(".lib-row");
     if (!row) return;
     const act = ev.target.closest("[data-act]");
-    if (act) return enqueue(row.dataset.id, act.dataset.act === "next");
+    if (act) return enqueue(row.dataset.id, act.dataset.act === "next", $(".lib-cover", row));
     play(row.dataset.id);
   });
   list.addEventListener("keydown", ev => {
@@ -723,7 +766,46 @@ function wireLibrary() {
   $("#lib-shuffle").onclick = () => { P.shuffle = true; const ids = visibleTracks().map(t => t.id); playList(ids, ids[Math.floor(Math.random() * ids.length)]); render(); };
   let timer = 0;
   $("#lib-q").oninput = ev => { clearTimeout(timer); timer = setTimeout(() => { P.q = ev.target.value; renderLibrary(); }, 120); };
+  dropdown($("#lib-sort"));
   $("#lib-sort").onchange = ev => { P.sort = ev.target.value; renderLibrary(); };
+}
+
+/* A <select> opens the system's list (white, out of tune with the window): this one keeps the real select hidden and
+   draws a button and a list of its own that follow the window's look. The select still holds the value and fires `change`. */
+function dropdown(select) {
+  const box = document.createElement("div");
+  box.className = "dd";
+  box.innerHTML = `<button type="button" class="dd-btn" aria-haspopup="listbox" aria-expanded="false"><span></span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div class="dd-list hidden" role="listbox"></div>`;
+  select.hidden = true;
+  select.after(box);
+  const btn = $(".dd-btn", box), list = $(".dd-list", box);
+  const label = () => { $("span", btn).textContent = select.options[select.selectedIndex].textContent; };
+  const close = () => { list.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); };
+  const open = () => {
+    list.innerHTML = [...select.options].map(o => `<button type="button" role="option" class="dd-opt" data-v="${esc(o.value)}" aria-selected="${o.value === select.value}">
+      <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${esc(o.textContent)}</button>`).join("");
+    list.classList.remove("hidden"); btn.setAttribute("aria-expanded", "true");
+    ($('[aria-selected="true"]', list) || $(".dd-opt", list)).focus();
+  };
+  btn.onclick = ev => { ev.stopPropagation(); list.classList.contains("hidden") ? open() : close(); };
+  list.onclick = ev => {
+    const opt = ev.target.closest(".dd-opt");
+    if (!opt) return;
+    select.value = opt.dataset.v; label(); close(); btn.focus();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  list.onkeydown = ev => {
+    const opts = $$(".dd-opt", list), at = opts.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") opts[(at + 1) % opts.length].focus();
+    else if (ev.key === "ArrowUp") opts[(at - 1 + opts.length) % opts.length].focus();
+    else if (ev.key === "Escape") { close(); btn.focus(); }
+    else if (ev.key === "Tab") close();
+    else return;
+    ev.preventDefault(); ev.stopPropagation();
+  };
+  document.addEventListener("click", ev => { if (!box.contains(ev.target)) close(); });
+  label();
 }
 
 /* ---------- keys ---------- */

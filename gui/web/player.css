@@ -1,11 +1,48 @@
 /* Player: the bar that stays at the bottom, the library, the queue and the equalizer. Same curves and tokens as style.css.
    --pc is the colour taken from the cover of the song that plays (it eases to the next one). */
 @property --pc { syntax: "<color>"; inherits: true; initial-value: #b5ef4a; }
-#app { --pc: #b5ef4a; transition: --pc 700ms ease; }
+@property --blob1 { syntax: "<color>"; inherits: true; initial-value: #46b82a; }
+@property --blob2 { syntax: "<color>"; inherits: true; initial-value: #7a3cff; }
+@property --blob3 { syntax: "<color>"; inherits: true; initial-value: #ff4f8b; }
+#app { --pc: #b5ef4a; transition: --pc 700ms ease, --blob1 1100ms ease, --blob2 1100ms ease, --blob3 1100ms ease; }
 
 #main { display: flex; flex-direction: column; }
 body.has-player #toasts { bottom: 104px; }
-.view { flex: 1; min-height: 0; height: auto; }
+.view { position: relative; z-index: 1; flex: 1; min-height: 0; height: auto; }
+
+/* ---------- background: its three blobs take the colours of the song that plays ---------- */
+#app { --a1: 50%; --a2: 36%; --a3: 26%; }
+#app.has-player { --a2: 58%; --a3: 52%; }      /* with a song the far side of the window shows its colour too */
+.bg .b1 { background: radial-gradient(closest-side, color-mix(in srgb, var(--blob1) var(--a1), transparent), transparent); }
+.bg .b2 { background: radial-gradient(closest-side, color-mix(in srgb, var(--blob2) var(--a2), transparent), transparent); }
+.bg .b3 { left: auto; right: -140px; bottom: -430px; background: radial-gradient(closest-side, color-mix(in srgb, var(--blob3) var(--a3), transparent), transparent); }
+
+/* ---------- the vinyl: one for the whole window, with the cover of the song as its label ---------- */
+.vinyl { transition: opacity var(--t-slow) var(--ease-out); }
+#vinyl img { position: absolute; inset: 34%; width: 32%; height: 32%; border-radius: 50%; object-fit: cover; }
+#app:not([data-view="home"]) .vinyl { opacity: .2; }       /* behind the lists it only decorates */
+#app.has-player:not(.audio-on) .vinyl { animation-play-state: paused; }   /* a paused song stops the disc */
+
+/* ---------- covers without a picture: a gradient of their own ---------- */
+.ph { background: linear-gradient(145deg, hsl(var(--h, 120) 52% 44%), hsl(calc(var(--h, 120) + 48) 58% 22%)); }
+.ph .initial { color: rgba(255, 255, 255, .94); text-shadow: 0 1px 8px rgba(0, 0, 0, .35); }
+.lib-act path.fill { fill: currentColor; }
+.lib-act .icon-btn:hover { color: var(--pc); }
+
+/* ---------- own drop-down list (instead of the system's white one) ---------- */
+.dd { position: relative; }
+.dd-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 12px 0 18px; border-radius: 99px; line-height: 1;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); transition: border-color var(--t-fast) ease, background var(--t-fast) ease; }
+.dd-btn svg { width: 16px; height: 16px; color: var(--muted); transition: transform var(--t-med) var(--ease-out); }
+.dd-btn[aria-expanded="true"] { border-color: var(--pc); }
+.dd-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.dd-list { position: absolute; right: 0; top: calc(100% + 8px); z-index: 12; min-width: 100%; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: rgba(14, 19, 15, .96); border: 1px solid var(--glass-line); border-radius: 14px; box-shadow: var(--shadow); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  transform-origin: top right; animation: panel-in var(--t-med) var(--ease-out) both; }
+.dd-opt { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; white-space: nowrap; }
+.dd-opt svg { width: 16px; height: 16px; color: var(--pc); opacity: 0; }
+.dd-opt[aria-selected="true"] svg { opacity: 1; }
+.dd-opt:hover, .dd-opt:focus-visible { background: var(--glass-2); outline: 0; }
 
 /* ---------- the bar ---------- */
 .player {
