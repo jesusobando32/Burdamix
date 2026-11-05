@@ -482,7 +482,7 @@ function easeLevels(store, key, n, data, live) {
   return { lv, moving };
 }
 
-const viz = { store: {}, spring: null, pulse: 0, K: .3, D: .66, mem: .1, size: .28, reach: 52 };   // K/D: how stiff and how damped the pulse spring is
+const viz = { store: {}, spring: null, pulse: 0, K: .1, D: .84, soft: .2, mem: .1, size: .13, reach: 22 };   // the pulse: spring stiffness and damping, how soft the target is, how far the halos move
 
 /* The little bars in the player bar: from the middle line up and down; as many as fit in the width. */
 function drawSmall(data, live) {
@@ -528,29 +528,28 @@ function drawBig(data, live) {
   return false;
 }
 
-/* The halos bounce with the music. A kick (the bass jumping above its own recent average) gives the spring a shove; the
-   spring is a little loose, so the halos overshoot and settle back instead of just swelling. Each halo is pushed in its own
-   direction and the vinyl breathes with them. */
+/* The halos sway with the music. A kick (the bass jumping above its own recent average) moves a soft spring: the target is
+   smoothed first and the spring is well damped, so the halos swell and settle gently (a hint of overshoot, no jolt). Each halo
+   leans in its own direction. The vinyl does not take part: it only turns. */
 const BLOB_PUSH = [[-1, -.8], [1, -.3], [.4, 1]];     // where each of the three halos leans on a hit (x, y)
 function drawPulse(data, live) {
-  const spring = viz.spring || (viz.spring = { x: 0, v: 0, avg: 0, peak: .05 });
+  const spring = viz.spring || (viz.spring = { x: 0, v: 0, t: 0, avg: 0, peak: .05 });
   const bass = live ? (data[0] + data[1] + data[2]) / 765 : 0;      // up to ~280 Hz: kick and bass line
   // A hit is the bass rising above what it was a moment ago, judged against the biggest recent rise: loud and compressed music
   // (bass always near the top) and quiet music both give hits that fill the range.
   const rise = live ? Math.max(0, bass - spring.avg) : 0;
   spring.avg += (bass - spring.avg) * viz.mem;
   spring.peak = Math.max(rise, spring.peak * .99, .03);
-  const target = live ? Math.min(1, rise / spring.peak) : 0;
-  spring.v = (spring.v + (target - spring.x) * viz.K) * viz.D;
+  spring.t += ((live ? Math.min(1, rise / spring.peak) : 0) - spring.t) * viz.soft;     // no sudden jumps of the target
+  spring.v = (spring.v + (spring.t - spring.x) * viz.K) * viz.D;
   spring.x += spring.v;
-  const x = Math.abs(spring.x) < .003 && Math.abs(spring.v) < .003 ? 0 : spring.x;
-  if (!x) spring.x = spring.v = 0;
+  const x = Math.abs(spring.x) < .003 && Math.abs(spring.v) < .003 && spring.t < .003 ? 0 : spring.x;
+  if (!x) spring.x = spring.v = spring.t = 0;
   $$(".bg i:not(.glow)").forEach((blob, i) => {
     const [dx, dy] = BLOB_PUSH[i % BLOB_PUSH.length];
     blob.style.scale = x ? String(1 + x * (viz.size + i * .06)) : "";
     blob.style.translate = x ? `${dx * x * viz.reach}px ${dy * x * viz.reach}px` : "";
   });
-  $("#vinyl").style.scale = x ? String(1 + x * .07) : "";
   viz.pulse = x;               // read by the tests
   return x !== 0;
 }
@@ -574,7 +573,6 @@ function setViz(mode) {
   const canvas = $("#viz");
   canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
   $$(".bg i:not(.glow)").forEach(blob => { blob.style.scale = ""; blob.style.translate = ""; });
-  $("#vinyl").style.scale = "";
   viz.store.big = null; viz.spring = null;
   $$("#viz-chips [data-viz]").forEach(b => b.classList.toggle("on", b.dataset.viz === P.viz));
   loopSpectrum(); saveSoon();
