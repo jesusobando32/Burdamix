@@ -6,6 +6,7 @@
 <title>Burdamix</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="player.css">
+<link rel="stylesheet" href="crate.css">
 </head>
 <body>
 <div id="app" class="sidebar-open">
@@ -140,6 +141,12 @@
             </select>
           </div>
         </header>
+        <div class="seg lib-tabs" id="lib-tabs" role="tablist" aria-label="Secciones de la biblioteca"><i class="seg-ind" id="tab-ind" aria-hidden="true"></i></div>
+        <div id="crate-box" class="crate-box hidden">
+          <div class="crate" id="crate" tabindex="0" role="listbox" aria-label="Discos"></div>
+          <p class="crate-hint muted small">Pasa los discos con la rueda del ratón, las flechas o arrastrando</p>
+        </div>
+        <div id="lib-detail" class="lib-detail hidden"></div>
         <div id="lib-list" class="lib-list" role="list"></div>
         <div id="lib-empty" class="panel with-ic empty hidden"></div>
       </div>
@@ -361,6 +368,7 @@
 <script src="fx.js"></script>
 <script src="tags.js"></script>
 <script src="player.js"></script>
+<script src="crate.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

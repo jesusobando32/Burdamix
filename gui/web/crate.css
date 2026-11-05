@@ -1,0 +1,69 @@
+/* The library as collections: tabs, the crate of record sleeves, and the page of an album or a playlist.
+   Same curves and tokens as style.css; --pc is the colour of the song that plays. */
+
+.lib-tabs { width: fit-content; max-width: 100%; margin: 4px 0 14px; overflow-x: auto; scrollbar-width: none; }
+.lib-tabs button { white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.tab-n { font-size: 11.5px; padding: 1px 7px; border-radius: 99px; background: rgba(255, 255, 255, .08); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lib-tabs button.on .tab-n { background: rgba(0, 0, 0, .16); color: var(--accent-ink); }
+
+/* ---------- the crate: records standing in a row, seen from above ---------- */
+.crate-box { --w: clamp(190px, 31vh, 280px); margin: 0 -28px; padding-bottom: 20px; }
+.crate {
+  display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; outline: 0;
+  padding: 40px calc(50% - var(--w) / 2 + var(--w) * .15) 22px;      /* the first and the last sleeve stand in the middle */ perspective: 1100px; perspective-origin: 50% 35%;
+  scroll-snap-type: x proximity; cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.crate::-webkit-scrollbar { display: none; }
+.crate.dragging { cursor: grabbing; scroll-snap-type: none; }
+.crate:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 18px; }
+.crate-item {
+  --d: 0; --a: 0;
+  flex: none; width: var(--w); margin: 0 calc(var(--w) * -.15); padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; scroll-snap-align: center;
+  display: flex; flex-direction: column; gap: 3px; transform-style: preserve-3d; position: relative;
+  transform: translateX(calc(var(--d) * 14px)) translateZ(calc(var(--a) * -90px)) rotateY(calc(var(--d) * -30deg)) scale(calc(1 - var(--a) * .04));
+  filter: brightness(calc(1 - var(--a) * .2));          /* the ones further away are dimmer, never see-through */
+}
+.crate-item .sleeve { display: block; border-radius: 8px; box-shadow: 0 14px 30px rgba(0, 0, 0, .5); }
+.crate-item .sleeve img, .crate-item .sleeve .cover-ph, .crate-item .sleeve .mosaic { display: block; width: 100%; aspect-ratio: 1; border-radius: 8px; object-fit: cover; background: var(--surface-2); margin: 0; }
+.crate-item b { margin-top: 10px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: calc(1 - var(--a) * .45); }
+.crate-item > .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: calc(1 - var(--a) * .6); }
+.crate-item.focus .disc { transform: translateX(34%) rotate(40deg); }          /* the record in the middle slides out of its sleeve */
+.crate-item.playing .disc { translate: 8% 0; }
+.crate-item:focus-visible { outline: 0; }
+.crate-item:focus-visible .sleeve { box-shadow: 0 0 0 2px var(--pc), 0 14px 30px rgba(0, 0, 0, .5); }
+.crate-hint { text-align: center; margin: 4px 0 0; }
+.cover-ph { display: grid; place-items: center; }
+.cover-ph .initial { font-size: 34px; }
+.crate-item .sleeve .mosaic, .sleeve.big .mosaic, .mosaic { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; overflow: hidden; background: #0c0f0d; }
+.mosaic img, .mosaic .cover-ph, .crate-item .sleeve .mosaic img, .crate-item .sleeve .mosaic .cover-ph, .sleeve.big .mosaic img, .sleeve.big .mosaic .cover-ph
+  { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0 !important; object-fit: cover; }
+.mosaic .cover-ph .initial { font-size: 22px; }
+
+/* ---------- the page of an album or a playlist ---------- */
+.lib-detail { padding: 6px 0 14px; animation: rise var(--t-slow) var(--ease-out) both; }
+.lib-detail .back { margin-bottom: 12px; }
+.detail-top { display: flex; gap: 34px; align-items: flex-end; margin-bottom: 18px; flex-wrap: wrap; }
+.detail-art { width: 310px; flex: none; padding-right: 84px; }
+.sleeve.big { border-radius: 10px; box-shadow: 0 22px 44px rgba(0, 0, 0, .55); }
+.sleeve.big img, .sleeve.big .cover-ph, .sleeve.big .mosaic { display: block; width: 100%; aspect-ratio: 1; border-radius: 10px; object-fit: cover; margin: 0; background: var(--surface-2); }
+.sleeve.big .cover-ph .initial { font-size: 70px; }
+.sleeve.big .mosaic .cover-ph .initial { font-size: 40px; }
+.sleeve.big .disc { translate: 36% 0; animation: vinyl-spin 14s linear infinite; animation-play-state: paused; box-shadow: 6px 8px 22px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .09); }
+#app.audio-on .sleeve.big .disc { animation-play-state: running; }
+.detail-info { min-width: 0; flex: 1; padding-bottom: 6px; }
+.detail-info .kind { display: block; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text); margin-bottom: 4px; }
+.detail-info h2 { font-size: 34px; letter-spacing: -.02em; line-height: 1.1; margin: 0 0 6px; text-wrap: balance; }
+.detail-info p { margin: 0 0 16px; }
+
+@media (max-width: 760px) {
+  .crate-box { margin: 0 -14px; }
+  .crate-box { --w: 170px; }
+  .detail-art { width: 190px; padding-right: 52px; }
+  .detail-info h2 { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sleeve.big .disc { animation: none; }
+}
+
+/* the mosaic of a playlist stays a 2x2 grid also in its page (this must come after the rules that make covers blocks) */
+.sleeve.big .mosaic { display: grid; }

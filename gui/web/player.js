@@ -864,7 +864,7 @@ function paintCrossfade() {
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, viz: P.viz,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, viz: P.viz, tab: L.tab,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
@@ -883,6 +883,7 @@ function restore(saved) {
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
   P.viz = VIZ_MODES.includes(saved.viz) ? saved.viz : "off";
+  if (TABS.some(([id]) => id === saved.tab)) L.tab = saved.tab;      // the section of the library you were in
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
   if (saved.eq && typeof saved.eq === "object") {
     P.eq.on = saved.eq.on !== false; P.eq.bands = bands(saved.eq.bands) || [...FLAT];
@@ -912,9 +913,13 @@ const durationText = secs => {
   return h ? `${h} h ${m} min` : `${m} min`;
 };
 
+/* The songs the list shows: those of the tab (or of the open album or playlist, crate.js), filtered by the search. An album or a
+   playlist keeps its own order; the other lists follow the sort chosen. */
 function visibleTracks() {
   const q = P.q.trim().toLocaleLowerCase();
-  const list = q ? P.tracks.filter(t => `${t.title} ${t.artist} ${t.album}`.toLocaleLowerCase().includes(q)) : [...P.tracks];
+  const base = baseTracks();
+  const list = q ? base.filter(t => `${t.title} ${t.artist} ${t.album}`.toLocaleLowerCase().includes(q)) : [...base];
+  if (L.open) return list;
   const by = {
     artist: (a, b) => (!a.artist - !b.artist) || a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title),   // songs without artist go last
     title: (a, b) => a.title.localeCompare(b.title),
@@ -927,19 +932,16 @@ const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h6M4 18h6"/><pa
 const ICON_TAG = '<svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
 const ICON_ADD ='<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
 
-function renderLibrary() {
+function renderSongList() {
   const list = visibleTracks(), box = $("#lib-list"), empty = $("#lib-empty");
-  const total = P.tracks.reduce((s, t) => s + t.duration, 0);
-  $("#lib-count").textContent = P.tracks.length
-    ? `${plural(P.tracks.length, "canción", "canciones")}${total ? " · " + durationText(total) : ""}${P.q && list.length !== P.tracks.length ? ` · ${list.length} coinciden` : ""}`
-    : "";
   $$("#lib-play-all, #lib-shuffle").forEach(b => b.disabled = !list.length);
   empty.classList.toggle("hidden", !!list.length);
   if (!list.length) {
     box.innerHTML = "";
-    empty.innerHTML = P.tracks.length
-      ? `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>Nada coincide con «${esc(P.q)}»</h3><p class="muted">Prueba con otra parte del título, el artista o el álbum.</p></div>`
-      : `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>Aún no hay canciones en tu biblioteca</h3><p class="muted">Aquí aparece todo lo que descargues en tu carpeta de descargas, listo para escuchar.</p><div class="btn-row"><button class="btn primary" id="lib-go-home" type="button">Descargar canciones</button></div></div>`;
+    const none = !baseTracks().length;
+    empty.innerHTML = none
+      ? `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>${L.tab === "likes" ? "Todavía no te gusta ninguna canción" : "Aún no hay canciones en tu biblioteca"}</h3><p class="muted">${L.tab === "likes" ? "Las canciones que bajaste como «Me gusta» de Spotify aparecen aquí." : "Aquí aparece todo lo que descargues en tu carpeta de descargas, listo para escuchar."}</p><div class="btn-row"><button class="btn primary" id="lib-go-home" type="button">Descargar canciones</button></div></div>`
+      : `<div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>Nada coincide con «${esc(P.q)}»</h3><p class="muted">Prueba con otra parte del título, el artista o el álbum.</p></div>`;
     const go = $("#lib-go-home"); if (go) go.onclick = () => show("home");
     return;
   }
@@ -1205,7 +1207,7 @@ const Player = {
     P.wired = true;
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
-    wireBar(); wireQueue(); wireLibrary(); wireKeys();
+    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireKeys();
     setViz(P.viz);
     setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
@@ -1233,17 +1235,31 @@ function demoPlayerApi(art) {
     }
     return URL.createObjectURL(new Blob([data], { type: "audio/wav" }));
   };
-  const names = [["Blinding Lights", "The Weeknd", "After Hours"], ["Save Your Tears", "The Weeknd", "After Hours"], ["Volando", "Mora", "MICRODOSIS"],
-    ["Starboy", "The Weeknd", "Starboy"], ["Cabernet", "Mora", "Cabernet"], ["Sin título.mp3", "", ""]];
-  const colors = [["#7b2d26", "#f0a500"], ["#134e5e", "#71b280"], ["#3a1c71", "#d76d77"], ["#1f4037", "#99f2c8"], ["#42275a", "#734b6d"], ["#333", "#666"]];
   const scales = [[220, 277, 330, 277], [196, 247, 294, 247], [262, 330, 392, 330], [174, 220, 262, 220], [233, 294, 349, 294], [247, 311, 370, 311]];
+  const albums = [["After Hours", "The Weeknd"], ["MICRODOSIS", "Mora"], ["Starboy", "The Weeknd"], ["Cabernet", "Mora"], ["Hunting High and Low", "a-ha"],
+    ["Back In Black", "AC/DC"], ["Slippery When Wet", "Bon Jovi"], ["The Wall", "Pink Floyd"], ["RADIO VENEZUELA", "Chino & Nacho"], ["Dream On", "Aerosmith"],
+    ["Paranoid", "Black Sabbath"], ["Pa' Mi Gente", "Varios artistas"]];
+  const playlists = [["Rock", ["Thunderstruck", "Crazy", "Paranoid", "Hells Bells", "Highway to Hell", "Livin' On A Prayer"]],
+    ["Para correr", ["Blinding Lights", "Take On Me", "Eye of the Tiger", "Stronger", "Levitating"]], ["Noche", ["Volando", "Cabernet", "Sin Miedo", "Luna"]]];
+  const cover = seed => art(`hsl(${seed * 47 % 360} 55% 36%)`, `hsl(${(seed * 47 + 55) % 360} 65% 60%)`);
   let tracks = null, saved = {};
+  const tones = [], toneFor = i => tones[i] || (tones[i] = tone(scales[i], 24));      // six sounds shared by all the demo songs
+  const makeTracks = () => {
+    const list = []; let n = 0;
+    const add = (title, artist, album, kind, group, number, seed) => {
+      list.push({ id: "demo" + n, title, artist, album, duration: 24, cover: true, complete: n % 3 !== 0, number, disc: 1, kind, group,
+        added: 5000 - n, url: toneFor(n % 6), cover_url: cover(seed) });
+      n++;
+    };
+    albums.forEach(([album, artist], a) => [1, 2, 3].forEach(k => add(`${album} · pista ${k}`, artist, album, "album", album, k, a + 1)));
+    playlists.forEach(([name, songs], p) => songs.forEach((title, k) => add(title, "Varios artistas", "", "playlist", name, k + 1, 20 + p * 5 + k)));
+    ["Blinding Lights", "Save Your Tears", "Volando", "Mala Mía", "Sin Miedo"].forEach((title, k) => add(k < 2 ? `After Hours · pista ${k + 1}` : title, k < 2 ? "The Weeknd" : "Mora", "", "liked", "", 0, 40 + k));
+    ["Starboy", "Sin título"].forEach((title, k) => add(title, k ? "" : "The Weeknd", "", "track", "", 0, 50 + k));
+    return list;
+  };
   return {
     library_list: async () => {
-      if (!tracks) tracks = names.map(([title, artist, album], i) => ({
-        id: "demo" + i, title, artist, album, duration: 24, cover: i < 5, complete: i % 2 === 0, added: 1000 - i,
-        url: tone(scales[i], 24), cover_url: i < 5 ? art(...colors[i]) : "",
-      }));
+      if (!tracks) tracks = makeTracks();
       return { tracks };
     },
     library_delete: async ids => {

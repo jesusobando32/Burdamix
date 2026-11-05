@@ -31,6 +31,21 @@ def _from_file_name(path):
     return (title.strip(), artist.strip()) if separator and title.strip() and artist.strip() else (stem, "")
 
 
+def _place(root, path):
+    """Where a file is in the downloads folder, as the downloader lays it out: albums/<album>/, playlists/<playlist>/, liked/ and
+    tracks/. Only a way of grouping: `kind` says which sort of place, `group` the name of the album or playlist (else empty).
+    A file straight into albums/ or playlists/ belongs to no album or playlist."""
+    parts = os.path.relpath(path, root).split(os.sep)
+    first = parts[0].casefold()
+    if first in ("albums", "playlists") and len(parts) >= 3:
+        return {"kind": "album" if first == "albums" else "playlist", "group": parts[1]}
+    if first == "liked" and len(parts) >= 2:
+        return {"kind": "liked", "group": ""}
+    if first == "tracks" and len(parts) >= 2:
+        return {"kind": "track", "group": ""}
+    return {"kind": "other", "group": parts[0] if len(parts) > 1 and first not in ("albums", "playlists") else ""}
+
+
 class Library:
     def __init__(self):
         self._paths = {}
@@ -60,19 +75,20 @@ class Library:
                 kept = known.get(path)
                 if kept and kept[0] == stamp:
                     fresh[path] = kept
-                    found.append(kept[1])
+                    found.append({**kept[1], **_place(folder, path)})
                     continue
-                title, artist, album, duration, cover, complete = *_from_file_name(path), "", 0, False, False
+                title, artist, album, duration, cover, complete, number, disc = *_from_file_name(path), "", 0, False, False, 0, 0
                 try:
                     tags = tagwriter.read_tags(path)
                     title, artist, album = tags.title or title, tags.artist or artist, tags.album
                     duration, cover, complete = int(round(tags.duration)), tags.has_cover, tagwriter.is_complete(tags)
+                    number, disc = tags.track, tags.disc
                 except (MetadataError, UnsupportedAudioFormat):
                     pass
                 track = {"id": self._id(path), "path": path, "title": title, "artist": artist, "album": album,
-                         "duration": duration, "cover": cover, "complete": complete, "added": stat.st_mtime}
+                         "duration": duration, "cover": cover, "complete": complete, "number": number, "disc": disc, "added": stat.st_mtime}
                 fresh[path] = (stamp, track)
-                found.append(track)
+                found.append({**track, **_place(folder, path)})
         found.sort(key=lambda t: (t["artist"].casefold(), t["title"].casefold()))
         with self._lock:
             self._paths = {t["id"]: t["path"] for t in found}
