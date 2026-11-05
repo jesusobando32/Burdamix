@@ -97,7 +97,18 @@ async function refreshState() {
 /* ---------- home: paste a link ---------- */
 function setHero(view, compact) {
   $(view === "home" ? "#home-hero" : "#fav-hero").classList.toggle("compact", compact);
-  if (view === "home") $("#home-dock").classList.toggle("has-results", compact);
+  if (view === "home") { $("#home-dock").classList.toggle("has-results", compact); syncClear(); }
+}
+
+/* The clear button shows while there is something to clear: text typed, or results on screen. */
+function syncClear() {
+  $("#clear").classList.toggle("hidden", !($("#link").value || $("#home-dock").classList.contains("has-results")));
+}
+
+/* Back to the clean start (big logo, the record turning, nothing searched). A download in progress is not interrupted. */
+function clearSearch() {
+  if (S.running) return toast("Hay una descarga en curso. Espera a que termine o cancélala.", true);
+  newSearch("home");
 }
 
 function showLoading(view, text) {
@@ -414,19 +425,19 @@ function paintBar() {
       <button class="btn" id="again">Otra búsqueda</button><button class="btn" id="open">Abrir carpeta</button>
       ${k.ok ? '<button class="btn primary" id="to-library">Ver en la biblioteca</button>' : ""}`;
     $("#open").onclick = () => call("open_folder", c.data.folder);
-    $("#again").onclick = newSearch;
+    $("#again").onclick = () => newSearch();
     const toLibrary = $("#to-library");
     if (toLibrary) toLibrary.onclick = () => show("library");
   }
 }
 
-function newSearch() {
-  const view = S.cur ? S.cur.view : "home";
-  S.cur = null;
+function newSearch(view = S.cur ? S.cur.view : "home") {
+  if (S.cur && S.cur.view === view) S.cur = null;
   S.stack = [];
+  S.retry = null;
   $(view === "home" ? "#home-results" : "#fav-results").innerHTML = "";
   setHero(view, false);
-  if (view === "home") { $("#link").value = ""; $("#link").focus(); }
+  if (view === "home") { $("#link").value = ""; $("#link").focus(); syncClear(); }
 }
 
 function paintSummary() {
@@ -683,7 +694,11 @@ function demoApi() {
 function init() {
   $("#app").dataset.view = S.view;
   Player.init();
-  $$(".nav").forEach(n => n.onclick = () => show(n.dataset.view));
+  // a second click on the section you are already in takes you back to its clean start
+  $$(".nav").forEach(n => n.onclick = () => (n.dataset.view === "home" && S.view === "home" && (S.cur || $("#link").value)) ? clearSearch() : show(n.dataset.view));
+  $("#clear").onclick = clearSearch;
+  $("#link").addEventListener("input", syncClear);
+  $("#link").addEventListener("keydown", ev => { if (ev.key === "Escape" && ($("#link").value || S.cur)) { ev.preventDefault(); clearSearch(); } });
   $("#toggle").onclick = () => setSidebar(!$("#app").classList.contains("sidebar-open"));
   $("#toggle2").onclick = () => setSidebar(true);
   $("#conn").onclick = () => show("tutorial");

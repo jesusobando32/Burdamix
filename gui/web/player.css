@@ -320,11 +320,11 @@ body.has-player #toasts { bottom: 104px; }
 .action-bar { background: color-mix(in srgb, #0d110e 92%, transparent); }     /* the rows that scroll beneath it must not show through */
 
 /* ---------- the tonearm: its needle follows how far the song has gone, from the outer groove to the inner one ---------- */
-/* Geometry (px, from the window's top right): the record is 360 wide with its centre 140 from the right edge and 208 from the
-   top; the pivot is 70 from the right and 34 from the top; the arm is 250 long. Pointing at 153° the needle sits on the outer
-   groove (164 from the centre), at 121.8° on the inner one (72), and at 170° it is clear of the record. */
-.vinyl { right: -40px; }
-.tonearm { position: absolute; z-index: 0; right: 70px; top: 34px; width: 0; height: 0; pointer-events: none; transition: opacity var(--t-slow) var(--ease-out); }
+/* Geometry (px, from the window's top right): the record is 360 wide, tucked 90 beyond the right edge, so its centre is 90 from
+   it and 208 from the top; the pivot is 20 from the right and 34 from the top (its base is cut a little by the edge); the arm is
+   250 long. Pointing at 153° the needle sits on the outer groove (164 from the centre), at 121.8° on the inner one (72), and at
+   170° it is clear of the record. */
+.tonearm { position: absolute; z-index: 0; right: 20px; top: 34px; width: 0; height: 0; pointer-events: none; transition: opacity var(--t-slow) var(--ease-out); }
 .ta-base { position: absolute; left: -25px; top: -25px; width: 50px; height: 50px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #50554f, #1a1d1b 72%); box-shadow: 0 8px 18px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .07); }
 .ta-base::after { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c7ccc8, #6d746f); }

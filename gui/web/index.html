@@ -21,9 +21,9 @@
 
     <nav>
       <i class="nav-ind" id="nav-ind" aria-hidden="true"></i>
-      <button class="nav active" data-view="home" title="Pegar enlace">
+      <button class="nav active" data-view="home" title="Descargar canciones">
         <svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
-        <span>Pegar enlace</span>
+        <span>Descargar canciones</span>
       </button>
       <button class="nav" data-view="favorites" title="Mis favoritos">
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
@@ -69,7 +69,7 @@
       <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
 
-    <!-- Pegar enlace -->
+    <!-- Descargar canciones (escribir el nombre o pegar un enlace) -->
     <section class="view active" id="view-home">
       <div class="scroll" id="home-scroll">
         <div class="hero" id="home-hero">
@@ -82,6 +82,9 @@
       <div class="dock" id="home-dock">
         <form class="composer" id="composer" autocomplete="off">
           <input id="link" type="text" spellcheck="false" placeholder="Escribe canción y artista (badtrip mora) o pega un enlace de Spotify">
+          <button type="button" class="icon-btn hidden" id="clear" title="Limpiar y volver al inicio (Esc)" aria-label="Limpiar y volver al inicio">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
           <button type="button" class="icon-btn" id="paste" title="Pegar del portapapeles" aria-label="Pegar">
             <svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
           </button>

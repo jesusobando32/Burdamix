@@ -36,7 +36,7 @@ Burdamix tiene una ventana con un menú a la izquierda, al estilo de un asistent
 
 | Menú | Qué hace |
 |---|---|
-| **Pegar enlace** | Pegas el enlace de una canción, álbum o playlist; ves la lista con portadas, marcas las que quieres y descargas. El progreso y los errores salen en la misma pantalla. |
+| **Descargar canciones** | Pegas el enlace de una canción, álbum o playlist; ves la lista con portadas, marcas las que quieres y descargas. El progreso y los errores salen en la misma pantalla. |
 | **Mis favoritos** | Tus «Me gusta» más recientes (50, 100, 200, 500, todas o el número que escribas). |
 | **Completar etiquetas** | Elige canciones que ya tengas (o suéltalas en la ventana) y Burdamix escribe en ellas título, artista, álbum, año, género, número de pista y portada. Ver la sección de abajo. |
 | **Tutorial · Iniciar sesión** | Los pasos para conectar el programa con Spotify, con los campos para pegar el Client ID y el Client secret. |

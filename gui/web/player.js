@@ -518,17 +518,29 @@ function extractAccent(track) {
   img.src = track.cover_url;
 }
 
-/* A cover's average can be muddy or nearly black: bring it to a colour that reads on the dark bar. The three blobs of the
-   background take neighbouring hues, so the whole window changes with the song and not just one corner. */
+/* The colours of the window for a cover whose average colour is (r, g, b). The three blobs of the background take neighbouring
+   hues, so the whole window changes with the song and not just one corner.
+   A grey, black or white cover (about a third of a real library) has no hue: it used to be given an arbitrary tint, always
+   saturated, which looked unrelated to the cover (a black one turned the window pink). Now its hue is a cool neutral and the
+   brightness of the cover decides how bright the glow is: dim for a black cover, soft and light for a white one. */
 function tonesOf(r, g, b) {
   r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, light = (max + min) / 2 * 100;
   let h = 0;
   if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   h = Math.round(((h * 60) + 360) % 360);
-  const s = clamp(d ? d / (1 - Math.abs(max + min - 1)) : 0, .45, .85) * 100;
-  const hsl = (hue, light) => `hsl(${(hue + 360) % 360} ${Math.round(s)}% ${light}%)`;
-  return { accent: hsl(h, 62), b1: hsl(h, 52), b2: hsl(h + 55, 56), b3: hsl(h - 50, 58) };
+  const neutral = d < .04;                                           // the hue of a grey means nothing
+  if (neutral) h = 215;
+  const s = neutral ? 7 : Math.round(clamp(d / (1 - Math.abs(max + min - 1)) * 1.35, .12, .85) * 100);
+  const colour = clamp(d / .25, 0, 1);                               // 0 = grey, 1 = a real colour
+  const lit = (ofColour, ofGrey) => Math.round(ofColour * colour + ofGrey * (1 - colour));
+  const hsl = (hue, lightness) => `hsl(${(hue + 360) % 360} ${s}% ${lightness}%)`;
+  return {
+    accent: hsl(h, lit(62, clamp(40 + light * .5, 55, 84))),
+    b1: hsl(h, lit(52, clamp(18 + light * .6, 22, 70))),
+    b2: hsl(h + 55, lit(56, clamp(22 + light * .6, 26, 72))),
+    b3: hsl(h - 50, lit(58, clamp(24 + light * .6, 28, 74))),
+  };
 }
 
 /* ---------- spectrum ---------- */
