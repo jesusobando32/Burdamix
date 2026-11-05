@@ -833,6 +833,33 @@ def test_applying_writes_each_file_renames_on_request_and_keeps_going_after_a_fa
     assert all(rename for _n, rename in tagger_jobs.tagger.applied)
 
 
+def test_a_renamed_file_is_announced_so_that_likes_and_playlists_follow_it(jobs):
+    tagger_jobs, folder = jobs
+    renamed = []
+    tagger_jobs._on_renamed = lambda old, new: renamed.append((os.path.basename(old), os.path.basename(new)))
+    items = [{"path": str(folder / "sure.mp3"), "candidate": info().to_dict()}]
+    assert tagger_jobs.apply(items, rename=True)["ok"]
+    wait_until_idle(tagger_jobs)
+    assert renamed == [("sure.mp3", "The Weeknd - Blinding Lights.mp3")]
+    renamed.clear()
+    assert tagger_jobs.apply(items, rename=False)["ok"]               # no renaming asked: nothing to announce
+    wait_until_idle(tagger_jobs)
+    assert renamed == []
+
+
+def test_a_failure_while_announcing_a_rename_never_breaks_the_writing(jobs):
+    tagger_jobs, folder = jobs
+
+    def boom(old, new):
+        raise RuntimeError("el archivo de colecciones no se pudo escribir")
+    tagger_jobs._on_renamed = boom
+    items = [{"path": str(folder / "sure.mp3"), "candidate": info().to_dict()}]
+    assert tagger_jobs.apply(items, rename=True)["ok"]
+    wait_until_idle(tagger_jobs)
+    finished = [e for e in tagger_jobs.get_events() if e["kind"] == "finished"][0]
+    assert finished["done"] == 1 and finished["failed"] == 0 and finished["error"] is None
+
+
 def test_applying_stops_when_the_internet_goes_away(jobs):
     tagger_jobs, folder = jobs
     tagger_jobs.tagger.apply_plan["sure.mp3"] = MetadataRateLimited("Deezer pide ir más despacio. Espera un minuto e inténtalo de nuevo.")

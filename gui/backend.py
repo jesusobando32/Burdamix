@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import webbrowser
 from urllib.parse import urlparse
 
+import collections_store
 import const
 import downloader
 import library
@@ -28,7 +29,7 @@ from apis.catalog_info import AlbumInfo, ArtistInfo
 from apis.song_info import SongInfo
 from apis.text_search import search_songs
 from apis.text_track import TextTrack
-from apis.youtube import YouTube, SUPPORTED_BROWSERS
+from apis.youtube import YouTube, SUPPORTED_BROWSERS, normalize
 from const import SpotifyAuthType
 from gui.tags_jobs import TagJobs
 from downloader import ADVICE, SpotifyDownloader, friendly_reason, plan_filenames, reason_category, suggests_outdated_ytdlp
@@ -89,7 +90,8 @@ class Api:
         self._player_lock = threading.Lock()
         self._trash = trash.move_to_recycle_bin          # what deletes a song; the tests give it a stand-in
         self._media = library.MediaServer(self._library)   # started with the first library request
-        self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
+        self._collections = collections_store.Collections(os.path.join(const.data_dir(), "collections.json"))   # likes and your playlists
+        self._tags = TagJobs(on_renamed=self._collections.renamed)      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
         self._apply_settings()
 
@@ -184,8 +186,77 @@ class Api:
                 failed.append({"id": track_id, "error": str(error)})
                 continue
             self._library.forget(path)
+            self._collections.forget([path])
             deleted += 1
         return {"ok": True, "deleted": deleted, "failed": failed}
+
+    # --- the songs you like and your playlists ---
+
+    @staticmethod
+    def _identity(item):
+        """What makes two files the same song: the artist and the title, as read from their tags. Without both, a file is only itself."""
+        artist, title = normalize(item.get("artist")), normalize(item.get("title"))
+        return (artist, title) if artist and title else None
+
+    def _liked_ids(self, items):
+        """Liked songs: the files the user liked, those of the liked/ folder (unless the user took the like off), and every other
+        copy of a liked song, so that a song kept as an album file and as a liked file is liked in both."""
+        liked, unliked = self._collections.liked, self._collections.unliked
+        by_key = {collections_store.key(t["path"]): t for t in items}
+        direct = {k for k, t in by_key.items() if k in liked or (t["kind"] == "liked" and k not in unliked)}
+        identities = {self._identity(by_key[k]) for k in direct} - {None}
+        return {t["id"] for k, t in by_key.items() if k in direct or self._identity(t) in identities}
+
+    def collections_get(self):
+        """The ids of the liked songs and the playlists with the ids of their songs (those no longer in the library are left out)."""
+        items = self._library.listing()
+        by_key = {collections_store.key(t["path"]): t["id"] for t in items}
+        playlists = [{"id": p["id"], "name": p["name"], "ids": [by_key[k] for k in p["paths"] if k in by_key]} for p in self._collections.playlists]
+        return {"liked": sorted(self._liked_ids(items)), "playlists": playlists}
+
+    def like_toggle(self, track_id):
+        """Likes the song, or takes the like off all its copies. Answers the new state."""
+        items = self._library.listing()
+        item = next((t for t in items if isinstance(track_id, str) and t["id"] == track_id), None)
+        if item is None:
+            return {"ok": False, "error": "Esa canción ya no está en la biblioteca."}
+        if track_id in self._liked_ids(items):
+            identity = self._identity(item)
+            for t in items:
+                if t["id"] == track_id or (identity and self._identity(t) == identity):
+                    self._collections.unlike(t["path"], remember=t["kind"] == "liked")
+            return {"ok": True, "liked": False}
+        self._collections.like(item["path"])
+        return {"ok": True, "liked": True}
+
+    def _paths_of(self, ids):
+        paths = (self._library.path_of(i) for i in ids if isinstance(i, str)) if isinstance(ids, (list, tuple)) else ()
+        return [p for p in paths if p]
+
+    def _playlist_action(self, action, *args):
+        try:
+            result = action(*args)
+        except collections_store.CollectionsError as error:
+            return {"ok": False, "error": str(error)}
+        return {"ok": True, **({"id": result} if isinstance(result, str) else {})}
+
+    def playlist_create(self, name, ids=None):
+        return self._playlist_action(lambda: self._collections.playlist_create(name, self._paths_of(ids)))
+
+    def playlist_rename(self, playlist_id, name):
+        return self._playlist_action(self._collections.playlist_rename, playlist_id, name)
+
+    def playlist_delete(self, playlist_id):
+        return self._playlist_action(self._collections.playlist_delete, playlist_id)
+
+    def playlist_add(self, playlist_id, ids):
+        return self._playlist_action(self._collections.playlist_add, playlist_id, self._paths_of(ids))
+
+    def playlist_remove(self, playlist_id, track_id):
+        paths = self._paths_of([track_id])
+        if not paths:
+            return {"ok": False, "error": "Esa canción ya no está en la biblioteca."}
+        return self._playlist_action(self._collections.playlist_remove, playlist_id, paths[0])
 
     def library_paths(self, ids):
         """The files behind some songs of the library, to hand them to "Completar etiquetas". The page only knows ids

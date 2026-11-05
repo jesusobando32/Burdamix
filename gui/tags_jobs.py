@@ -18,8 +18,9 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 class TagJobs:
-    def __init__(self, tagger=None):
+    def __init__(self, tagger=None, on_renamed=None):
         self._tagger = tagger
+        self._on_renamed = on_renamed        # called (old path, new path) when writing tags renames a file, so likes and playlists follow it
         self._lock = threading.Lock()
         self._events = []
         self._busy = False
@@ -196,6 +197,11 @@ class TagJobs:
                     self.push("failed", path=path, error=str(error))
                     continue
                 done += 1
+                if result["path"] != path and self._on_renamed:
+                    try:
+                        self._on_renamed(path, result["path"])
+                    except Exception:            # remembering a rename must never make the writing fail
+                        pass
                 self.push("applied", path=path, new_path=result["path"], cover=result["cover"], cover_problem=result.get("cover_problem"), cover_thumb=result.get("cover_thumb"), genre=result["genre"],
                           tags=self._safe_tags(result["path"]))
         except Exception as error:

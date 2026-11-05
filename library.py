@@ -50,6 +50,7 @@ class Library:
     def __init__(self):
         self._paths = {}
         self._known = {}     # path -> ((mtime, size), track): files that did not change are not read again (swapped whole by each scan)
+        self._listing = []   # what the last scan found
         self._lock = threading.Lock()
 
     @staticmethod
@@ -93,13 +94,20 @@ class Library:
         with self._lock:
             self._paths = {t["id"]: t["path"] for t in found}
             self._known = fresh
+            self._listing = found
         return found
+
+    def listing(self):
+        """The songs of the last scan (a copy of the list)."""
+        with self._lock:
+            return list(self._listing)
 
     def forget(self, path):
         """A file that was deleted: it is no longer served nor remembered."""
         with self._lock:
             self._paths = {k: v for k, v in self._paths.items() if v != path}
             self._known.pop(path, None)
+            self._listing = [t for t in self._listing if t["path"] != path]
 
     def path_of(self, track_id):
         with self._lock:
