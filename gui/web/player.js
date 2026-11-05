@@ -33,7 +33,7 @@ const P = {
   shuffle: false, repeat: "off", volume: .8, muted: false, xf: 0,
   eq: { on: true, bands: [...FLAT], preset: "flat" },
   custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
-  seen: new Map(), q: "", sort: "artist", viz: "off", discId: "", swapToken: 0, ready: false, dragging: false, errors: 0,
+  seen: new Map(), q: "", sort: "artist", viz: "off", discId: "", swapToken: 0, armAngle: null, armLifted: true, armBusy: false, ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
 };
@@ -337,7 +337,7 @@ function render() {
   document.body.classList.toggle("has-player", !!track);   // the toasts rise above the bar
   $("#player").classList.toggle("is-playing", playing);
   $("#app").classList.toggle("audio-on", playing);   // the vinyl and the little bars move only while it sounds
-  if (!track) return;
+  if (!track) return paintArm();
   $("#pl-title").textContent = track.title;
   $("#pl-artist").textContent = track.artist || "Artista desconocido";
   $("#pl-play").setAttribute("aria-label", playing ? "Pausa" : "Reproducir");
@@ -375,9 +375,16 @@ async function swapVinyl(apply, first) {
   const token = ++P.swapToken;
   disc.getAnimations().forEach(a => { if (a.id === "swap") a.cancel(); });
   const opacity = parseFloat(getComputedStyle(disc).opacity);
-  if (reduced() || getComputedStyle(disc).display === "none" || opacity < .05) return apply();   // not on screen: just change it
+  if (reduced() || getComputedStyle(disc).display === "none" || opacity < .05) {   // not on screen: just change it
+    apply(); P.armBusy = false; paintArm();
+    return;
+  }
   const run = (keyframes, options) => { const a = disc.animate(keyframes, { id: "swap", ...options }); return a.finished.catch(() => {}); };
-  if (!first) {
+  // The needle goes first: it lifts and swings clear of the record, then the record goes and the next one comes.
+  if (first) { P.armBusy = true; setArm(ARM.rest, 0, true); }
+  else {
+    await armAway();
+    if (token !== P.swapToken) return;
     await run([{ translate: "0 0", scale: "1", opacity }, { translate: "90px -46px", scale: ".9", opacity: 0 }],
               { duration: 340, easing: "cubic-bezier(.5, 0, .9, .45)", fill: "forwards" });
     if (token !== P.swapToken) return;
@@ -386,6 +393,55 @@ async function swapVinyl(apply, first) {
   disc.getAnimations().forEach(a => { if (a.id === "swap") a.cancel(); });
   await run([{ translate: "-30px -80px", scale: "1.08", opacity: 0 }, { translate: "0 0", scale: "1", opacity, offset: .7 }, { translate: "0 0", scale: "1", opacity }],
             { duration: 620, easing: "cubic-bezier(.23, 1, .32, 1)", fill: "backwards" });
+  if (token === P.swapToken) await armBack();      // ...and the needle comes down on the new record, where the song is
+}
+
+/* ---------- the tonearm ---------- */
+const ARM = { out: 153, inn: 121.8, rest: 170, lift: 3 };    // degrees: needle on the outer groove, on the inner one, clear of the record
+const ARM_EASE = "cubic-bezier(.4, 0, .2, 1)";
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function setArm(angle, ms, lifted, ease = "linear") {
+  const arm = $(".ta-arm");
+  P.armAngle = angle; P.armLifted = lifted;
+  arm.style.transition = reduced() || !ms ? "none" : `rotate ${ms}ms ${ease}`;
+  arm.style.rotate = angle + "deg";
+  $("#tonearm").classList.toggle("lifted", lifted);
+}
+
+/* Where the needle belongs now: along the record as far as the song has gone (a little lifted while paused); with nothing
+   loaded it rests clear of the record. */
+function armPlace() {
+  const track = current();
+  if (!track || !P.decks.length) return { angle: ARM.rest, lifted: true };
+  const el = deck().el, dur = isFinite(el.duration) && el.duration > 0 ? el.duration : track.duration || 0;
+  const base = ARM.out - (ARM.out - ARM.inn) * clamp(dur ? (el.currentTime || 0) / dur : 0, 0, 1);
+  return el.paused ? { angle: base + ARM.lift, lifted: true } : { angle: base, lifted: false };
+}
+
+/* Called on every tick: the needle follows the playing time in small steps; when the time jumps (the bar is dragged, a seek) or
+   it lifts or lands (pause, play), it glides there instead of snapping. */
+function paintArm() {
+  if (P.armBusy) return;
+  const { angle, lifted } = armPlace();
+  const jump = Math.abs(angle - (P.armAngle ?? angle)) > 1.2, toggled = lifted !== P.armLifted;
+  if (angle === P.armAngle && !toggled) return;
+  setArm(angle, jump ? 700 : toggled ? 450 : 220, lifted, jump || toggled ? ARM_EASE : "linear");
+}
+
+async function armAway() {
+  P.armBusy = true;
+  setArm(ARM.rest, 380, true, ARM_EASE);
+  await wait(380);
+}
+
+async function armBack() {
+  const { angle, lifted } = armPlace();
+  P.armAngle = null;
+  setArm(angle, 620, lifted, ARM_EASE);
+  await wait(620);
+  P.armBusy = false;
+  paintArm();
 }
 
 function paint() {
@@ -397,6 +453,7 @@ function paint() {
   if (!P.dragging) bar.value = String(Math.min(el.currentTime || 0, dur || 1));
   const shown = P.dragging ? +bar.value : el.currentTime || 0;
   bar.style.setProperty("--p", dur ? (shown / dur * 100) + "%" : "0%");
+  paintArm();
   $("#pl-cur").textContent = fmt(Math.floor(shown));
   $("#pl-dur").textContent = fmt(Math.floor(dur));
 }
@@ -1031,6 +1088,7 @@ const Player = {
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
     wireBar(); wireQueue(); wireLibrary(); wireKeys();
     setViz(P.viz);
+    setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
     if (await loadLibrary()) restoreQueue(await call("get_player"));
     P.ready = true;

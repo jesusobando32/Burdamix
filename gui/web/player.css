@@ -318,3 +318,26 @@ body.has-player #toasts { bottom: 104px; }
 }
 .action-bar { box-shadow: 0 10px 28px rgba(0, 0, 0, .38); }
 .action-bar { background: color-mix(in srgb, #0d110e 92%, transparent); }     /* the rows that scroll beneath it must not show through */
+
+/* ---------- the tonearm: its needle follows how far the song has gone, from the outer groove to the inner one ---------- */
+/* Geometry (px, from the window's top right): the record is 360 wide with its centre 140 from the right edge and 208 from the
+   top; the pivot is 70 from the right and 34 from the top; the arm is 250 long. Pointing at 153° the needle sits on the outer
+   groove (164 from the centre), at 121.8° on the inner one (72), and at 170° it is clear of the record. */
+.vinyl { right: -40px; }
+.tonearm { position: absolute; z-index: 0; right: 70px; top: 34px; width: 0; height: 0; pointer-events: none; transition: opacity var(--t-slow) var(--ease-out); }
+.ta-base { position: absolute; left: -25px; top: -25px; width: 50px; height: 50px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #50554f, #1a1d1b 72%); box-shadow: 0 8px 18px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .07); }
+.ta-base::after { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c7ccc8, #6d746f); }
+.ta-arm { position: absolute; left: 0; top: -5px; width: 250px; height: 10px; transform-origin: 0 50%; rotate: 153deg; transition: rotate 220ms linear; }
+.ta-bar { position: absolute; left: 0; right: 10px; top: 2px; height: 6px; border-radius: 3px; background: linear-gradient(#e3e8e4, #98a09b 52%, #5c625e);
+  box-shadow: 0 6px 9px rgba(0, 0, 0, .4); transition: box-shadow 420ms var(--ease-out); }
+.ta-weight { position: absolute; left: -44px; top: -4px; width: 34px; height: 18px; border-radius: 5px; background: linear-gradient(#3a3f3c, #141715);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, .4), inset 0 0 0 1px rgba(255, 255, 255, .06); transition: box-shadow 420ms var(--ease-out); }
+.ta-head { position: absolute; right: -8px; top: -4px; width: 32px; height: 18px; border-radius: 3px 5px 5px 3px; background: linear-gradient(#32373a, #101213);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .08); transform: rotate(-12deg); transform-origin: 100% 50%; transition: box-shadow 420ms var(--ease-out); }
+.ta-tip { position: absolute; right: -4px; top: 5px; width: 1px; height: 1px; }      /* where the needle touches: the tests measure from here */
+.tonearm.lifted .ta-bar, .tonearm.lifted .ta-head, .tonearm.lifted .ta-weight { box-shadow: 0 16px 20px rgba(0, 0, 0, .34); }   /* lifted off the record: the shadow falls further away */
+#app:not([data-view="home"]) .tonearm { opacity: .22; }
+#app[data-view="home"]:has(#home-hero.compact) .tonearm { opacity: 0; }
+@media (max-width: 760px) { .tonearm { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ta-arm { transition: none !important; } }
