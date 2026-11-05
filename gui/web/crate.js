@@ -8,8 +8,9 @@ const L = { tab: "albums", open: null, groups: { albums: [], playlists: [] }, by
 const TABS = [["albums", "Álbumes"], ["playlists", "Playlists"], ["likes", "Me gusta"], ["songs", "Canciones"]];
 const CRATE_TABS = ["albums", "playlists"];
 
-const norm = text => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const songKey = track => norm(track.artist) + "|" + norm(track.title);          // the same song kept as two files has one key
+const norm = text => String(text || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const songKeys = new WeakMap();                                                  // normalizing is slow: a song's key is worked out once
+const songKey = track => songKeys.get(track) || (songKeys.set(track, norm(track.artist) + "|" + norm(track.title)), songKeys.get(track));   // the same song kept as two files has one key
 
 /* The most repeated value, if at least `share` of the values agree on it. */
 function mostCommon(values, share) {
@@ -53,14 +54,17 @@ function buildGroups() {
    song even if it exists as several files. */
 const isLiked = track => L.liked.has(track.id);
 const KIND_RANK = { album: 0, playlist: 1, track: 2, liked: 3, other: 4 };
+let likedMemo = null;                                    // { tracks, liked, result }: the same answer while neither list has been replaced
 function likedTracks() {
+  if (likedMemo && likedMemo.tracks === P.tracks && likedMemo.liked === L.liked) return likedMemo.result;
   const best = new Map();
   for (const t of P.tracks) {
     if (!isLiked(t)) continue;
     const key = songKey(t), kept = best.get(key);
     if (!kept || KIND_RANK[t.kind] < KIND_RANK[kept.kind]) best.set(key, t);
   }
-  return [...best.values()];
+  likedMemo = { tracks: P.tracks, liked: L.liked, result: [...best.values()] };
+  return likedMemo.result;
 }
 
 /* The songs the list below the tabs shows (before the search): those of the open album or playlist, the liked ones, or all. */
@@ -286,7 +290,7 @@ async function refreshCollections() {
 /* Hearts: the program side decides what changes (a song kept as two files is liked in both). */
 async function toggleLike(id, button) {
   const result = await call("like_toggle", id);
-  if (!result.ok) return toast(result.error || "No pude cambiarlo.", true);
+  if (!result || !result.ok) return toast((result && result.error) || "No pude cambiarlo.", true);
   await refreshCollections();
   toast(result.liked ? "Añadida a Me gusta." : "Quitada de Me gusta.");
   if (result.liked && !reduced()) [$(`.lib-row[data-id="${CSS.escape(id)}"] .heart`), current() && current().id === id ? $("#pl-like") : null].forEach(el => {
@@ -304,7 +308,7 @@ function openPlaylistMenu(x, y, ids) {
 async function addToPlaylist(playlistId, ids) {
   const playlist = L.mine.find(p => p.id === playlistId);
   const result = await call("playlist_add", playlistId, ids);
-  if (!result.ok) return toast(result.error || "No pude añadirla.", true);
+  if (!result || !result.ok) return toast((result && result.error) || "No pude añadirla.", true);
   await refreshCollections();
   toast(ids.length === 1 ? `Añadida a «${playlist ? playlist.name : "la playlist"}».` : `${ids.length} canciones añadidas a «${playlist ? playlist.name : "la playlist"}».`);
 }
@@ -314,10 +318,10 @@ async function newPlaylist(ids = []) {
   if (name === null) return;
   if (!name) return toast("Ponle un nombre a la playlist.", true);
   const result = await call("playlist_create", name, ids);
-  if (!result.ok) return toast(result.error || "No pude crear la playlist.", true);
+  if (!result || !result.ok) return toast((result && result.error) || "No pude crear la playlist.", true);
   await refreshCollections();
   toast(ids.length ? `Playlist «${name}» creada con ${plural(ids.length, "canción", "canciones")}.` : `Playlist «${name}» creada.`, false,
-        { label: "Abrir", run: () => { L.tab = "playlists"; L.open = "mine:" + result.id; show("library"); renderLibrary(); } });
+        { label: "Abrir", run: () => { L.tab = "playlists"; L.open = "mine:" + result.id; P.q = ""; $("#lib-q").value = ""; show("library"); renderLibrary(); } });
 }
 
 async function removeFromPlaylist(playlistId, ids) {

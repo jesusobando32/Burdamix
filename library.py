@@ -51,6 +51,7 @@ class Library:
         self._paths = {}
         self._known = {}     # path -> ((mtime, size), track): files that did not change are not read again (swapped whole by each scan)
         self._listing = []   # what the last scan found
+        self._forgotten = set()
         self._lock = threading.Lock()
 
     @staticmethod
@@ -62,6 +63,7 @@ class Library:
         found = []
         with self._lock:
             known = self._known
+            self._forgotten = set()          # what is deleted while this scan runs must not come back from it
         fresh = {}
         for root, _, names in os.walk(folder):
             for name in names:
@@ -92,6 +94,7 @@ class Library:
                 found.append({**track, **_place(folder, path)})
         found.sort(key=lambda t: (t["artist"].casefold(), t["title"].casefold()))
         with self._lock:
+            found = [t for t in found if t["path"] not in self._forgotten]
             self._paths = {t["id"]: t["path"] for t in found}
             self._known = fresh
             self._listing = found
@@ -105,6 +108,7 @@ class Library:
     def forget(self, path):
         """A file that was deleted: it is no longer served nor remembered."""
         with self._lock:
+            self._forgotten.add(path)
             self._paths = {k: v for k, v in self._paths.items() if v != path}
             self._known.pop(path, None)
             self._listing = [t for t in self._listing if t["path"] != path]

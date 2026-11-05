@@ -934,7 +934,7 @@ function visibleTracks() {
 const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h6M4 18h6"/><path d="M14 11.5v9l7-4.5z" class="fill"/></svg>';
 const ICON_HEART = '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
 const ICON_TAG ='<svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
-const ICON_ADD ='<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
+const ICON_ADD = '<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
 
 function renderSongList() {
   const list = visibleTracks(), box = $("#lib-list"), empty = $("#lib-empty");
@@ -1052,6 +1052,7 @@ function openSongMenu(x, y, ids) {
 /* Resolves true or false: the window's own question box (the system's would look out of place). Escape or a click outside says no.
    With `input` ({ value }) it asks for a text instead: it resolves the text typed, or null when cancelled. */
 function confirmDialog({ title, text = "", ok, danger = false, input = null }) {
+  if (!$("#dialog").classList.contains("hidden")) return Promise.resolve(input ? null : false);      // one question at a time (a double click)
   return new Promise(resolve => {
     const box = $("#dialog"), yes = $("#dialog-yes"), no = $("#dialog-no"), field = $("#dialog-input");
     $("#dialog-title").textContent = title; $("#dialog-text").textContent = text;
@@ -1269,6 +1270,7 @@ function demoPlayerApi(art) {
   const cover = seed => art(`hsl(${seed * 47 % 360} 55% 36%)`, `hsl(${(seed * 47 + 55) % 360} 65% 60%)`);
   let tracks = null, saved = {}, likes = null;
   const mine = [];                                                       // the user's playlists, in memory
+  let madeLists = 0;
   const collections = async () => {                                      // what the program side answers: liked ids (copies of a liked song count) and playlists
     if (!tracks) tracks = makeTracks();
     if (!likes) likes = new Set(tracks.filter(t => t.kind === "liked").map(t => t.id));
@@ -1312,7 +1314,7 @@ function demoPlayerApi(art) {
     playlist_create: async (name, ids) => {
       name = String(name || "").trim().replace(/\s+/g, " ");
       if (!name) return { ok: false, error: "Ponle un nombre a la playlist." };
-      const id = "mine" + (mine.length + 1) + name.length; mine.push({ id, name, ids: (ids || []).filter((x, i, a) => a.indexOf(x) === i) });
+      const id = "mine" + (++madeLists); mine.push({ id, name, ids: (ids || []).filter((x, i, a) => a.indexOf(x) === i) });
       return { ok: true, id };
     },
     playlist_rename: async (pid, name) => { const p = mine.find(x => x.id === pid); name = String(name || "").trim(); if (!p || !name) return { ok: false, error: "Ponle un nombre a la playlist." }; p.name = name; return { ok: true }; },

@@ -30,13 +30,24 @@ class Collections:
 
     # --- the file ---
 
+    def _keep_bad_copy(self):
+        """A file that cannot be read is set aside (collections.json.bad), not overwritten by the next save: it may still be worth rescuing."""
+        try:
+            os.replace(self._path, self._path + ".bad")
+        except OSError:
+            pass
+
     def _load(self):
         try:
             with open(self._path, encoding="utf-8") as f:
                 data = json.load(f)
+        except FileNotFoundError:
+            return                              # the first time: nothing saved yet
         except (OSError, ValueError):
+            self._keep_bad_copy()
             return
         if not isinstance(data, dict):
+            self._keep_bad_copy()
             return
         strings = lambda values: [v for v in values if isinstance(v, str)] if isinstance(values, list) else []
         self.liked = set(strings(data.get("liked")))
@@ -149,5 +160,11 @@ class Collections:
                     group.discard(old)
                     group.add(new)
             for playlist in self.playlists:
-                playlist["paths"] = [new if p == old else p for p in playlist["paths"]]
+                renamed = [new if p == old else p for p in playlist["paths"]]
+                playlist["paths"] = [p for i, p in enumerate(renamed) if p not in renamed[:i]]       # the new name may already have been there
             self._save()
+
+    def snapshot(self):
+        """A consistent copy of everything, for readers on other threads: (liked, unliked, playlists)."""
+        with self._lock:
+            return set(self.liked), set(self.unliked), [{**p, "paths": list(p["paths"])} for p in self.playlists]

@@ -297,7 +297,7 @@ function lazyCovers(view, jobs) {
     try {
       for (let job = next(); job; job = next()) {
         if (!alive()) return;
-        if (!job.img.isConnected) continue;
+        if (!job.img.isConnected) { byImg.delete(job.img); io.unobserve(job.img); continue; }
         byImg.delete(job.img); io.unobserve(job.img);
         const url = await call("item_cover", view, job.key);
         if (typeof url === "string" && url.startsWith("data:") && job.img.isConnected) {

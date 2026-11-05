@@ -29,6 +29,7 @@ class _FileOp(ctypes.Structure):
 def move_to_recycle_bin(path):
     if not isinstance(path, str) or not os.path.isabs(path) or path.startswith("\\\\?\\"):
         raise TrashError("No pude identificar el archivo.")
+    path = os.path.normpath(path)                                          # the shell wants backslashes
     if not os.path.isfile(path):
         raise TrashError("El archivo ya no está en su sitio.")
     if sys.platform != "win32":

@@ -67,6 +67,15 @@ def _is_allowed_link(url):
     return False
 
 
+def _is_inside(root, path):
+    """Is `path` a file under the folder `root`? Compared by real, case-folded paths, so links, capitals and a drive root do not matter."""
+    try:
+        root, path = os.path.normcase(os.path.realpath(root)), os.path.normcase(os.path.realpath(path))
+        return path != root and os.path.commonpath([root, path]) == root
+    except ValueError:                           # another drive
+        return False
+
+
 def _validate_spotify_url(url):
     from spotify2mp3 import validate_spotify_url   # same rules as the console version
     return validate_spotify_url(url)
@@ -172,12 +181,12 @@ class Api:
         """Send songs of the library to the Recycle Bin (they can be put back from there). Only files the last scan listed, and
         only inside the downloads folder, are touched; a song the bin refuses is reported and the rest still go."""
         deleted, failed = 0, []
-        root = os.path.normcase(os.path.realpath(self._downloads_dir()))
+        root = self._downloads_dir()
         for track_id in ids if isinstance(ids, (list, tuple)) else []:
             path = self._library.path_of(track_id) if isinstance(track_id, str) else None
             if not path:
                 continue
-            if not os.path.normcase(os.path.realpath(path)).startswith(root + os.sep):
+            if not _is_inside(root, path):
                 failed.append({"id": track_id, "error": "Ese archivo no está en tu carpeta de descargas."})
                 continue
             try:
@@ -201,7 +210,7 @@ class Api:
     def _liked_ids(self, items):
         """Liked songs: the files the user liked, those of the liked/ folder (unless the user took the like off), and every other
         copy of a liked song, so that a song kept as an album file and as a liked file is liked in both."""
-        liked, unliked = self._collections.liked, self._collections.unliked
+        liked, unliked, _ = self._collections.snapshot()
         by_key = {collections_store.key(t["path"]): t for t in items}
         direct = {k for k, t in by_key.items() if k in liked or (t["kind"] == "liked" and k not in unliked)}
         identities = {self._identity(by_key[k]) for k in direct} - {None}
@@ -211,7 +220,7 @@ class Api:
         """The ids of the liked songs and the playlists with the ids of their songs (those no longer in the library are left out)."""
         items = self._library.listing()
         by_key = {collections_store.key(t["path"]): t["id"] for t in items}
-        playlists = [{"id": p["id"], "name": p["name"], "ids": [by_key[k] for k in p["paths"] if k in by_key]} for p in self._collections.playlists]
+        playlists = [{"id": p["id"], "name": p["name"], "ids": [by_key[k] for k in p["paths"] if k in by_key]} for p in self._collections.snapshot()[2]]
         return {"liked": sorted(self._liked_ids(items)), "playlists": playlists}
 
     def like_toggle(self, track_id):
