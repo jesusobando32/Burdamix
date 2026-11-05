@@ -152,6 +152,48 @@ body.has-player #toasts { bottom: 104px; }
 @media (hover: hover) and (pointer: fine) { .lib-row:hover { background: var(--glass-2); } .lib-row.playing:hover { background: color-mix(in srgb, var(--pc) 18%, transparent); } }
 #lib-empty { max-width: 560px; margin: 40px auto; }
 
+/* ---------- Vinilo nocturno: library, bar and panels follow the rest of the window ---------- */
+/* the colour of the cover also tints the aurora */
+.bg .b1 { background: radial-gradient(closest-side, color-mix(in srgb, var(--pc) 45%, transparent), transparent); }
+
+/* library: same glass cards as the results list, they lean toward the cursor */
+.lib-head { background: none; isolation: isolate; }
+.lib-head::before { content: ""; position: absolute; z-index: -1; inset: 0 -28px -22px; background: rgba(10, 13, 11, .55);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); -webkit-mask-image: linear-gradient(#000 68%, transparent); mask-image: linear-gradient(#000 68%, transparent); pointer-events: none; }
+.lib-search, #lib-sort { background: var(--glass); border-color: var(--glass-line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.lib-list { gap: 6px; }
+.lib-row { background: var(--glass); border-radius: 16px; padding: 8px 14px 8px 10px;
+  transition: background var(--t-fast) ease, transform var(--t-med) var(--ease-out);
+  animation: row-in 320ms var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 14) * 28ms); }
+.lib-cover { box-shadow: 0 6px 16px rgba(0, 0, 0, .4); transition: transform var(--t-slow) var(--ease-out), border-radius var(--t-slow) var(--ease-out); }
+.lib-row.playing .lib-cover { border-radius: 50%; }
+@media (hover: hover) and (pointer: fine) {
+  .lib-row:hover { transform: translateX(6px); }
+  .lib-row:hover .lib-cover { transform: scale(1.08) rotate(-3deg); }
+  .pl-play:hover { transform: scale(1.07); }
+}
+
+/* the cover in the bar is a record: it turns while the song plays and stops where it is when paused */
+.pl-cover { border-radius: 50%; animation: vinyl-spin 10s linear infinite paused; transition: box-shadow var(--t-med) ease; }
+.is-playing .pl-cover { animation-play-state: running; box-shadow: 0 6px 22px color-mix(in srgb, var(--pc) 38%, transparent); }
+.pl-cover::after { content: ""; position: absolute; inset: 44%; border-radius: 50%; background: var(--bg); box-shadow: 0 0 0 2px rgba(255, 255, 255, .18); }
+
+/* controls and panels use the colour of the song, not the default lime */
+.pl-panel .switch input:checked + span { background: var(--pc); }
+.pl-panel .btn.small-btn:hover { border-color: color-mix(in srgb, var(--pc) 60%, var(--glass-line)); }
+.player .icon-btn:active, .player .pl-toggle:active { transform: scale(.88); }
+
+/* panels: rows and bands come in one after another */
+.q-row { animation: rise var(--t-med) var(--ease-out) both; transition: background var(--t-fast) ease, transform var(--t-med) var(--ease-out); }
+.q-row:nth-child(2) { animation-delay: 30ms; } .q-row:nth-child(3) { animation-delay: 60ms; } .q-row:nth-child(4) { animation-delay: 90ms; }
+.q-row:nth-child(5) { animation-delay: 120ms; } .q-row:nth-child(n+6) { animation-delay: 150ms; }
+.eq-band { transform-origin: bottom; animation: band-in var(--t-slow) var(--ease-out) both; }
+.eq-band:nth-child(2) { animation-delay: 25ms; } .eq-band:nth-child(3) { animation-delay: 50ms; } .eq-band:nth-child(4) { animation-delay: 75ms; }
+.eq-band:nth-child(5) { animation-delay: 100ms; } .eq-band:nth-child(6) { animation-delay: 125ms; } .eq-band:nth-child(7) { animation-delay: 150ms; }
+.eq-band:nth-child(8) { animation-delay: 175ms; } .eq-band:nth-child(9) { animation-delay: 200ms; } .eq-band:nth-child(10) { animation-delay: 225ms; }
+@keyframes band-in { from { opacity: 0; transform: scaleY(.5); } }
+@media (hover: hover) and (pointer: fine) { .q-row:hover { background: var(--glass-2); transform: translateX(4px); } .q-row.now:hover { background: color-mix(in srgb, var(--pc) 20%, transparent); } }
+
 /* ---------- narrow windows ---------- */
 @media (max-width: 900px) {
   .lib-row { grid-template-columns: 30px 40px minmax(0, 1fr) auto 52px; }
@@ -171,7 +213,8 @@ body.has-player #toasts { bottom: 104px; }
   .player .eq-band input[type=range] { height: 110px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .player, .pl-panel { animation: none; }
+  .player, .pl-panel, .pl-cover, .eq-band { animation: none; }
+  .lib-row:hover, .lib-row:hover .lib-cover, .q-row:hover, .pl-play:hover { transform: none !important; }
   .q-eq b { animation: none !important; height: 10px; }
   #app { transition: none; }
 }
