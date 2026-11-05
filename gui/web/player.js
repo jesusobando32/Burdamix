@@ -1,17 +1,40 @@
 "use strict";
-/* Player: the library view, the bar that stays at the bottom, the queue.
+/* Player: the library view, the bar that stays at the bottom, the queue and the equalizer.
    Uses the helpers of app.js ($, $$, esc, fmt, call, toast, show); the program side is Api.library_list / get_player / save_player.
-   Audio graph: two decks (so that two songs can overlap) -> analyser -> volume -> speakers. */
+   Audio graph: two decks (so that two songs can overlap) -> preamp -> 10 filters -> analyser -> volume -> speakers. */
 
-const MAX_SAVED_QUEUE = 2000;
+const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+const EQ_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
+const EQ_RANGE = 12;
+/* Starting points: the blogs that publish "best settings" disagree with each other, so these are moderate curves
+   (nothing beyond +5.5 dB) in the spirit of the classic desktop-player presets. The preamp lowers the level by
+   the biggest boost, so a preset never clips. */
+const EQ_PRESETS = [
+  { id: "flat", name: "Plano", bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { id: "bass", name: "Bajos", bands: [5, 4.5, 3.5, 2, .5, 0, 0, 0, 0, 0] },
+  { id: "treble", name: "Agudos", bands: [0, 0, 0, 0, 0, 1, 2.5, 4, 5, 5.5] },
+  { id: "pop", name: "Pop", bands: [-1.5, -.5, 1, 2.5, 3.5, 3, 1.5, 0, -.5, -1] },
+  { id: "rock", name: "Rock", bands: [4, 3, 2, .5, -1, -.5, 1.5, 3, 4, 4.5] },
+  { id: "hiphop", name: "Hip-hop y reggaetón", bands: [5, 5, 3.5, 1, -2, -1, .5, 1.5, 2, 2] },
+  { id: "electronic", name: "Electrónica", bands: [4.5, 4, 2, 0, -1, -1.5, 0, 2, 4, 4.5] },
+  { id: "jazz", name: "Jazz", bands: [3, 2, 1, 1.5, -1.5, -1.5, 0, 1, 2, 3] },
+  { id: "classical", name: "Clásica", bands: [2, 1.5, 1, .5, 0, 0, 0, .5, 1.5, 2] },
+  { id: "acoustic", name: "Acústica", bands: [2, 2, 1.5, .5, .5, 1, 1.5, 2, 2, 1.5] },
+  { id: "vocal", name: "Voz", bands: [-2, -1.5, -1, .5, 2, 3, 3, 2, .5, 0] },
+  { id: "loudness", name: "Volumen bajo", bands: [4.5, 3.5, 1, 0, -1, -.5, 0, 1.5, 3.5, 4.5] },
+];
+const FLAT = EQ_PRESETS[0].bands;
+const MAX_CUSTOM = 8, MIN_CUSTOM = 3, MAX_SAVED_QUEUE = 2000;
 const QUICK_FADE = .35;     // seconds: when the user skips by hand
 const TICK = 150;
 
 const P = {
   tracks: [], byId: new Map(), queue: [], original: null, pos: -1,
   shuffle: false, repeat: "off", volume: .8, muted: false,
+  eq: { on: true, bands: [...FLAT], preset: "flat" },
+  custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
   seen: new Map(), q: "", sort: "artist", ready: false, dragging: false, errors: 0,
-  ctx: null, decks: [], active: 0, analyser: null, master: null,
+  ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, wired: false,
 };
 
@@ -27,6 +50,13 @@ function buildAudio() {
   if (P.ctx) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   P.ctx = new Ctx();
+  P.pre = P.ctx.createGain();
+  P.filters = EQ_FREQS.map((f, i) => {
+    const node = P.ctx.createBiquadFilter();
+    node.type = i === 0 ? "lowshelf" : i === EQ_FREQS.length - 1 ? "highshelf" : "peaking";
+    node.frequency.value = f; node.Q.value = 1.4;
+    return node;
+  });
   P.analyser = P.ctx.createAnalyser(); P.analyser.fftSize = 128; P.analyser.smoothingTimeConstant = .8;
   P.master = P.ctx.createGain();
   P.decks = [0, 1].map(() => {
@@ -34,7 +64,7 @@ function buildAudio() {
     el.crossOrigin = "anonymous"; el.preload = "auto";
     const gain = P.ctx.createGain();
     P.ctx.createMediaElementSource(el).connect(gain);
-    gain.connect(P.analyser);
+    gain.connect(P.pre);
     const d = { el, gain };
     el.addEventListener("ended", () => { if (d === deck()) advance(true); });
     el.addEventListener("error", () => { if (d === deck() && el.getAttribute("src")) onBroken(); });
@@ -44,9 +74,16 @@ function buildAudio() {
     return d;
   });
   P.decks[1].gain.gain.value = 0;
-  [P.analyser, P.master].reduce((a, b) => (a.connect(b), b));
+  [P.pre, ...P.filters, P.analyser, P.master].reduce((a, b) => (a.connect(b), b));
   P.master.connect(P.ctx.destination);
-  applyVolume();
+  applyEq(); applyVolume();
+}
+
+function applyEq() {
+  if (!P.ctx) return;
+  const bands = P.eq.on ? P.eq.bands : FLAT;
+  bands.forEach((g, i) => { P.filters[i].gain.value = g; });
+  P.pre.gain.value = 10 ** (-Math.max(0, ...bands) / 20);
 }
 
 function applyVolume() {
@@ -320,7 +357,7 @@ function setMediaSession(track) {
 
 /* ---------- panels ---------- */
 function togglePanel(which) {
-  const panels = { queue: ["#pl-queue-panel", "#pl-queue"] };
+  const panels = { queue: ["#pl-queue-panel", "#pl-queue"], eq: ["#pl-eq-panel", "#pl-eq"] };
   Object.entries(panels).forEach(([name, [panel, button]]) => {
     const open = name === which && $(panel).classList.contains("hidden");
     $(panel).classList.toggle("hidden", !open);
@@ -374,11 +411,124 @@ function wireQueue() {
   $("#q-clear").onclick = clearQueue;
 }
 
+/* ---------- equalizer ---------- */
+function sameBands(a, b) { return a.every((v, i) => Math.abs(v - b[i]) < .01); }
+const activeCustom = () => P.custom.find(c => c.id === P.eq.preset) || null;
+
+function buildEq() {
+  $("#eq-bands").innerHTML = EQ_FREQS.map((_, i) => `<label class="eq-band"><output data-out="${i}">0</output>
+    <input type="range" min="${-EQ_RANGE}" max="${EQ_RANGE}" step="0.5" value="0" data-band="${i}" aria-label="${EQ_LABELS[i]} Hz" orient="vertical">
+    <span class="muted small">${EQ_LABELS[i]}</span></label>`).join("");
+  $("#eq-bands").addEventListener("input", ev => {
+    const i = ev.target.dataset.band;
+    if (i === undefined) return;
+    P.eq.bands[+i] = +ev.target.value;
+    const slot = activeCustom();
+    if (slot) slot.bands = [...P.eq.bands];                 // an own equalizer remembers what you do to it
+    else P.eq.preset = EQ_PRESETS.find(p => sameBands(p.bands, P.eq.bands))?.id || "manual";
+    applyEq(); paintEq(true); saveSoon();
+  });
+  $("#eq-bands").addEventListener("dblclick", ev => {
+    const i = ev.target.dataset.band;
+    if (i === undefined) return;
+    ev.target.value = "0"; ev.target.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  $("#eq-presets").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-preset]");
+    if (b) choosePreset(b.dataset.preset);
+  });
+  $("#eq-on").onchange = () => { P.eq.on = $("#eq-on").checked; applyEq(); paintEq(); saveSoon(); };
+  $("#eq-save").onclick = saveCurrentEq;
+  $("#eq-custom").addEventListener("click", ev => {
+    const rename = ev.target.closest("[data-rename]"), del = ev.target.closest("[data-del]"), pick = ev.target.closest("[data-slot]");
+    if (rename) return startRename(rename.dataset.rename);
+    if (del) return deleteSlot(del.dataset.del);
+    if (pick && !ev.target.closest("input")) choosePreset(pick.dataset.slot);
+  });
+  $("#eq-custom").addEventListener("dblclick", ev => { const pick = ev.target.closest("[data-slot]"); if (pick) startRename(pick.dataset.slot); });
+}
+
+function choosePreset(id) {
+  const found = EQ_PRESETS.find(p => p.id === id) || P.custom.find(c => c.id === id);
+  if (!found) return;
+  P.eq.preset = id; P.eq.bands = [...found.bands]; P.eq.on = true;
+  applyEq(); paintEq(); saveSoon();
+}
+
+function saveCurrentEq() {
+  if (activeCustom()) return toast(`«${activeCustom().name}» ya guarda cada cambio que haces.`);
+  let slot = P.custom.find(c => sameBands(c.bands, FLAT));
+  if (!slot && P.custom.length < MAX_CUSTOM) {
+    slot = { id: "c" + Date.now().toString(36), name: "Personalizado " + (P.custom.length + 1), bands: [...FLAT] };
+    P.custom.push(slot);
+  }
+  if (!slot) return toast("Ya tienes 8 ecualizadores. Elige uno y ajústalo, o borra alguno.", true);
+  slot.bands = [...P.eq.bands]; P.eq.preset = slot.id;
+  paintEq(); saveSoon();
+  toast(`Guardado en «${slot.name}». Pulsa el lápiz para cambiarle el nombre.`);
+}
+
+function startRename(id) {
+  const slot = P.custom.find(c => c.id === id);
+  const row = $$("[data-slot]").find(r => r.dataset.slot === id);
+  if (!slot || !row) return;
+  const label = $(".slot-name", row);
+  const input = document.createElement("input");
+  input.type = "text"; input.value = slot.name; input.maxLength = 24; input.className = "slot-input"; input.setAttribute("aria-label", "Nombre del ecualizador");
+  label.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const finish = save => {
+    if (done) return;
+    done = true;
+    if (save && input.value.trim()) slot.name = input.value.trim();
+    paintEq(); saveSoon();
+  };
+  input.onkeydown = ev => { if (ev.key === "Enter") finish(true); else if (ev.key === "Escape") finish(false); ev.stopPropagation(); };
+  input.onblur = () => finish(true);
+}
+
+function deleteSlot(id) {
+  if (P.custom.length <= MIN_CUSTOM) {
+    const slot = P.custom.find(c => c.id === id);
+    if (slot) { slot.bands = [...FLAT]; if (P.eq.preset === id) { P.eq.bands = [...FLAT]; applyEq(); } }
+  } else {
+    P.custom = P.custom.filter(c => c.id !== id);
+    if (P.eq.preset === id) P.eq.preset = "manual";
+  }
+  paintEq(); saveSoon();
+}
+
+function paintEq(fromSlider = false) {
+  $("#eq-on").checked = P.eq.on;
+  $("#pl-eq-panel").classList.toggle("off", !P.eq.on);
+  $("#pl-eq").classList.toggle("active", P.eq.on && !sameBands(P.eq.bands, FLAT));
+  $$("#eq-bands input").forEach((input, i) => {
+    if (!fromSlider) input.value = String(P.eq.bands[i]);
+    input.style.setProperty("--p", ((+input.value + EQ_RANGE) / (EQ_RANGE * 2) * 100) + "%");
+    const v = P.eq.bands[i];
+    $(`[data-out="${i}"]`).textContent = (v > 0 ? "+" : "") + (Number.isInteger(v) ? v : v.toFixed(1));
+  });
+  if (fromSlider && $("#eq-presets").dataset.shown === P.eq.preset) return;
+  $("#eq-presets").dataset.shown = P.eq.preset;
+  $("#eq-presets").innerHTML = EQ_PRESETS.map(p => `<button type="button" class="chip-btn${P.eq.preset === p.id ? " on" : ""}" data-preset="${esc(p.id)}">${esc(p.name)}</button>`).join("")
+    + (P.eq.preset === "manual" ? '<span class="chip-btn on static">Ajuste manual</span>' : "");
+  $("#eq-custom").innerHTML = P.custom.map(c => {
+    const empty = sameBands(c.bands, FLAT);
+    return `<div class="slot${P.eq.preset === c.id ? " on" : ""}" data-slot="${esc(c.id)}" role="button" tabindex="0">
+      <span class="slot-name">${esc(c.name)}</span><span class="muted small">${empty ? "vacío" : "guardado"}</span>
+      <button class="icon-btn" type="button" data-rename="${esc(c.id)}" aria-label="Cambiar el nombre" title="Cambiar el nombre"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg></button>
+      <button class="icon-btn" type="button" data-del="${esc(c.id)}" aria-label="${P.custom.length > MIN_CUSTOM ? "Borrar" : "Vaciar"}" title="${P.custom.length > MIN_CUSTOM ? "Borrar" : "Vaciar"}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;
+  }).join("");
+}
+
 /* ---------- remembering ---------- */
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
     volume: P.volume, muted: P.muted, shuffle: P.shuffle, repeat: P.repeat,
+    eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
+    custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
     time: el && isFinite(el.currentTime) ? Math.floor(el.currentTime) : 0,
   };
@@ -394,6 +544,17 @@ function restore(saved) {
   const num = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : d;
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted;
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
+  const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
+  if (saved.eq && typeof saved.eq === "object") {
+    P.eq.on = saved.eq.on !== false; P.eq.bands = bands(saved.eq.bands) || [...FLAT];
+    P.eq.preset = typeof saved.eq.preset === "string" ? saved.eq.preset : "manual";
+  }
+  if (Array.isArray(saved.custom)) {
+    const slots = saved.custom.filter(c => c && typeof c.id === "string" && /^[\w-]{1,20}$/.test(c.id) && bands(c.bands)).slice(0, MAX_CUSTOM)
+      .map(c => ({ id: c.id, name: String(c.name || "").slice(0, 24) || "Personalizado", bands: bands(c.bands) }));
+    if (slots.length >= MIN_CUSTOM) P.custom = slots;
+  }
+  if (P.eq.preset !== "manual" && ![...EQ_PRESETS, ...P.custom].some(p => p.id === P.eq.preset)) P.eq.preset = "manual";
 }
 
 function restoreQueue(saved) {
@@ -525,6 +686,7 @@ function wireBar() {
   $("#pl-shuffle").onclick = () => setShuffle(!P.shuffle);
   $("#pl-repeat").onclick = cycleRepeat;
   $("#pl-queue").onclick = ev => { ev.stopPropagation(); togglePanel("queue"); };
+  $("#pl-eq").onclick = ev => { ev.stopPropagation(); togglePanel("eq"); };
   $("#pl-mute").onclick = () => { P.muted = !P.muted; applyVolume(); paintVolume(); saveSoon(); };
   $("#pl-volume").oninput = ev => setVolume(+ev.target.value);
   const bar = $("#pl-progress");
@@ -532,7 +694,7 @@ function wireBar() {
   bar.addEventListener("change", () => { P.dragging = false; seek(+bar.value); });
   document.addEventListener("click", ev => {
     // the path is taken at the click: a button the panel redraws is already out of the page when this runs
-    const inside = ev.composedPath().some(n => n.classList && (n.classList.contains("pl-panel") || n.id === "pl-queue"));
+    const inside = ev.composedPath().some(n => n.classList && (n.classList.contains("pl-panel") || n.id === "pl-queue" || n.id === "pl-eq"));
     if (!inside) closePanels();
   });
   addEventListener("pagehide", () => { call("save_player", snapshot()); });
@@ -543,7 +705,7 @@ const Player = {
     if (P.wired) return;
     P.wired = true;
     restore(await call("get_player"));
-    paintVolume();
+    buildEq(); paintEq(); paintVolume();
     wireBar(); wireQueue(); wireLibrary(); wireKeys();
     P.timer = setInterval(tick, TICK);
     if (await loadLibrary()) restoreQueue(await call("get_player"));

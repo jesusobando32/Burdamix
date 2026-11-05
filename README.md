@@ -85,7 +85,8 @@ La pestaña **Biblioteca** lista todo lo que hay en tu carpeta de descargas (mp3
 - **Controles:** reproducir/pausa, anterior/siguiente, barra de progreso con salto exacto, volumen, aleatorio y repetir (nada, toda la cola o una canción).
 - **Cola:** se ve y se edita (arrastra para reordenar, quita canciones; en la biblioteca puedes añadir a continuación o al final).
 - **Teclado:** espacio (pausa), flechas izquierda y derecha (±5 s), Mayús + flechas (anterior y siguiente), flechas arriba y abajo (volumen), M (silenciar) y las teclas multimedia.
-- Al abrir de nuevo, recuerda la última canción, el volumen y la cola.
+- **Ecualizador de 10 bandas** con presets (Bajos, Agudos, Pop, Rock, Hip-hop y reggaetón, Electrónica, Jazz, Clásica, Acústica, Voz, Volumen bajo) y **Mis ecualizadores**: tres huecos «Personalizado» (hasta ocho si guardas más) a los que puedes cambiar el nombre. Un ecualizador propio recuerda cada ajuste que le haces. Los presets son puntos de partida moderados, no una verdad absoluta: ajústalos a tu oído.
+- Al abrir de nuevo, recuerda la última canción, el volumen, la cola y tus ajustes del ecualizador.
 
 ## Completar etiquetas y portadas
 

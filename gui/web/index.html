@@ -283,6 +283,8 @@
         </div>
       </div>
       <div class="pl-side">
+        <button class="icon-btn" id="pl-eq" type="button" aria-label="Ecualizador y crossfade" aria-expanded="false" title="Ecualizador y crossfade">
+          <svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="14" r="2" class="knob"/><circle cx="12" cy="8" r="2" class="knob"/><circle cx="19" cy="15" r="2" class="knob"/></svg></button>
         <button class="icon-btn" id="pl-queue" type="button" aria-label="Cola" aria-expanded="false" title="Cola">
           <svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7M17 15v6l5-3z"/></svg></button>
         <button class="icon-btn" id="pl-mute" type="button" aria-label="Silenciar" title="Silenciar">
@@ -295,6 +297,14 @@
         <div id="q-list" class="q-list"></div>
       </aside>
 
+      <aside id="pl-eq-panel" class="pl-panel eq hidden" aria-label="Ecualizador">
+        <div class="pl-panel-head"><h3>Ecualizador</h3>
+          <label class="switch" title="Activar el ecualizador"><input id="eq-on" type="checkbox" checked><span></span></label></div>
+        <div class="eq-bands" id="eq-bands"></div>
+        <div class="eq-presets" id="eq-presets" role="group" aria-label="Presets"></div>
+        <div class="eq-custom-head"><span class="muted small">Mis ecualizadores</span><button class="btn small-btn" id="eq-save" type="button">Guardar ajuste actual</button></div>
+        <div class="eq-custom" id="eq-custom"></div>
+      </aside>
     </footer>
   </main>
 </div>
