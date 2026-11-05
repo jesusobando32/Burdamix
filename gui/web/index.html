@@ -144,14 +144,32 @@
           <h1>Completar etiquetas</h1>
           <p class="lead">Elige canciones y Burdamix busca su título, artista, álbum, año, género y portada, y los escribe en el archivo para que cualquier reproductor los muestre.</p>
 
-          <div class="drop" id="tags-drop">
-            <div class="drop-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></div>
-            <b><span class="idle-t">Suelta aquí tus canciones o una carpeta</span><span class="over-t">Suéltalas para añadirlas</span></b>
-            <div class="btn-row">
-              <button class="btn primary" id="tags-pick-files">Elegir archivos…</button>
-              <button class="btn" id="tags-pick-folder">Elegir carpeta…</button>
+          <div class="card picker" id="tags-lib">
+            <div class="picker-head">
+              <div><h2 class="h3">Elegir de tu biblioteca</h2><p class="muted small" id="pick-count">Cargando tu biblioteca…</p></div>
+              <div class="picker-tools">
+                <div class="pick-filter" id="pick-filter" role="group" aria-label="Mostrar">
+                  <button type="button" class="chip-btn on" data-f="all">Todas</button>
+                  <button type="button" class="chip-btn" data-f="gaps">Incompletas</button>
+                </div>
+                <label class="lib-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  <input id="pick-q" type="search" placeholder="Buscar canciones" autocomplete="off" spellcheck="false"></label>
+              </div>
             </div>
-            <span class="muted small">mp3, flac, m4a, ogg y opus</span>
+            <div class="pick-list" id="pick-list" role="list"></div>
+            <div class="picker-foot">
+              <button type="button" class="btn small-btn" id="pick-all">Marcar las visibles</button>
+              <span class="muted small" id="pick-n"></span>
+              <button type="button" class="btn primary" id="pick-add" disabled>Añadir a la lista</button>
+            </div>
+          </div>
+
+          <div class="drop slim" id="tags-drop">
+            <b><span class="idle-t">¿Archivos fuera de Burdamix? Suéltalos aquí (mp3, flac, m4a, ogg u opus)</span><span class="over-t">Suéltalos para añadirlos</span></b>
+            <div class="btn-row">
+              <button class="btn small-btn" id="tags-pick-files">Elegir archivos…</button>
+              <button class="btn small-btn" id="tags-pick-folder">Elegir carpeta…</button>
+            </div>
           </div>
 
           <div class="card hidden" id="tags-options">

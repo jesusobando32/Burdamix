@@ -272,3 +272,32 @@ body.has-player #toasts { bottom: 104px; }
   .q-eq b { animation: none !important; height: 10px; }
   #app { transition: none; }
 }
+
+/* ---------- songs that still lack tags, and the library picker of "Completar etiquetas" ---------- */
+.lib-flag { display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--warn); vertical-align: middle; opacity: .85; }
+.lib-act .icon-btn[data-act="tags"]:hover { color: var(--warn); }
+
+.picker { padding: 16px 18px; margin: 18px 0 12px; }
+.picker-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.picker-head p { margin: 0; }
+.picker-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pick-filter { display: flex; gap: 6px; }
+.picker .lib-search input { width: 150px; }
+.pick-list { max-height: 340px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; display: flex; flex-direction: column; gap: 2px; scrollbar-gutter: stable; }
+.pick-row { display: grid; grid-template-columns: 22px 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 10px; cursor: pointer;
+  content-visibility: auto; contain-intrinsic-size: auto 52px; transition: background var(--t-fast) ease; }
+.pick-row.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.pick-row input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .pick-row:hover { background: var(--glass-2); } .pick-row.on:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); } }
+.pick-state { font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pick-state.good { color: var(--accent-text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pick-state.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pick-empty { padding: 18px 4px; margin: 0; }
+.picker-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.picker-foot .muted { flex: 1; }
+
+/* the drop zone is the second way in now: one quiet row */
+.drop.slim { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 16px; border-width: 1px; margin-bottom: 14px; }
+.drop.slim b { font-weight: 520; color: var(--muted); font-size: 13.5px; }
+.drop.slim.over b { color: var(--text); }
+@media (max-width: 760px) { .picker .lib-search input { width: 110px; } .pick-row { grid-template-columns: 22px 40px minmax(0, 1fr); } .pick-state { display: none; } }

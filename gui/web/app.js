@@ -68,7 +68,7 @@ function show(view) {
   $$(".nav").forEach(n => n.classList.toggle("active", n.dataset.view === view));
   if (view === "tutorial") refreshState();
   if (view === "settings") loadSettings();
-  if (view === "tags") refreshRenameExample();
+  if (view === "tags") { refreshRenameExample(); openPicker(); }
   if (view === "library") Player.open();
   if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");
   moveNavInd();

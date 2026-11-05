@@ -185,7 +185,10 @@ function previous() {
 function toggle() {
   if (!current()) return;
   buildAudio();
-  if (deck().el.paused) { P.ctx.resume().catch(() => {}); deck().el.play().catch(onPlayRefused); }
+  if (deck().el.paused) {
+    if (!deck().el.getAttribute("src")) { cueTrack(current(), P.resume || 0); P.resume = 0; }   // it was unloaded to be tagged
+    P.ctx.resume().catch(() => {}); deck().el.play().catch(onPlayRefused);
+  }
   else { endFade(); deck().el.pause(); }   // a pause during a crossfade cuts the song that was leaving
 }
 
@@ -789,7 +792,8 @@ function visibleTracks() {
 }
 
 const ICON_NEXT = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h6M4 18h6"/><path d="M14 11.5v9l7-4.5z" class="fill"/></svg>';
-const ICON_ADD = '<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
+const ICON_TAG = '<svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
+const ICON_ADD ='<svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h6M18 14v6M15 17h6"/></svg>';
 
 function renderLibrary() {
   const list = visibleTracks(), box = $("#lib-list"), empty = $("#lib-empty");
@@ -811,11 +815,31 @@ function renderLibrary() {
   box.innerHTML = list.map((t, i) => `<div class="lib-row${t.id === playing ? " playing" : ""}" role="listitem" tabindex="0" data-id="${esc(t.id)}" style="--i:${i}">
     <span class="lib-n">${i + 1}</span>
     <span class="lib-cover${t.cover_url ? "" : " ph"}" style="--h:${hueOf(t)}"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
-    <span class="lib-t"><b>${esc(t.title)}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
+    <span class="lib-t"><b>${esc(t.title)}${t.complete ? "" : '<i class="lib-flag" title="Le faltan etiquetas o la portada" aria-label="Etiquetas incompletas"></i>'}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
     <span class="lib-album muted">${esc(t.album)}</span>
     <span class="lib-act"><button type="button" class="icon-btn" data-act="next" title="Reproducir a continuación" aria-label="Reproducir a continuación">${ICON_NEXT}</button>
-      <button type="button" class="icon-btn" data-act="add" title="Añadir a la cola" aria-label="Añadir a la cola">${ICON_ADD}</button></span>
+      <button type="button" class="icon-btn" data-act="add" title="Añadir a la cola" aria-label="Añadir a la cola">${ICON_ADD}</button>
+      <button type="button" class="icon-btn" data-act="tags" title="Completar etiquetas de esta canción" aria-label="Completar etiquetas de esta canción">${ICON_TAG}</button></span>
     <span class="lib-dur muted">${t.duration ? fmt(t.duration) : "—"}</span></div>`).join("");
+}
+
+/* Hands songs of the library to "Completar etiquetas" (tags.js). Writing tags replaces the file, which Windows refuses while
+   it is being read, so a song that is loaded in the player is unloaded first; play brings it back where it was. */
+function releaseFile(ids) {
+  const track = current();
+  if (!track || !ids.includes(track.id) || !P.decks.length || !deck().el.getAttribute("src")) return;
+  P.resume = deck().el.currentTime;
+  deck().el.pause();
+  deck().el.removeAttribute("src");
+  deck().el.load();
+  render();
+}
+
+async function sendToTags(ids) {
+  releaseFile(ids);
+  const paths = await call("library_paths", ids);
+  if (!Array.isArray(paths) || !paths.length) return toast("No encontré ese archivo en tu carpeta de descargas.", true);
+  addPaths(paths);
 }
 
 function paintLibraryMarks() {
@@ -844,6 +868,7 @@ function wireLibrary() {
     const row = ev.target.closest(".lib-row");
     if (!row) return;
     const act = ev.target.closest("[data-act]");
+    if (act && act.dataset.act === "tags") return sendToTags([row.dataset.id]);
     if (act) return enqueue(row.dataset.id, act.dataset.act === "next", $(".lib-cover", row));
     play(row.dataset.id);
   });
@@ -961,6 +986,9 @@ const Player = {
     P.ready = true;
   },
   open: openLibrary,
+  refresh: loadLibrary,            // for the picker of "Completar etiquetas"
+  tracks: () => P.tracks,
+  release: releaseFile,
 };
 
 /* A browser with ?demo has no program side: short generated tones stand in for the songs. */
@@ -986,11 +1014,12 @@ function demoPlayerApi(art) {
   return {
     library_list: async () => {
       if (!tracks) tracks = names.map(([title, artist, album], i) => ({
-        id: "demo" + i, title, artist, album, duration: 24, cover: i < 5, added: 1000 - i,
+        id: "demo" + i, title, artist, album, duration: 24, cover: i < 5, complete: i % 2 === 0, added: 1000 - i,
         url: tone(scales[i], 24), cover_url: i < 5 ? art(...colors[i]) : "",
       }));
       return { tracks };
     },
+    library_paths: async ids => ids.map(id => tracks && tracks.find(t => t.id === id)).filter(Boolean).map(t => `C:/Música/${t.artist ? t.artist + " - " : ""}${t.title}.mp3`),
     get_player: async () => saved,
     save_player: async data => { saved = JSON.parse(JSON.stringify(data)); return { ok: true }; },
   };

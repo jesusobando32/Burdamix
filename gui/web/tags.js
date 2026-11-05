@@ -230,6 +230,7 @@ function onTagEvent(e) {
     if (e.error) toast(e.error, true); else if (e.cancelled) toast("Cancelado.");
     else if (e.job === "apply") toast(e.failed ? `Listo: ${e.done} escritas, ${e.failed} con problemas.` : `Listo: ${plural(e.done, "canción escrita", "canciones escritas")}.`);
     T.files.forEach(f => { if (f.status === "queued" || f.status === "searching") f.status = "pending"; });
+    if (e.job === "apply") openPicker();   // the songs just written are complete now (and may have a new name)
     return renderTags();
   }
   const f = tagFile(e.path);
@@ -260,10 +261,82 @@ async function pollTagEvents() {
   } finally { tagPolling = false; }
 }
 
+/* ---------- picking from the library (the main way in; files and folders are the secondary one) ---------- */
+const PICK = { chosen: new Set(), filter: "all", q: "" };
+
+function pickVisible() {
+  const q = PICK.q.trim().toLocaleLowerCase();
+  return Player.tracks().filter(t => (PICK.filter === "all" || !t.complete)
+    && (!q || `${t.title} ${t.artist} ${t.album}`.toLocaleLowerCase().includes(q)));
+}
+
+function renderPicker() {
+  const all = Player.tracks(), list = pickVisible(), gaps = all.filter(t => !t.complete).length;
+  $("#pick-count").textContent = all.length
+    ? `${plural(all.length, "canción", "canciones")} · ${gaps ? plural(gaps, "incompleta", "incompletas") : "todas completas"}`
+    : "Todavía no hay canciones en tu carpeta de descargas.";
+  $("#pick-list").innerHTML = list.length ? list.map(t => `<label class="pick-row${PICK.chosen.has(t.id) ? " on" : ""}" role="listitem">
+      <input type="checkbox" data-id="${esc(t.id)}" ${PICK.chosen.has(t.id) ? "checked" : ""}>
+      <span class="lib-cover${t.cover_url ? "" : " ph"}" style="--h:${hueOf(t)}"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}</span>
+      <span class="lib-t"><b>${esc(t.title)}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
+      <span class="pick-state ${t.complete ? "good" : "warn"}">${t.complete ? "Completa" : "Incompleta"}</span></label>`).join("")
+    : `<p class="muted small pick-empty">${all.length ? "Nada coincide con tu búsqueda." : "Aquí aparecerán tus canciones en cuanto bajes alguna."}</p>`;
+  paintPickCount();
+}
+
+function paintPickCount() {
+  const n = PICK.chosen.size;
+  $("#pick-n").textContent = n ? plural(n, "marcada", "marcadas") : "";
+  $("#pick-add").disabled = !n;
+  $("#pick-add").textContent = n ? `Añadir ${n === 1 ? "la canción" : "las " + n} a la lista` : "Añadir a la lista";
+}
+
+async function openPicker() {
+  await Player.refresh();
+  const alive = new Set(Player.tracks().map(t => t.id));
+  PICK.chosen = new Set([...PICK.chosen].filter(id => alive.has(id)));
+  renderPicker();
+}
+
+function wirePicker() {
+  $("#pick-list").addEventListener("change", ev => {
+    const id = ev.target.dataset.id;
+    if (!id) return;
+    ev.target.checked ? PICK.chosen.add(id) : PICK.chosen.delete(id);
+    ev.target.closest(".pick-row").classList.toggle("on", ev.target.checked);
+    paintPickCount();
+  });
+  $("#pick-filter").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-f]");
+    if (!b) return;
+    PICK.filter = b.dataset.f;
+    $$("#pick-filter [data-f]").forEach(x => x.classList.toggle("on", x === b));
+    renderPicker();
+  });
+  let timer = 0;
+  $("#pick-q").oninput = ev => { clearTimeout(timer); timer = setTimeout(() => { PICK.q = ev.target.value; renderPicker(); }, 120); };
+  $("#pick-all").onclick = () => {
+    const ids = pickVisible().map(t => t.id), everyOn = ids.length && ids.every(id => PICK.chosen.has(id));
+    ids.forEach(id => everyOn ? PICK.chosen.delete(id) : PICK.chosen.add(id));
+    renderPicker();
+  };
+  $("#pick-add").onclick = async () => {
+    const ids = [...PICK.chosen];
+    if (!ids.length) return;
+    Player.release(ids);
+    const paths = await call("library_paths", ids);
+    if (!Array.isArray(paths) || !paths.length) return toast("No encontré esos archivos en tu carpeta de descargas.", true);
+    PICK.chosen.clear();
+    await addPaths(paths);
+    renderPicker();
+  };
+}
+
 /* ---------- start ---------- */
 function initTags() {
   if (T.wiredOnce) return;
   T.wiredOnce = true;
+  wirePicker();
   $("#tags-pick-files").onclick = async () => addPaths(await call("tags_pick_files"));
   $("#tags-pick-folder").onclick = async () => addPaths(await call("tags_pick_folder"));
   $("#tags-search").onclick = searchAll;
