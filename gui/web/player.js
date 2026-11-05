@@ -501,46 +501,60 @@ function extractAccent(track) {
   img.onload = () => {
     if (current() !== track) return;
     try {
-      const c = document.createElement("canvas"); c.width = c.height = 12;
+      const c = document.createElement("canvas"); c.width = c.height = COVER_SAMPLE;
       const x = c.getContext("2d", { willReadFrequently: true });
-      x.drawImage(img, 0, 0, 12, 12);
-      const d = x.getImageData(0, 0, 12, 12).data;
-      let r = 0, g = 0, b = 0, w = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        const max = Math.max(d[i], d[i + 1], d[i + 2]), min = Math.min(d[i], d[i + 1], d[i + 2]);
-        const weight = 0.05 + (max - min) / 255;
-        r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
-      }
-      apply(tonesOf(r / w, g / w, b / w));
+      x.drawImage(img, 0, 0, COVER_SAMPLE, COVER_SAMPLE);
+      apply(tonesOf(x.getImageData(0, 0, COVER_SAMPLE, COVER_SAMPLE).data));
     } catch (e) { apply(null); }
   };
   img.onerror = () => apply(null);
   img.src = track.cover_url;
 }
 
-/* The colours of the window for a cover whose average colour is (r, g, b). The three blobs of the background take neighbouring
-   hues, so the whole window changes with the song and not just one corner.
-   A grey, black or white cover (about a third of a real library) has no hue: it used to be given an arbitrary tint, always
-   saturated, which looked unrelated to the cover (a black one turned the window pink). Now its hue is a cool neutral and the
-   brightness of the cover decides how bright the glow is: dim for a black cover, soft and light for a white one. */
-function tonesOf(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, light = (max + min) / 2 * 100;
-  let h = 0;
-  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  h = Math.round(((h * 60) + 360) % 360);
-  const neutral = d < .04;                                           // the hue of a grey means nothing
-  if (neutral) h = 215;
-  const s = neutral ? 7 : Math.round(clamp(d / (1 - Math.abs(max + min - 1)) * 1.35, .12, .85) * 100);
-  const colour = clamp(d / .25, 0, 1);                               // 0 = grey, 1 = a real colour
-  const lit = (ofColour, ofGrey) => Math.round(ofColour * colour + ofGrey * (1 - colour));
-  const hsl = (hue, lightness) => `hsl(${(hue + 360) % 360} ${s}% ${lightness}%)`;
-  return {
-    accent: hsl(h, lit(62, clamp(40 + light * .5, 55, 84))),
-    b1: hsl(h, lit(52, clamp(18 + light * .6, 22, 70))),
-    b2: hsl(h + 55, lit(56, clamp(22 + light * .6, 26, 72))),
-    b3: hsl(h - 50, lit(58, clamp(24 + light * .6, 28, 74))),
-  };
+/* The colours of the window for a cover, from the RGBA pixels of a small copy of it. The three blobs of the background take the
+   three most present colours of the cover, so the whole window changes with the song and not just one corner.
+   The colours are found by counting hues (how vivid and bright each pixel is decides its weight), not by averaging: a cover that
+   is red and turquoise averages to grey, and the window must be red and turquoise. A grey, black or white cover (a third of a
+   real library) has no hue at all: it gets a cool neutral, and its brightness decides how bright the glow is (dim for a black
+   cover, soft and light for a white one). */
+const COVER_SAMPLE = 20, HUE_BINS = 24;
+const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+function tonesOf(pixels) {
+  const weight = new Float32Array(HUE_BINS), vx = new Float32Array(HUE_BINS), vy = new Float32Array(HUE_BINS), sat = new Float32Array(HUE_BINS);
+  let n = 0, lightSum = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i] / 255, g = pixels[i + 1] / 255, b = pixels[i + 2] / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), c = max - min;
+    n++; lightSum += (max + min) / 2;
+    if (c < .1 || max < .15) continue;                                  // greys and near-blacks carry no hue
+    const h = (max === r ? ((g - b) / c) % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4) * 60;
+    const bin = Math.floor(((h + 360) % 360) / (360 / HUE_BINS)) % HUE_BINS, w = c * (.4 + max * .6);
+    weight[bin] += w; vx[bin] += Math.cos(h * Math.PI / 180) * w; vy[bin] += Math.sin(h * Math.PI / 180) * w;
+    sat[bin] += c / (1 - Math.abs(max + min - 1) || 1) * w;
+  }
+  const light = lightSum / n * 100, total = weight.reduce((a, b) => a + b, 0);
+  const near = i => weight[(i + HUE_BINS - 1) % HUE_BINS] * .5 + weight[i] + weight[(i + 1) % HUE_BINS] * .5;   // neighbouring bins are one colour
+  // the most present colours, each at least 50° from the ones already chosen
+  const peaks = [];
+  [...weight.keys()].sort((a, b) => near(b) - near(a)).forEach(bin => {
+    const share = near(bin) / (total || 1);
+    if (peaks.length >= 3 || share < .06) return;
+    const around = [bin - 1, bin, bin + 1].map(k => (k + HUE_BINS) % HUE_BINS);
+    const x = around.reduce((a, k) => a + vx[k], 0), y = around.reduce((a, k) => a + vy[k], 0), w = around.reduce((a, k) => a + weight[k], 0);
+    const hue = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    if (peaks.every(p => hueGap(p.hue, hue) >= 50)) peaks.push({ hue, s: around.reduce((a, k) => a + sat[k], 0) / (w || 1) });
+  });
+  const neutral = total < n * .03 || !peaks.length;                      // hardly any colour in the whole cover
+  const hsl = (h, s, l) => `hsl(${Math.round((h + 360) % 360)} ${Math.round(s * 100)}% ${l}%)`;
+  if (neutral) {
+    const tone = l => hsl(215, .07, l);
+    return { accent: tone(clamp(40 + light * .5, 55, 84)), b1: tone(clamp(18 + light * .6, 22, 70)), b2: tone(clamp(22 + light * .6, 26, 72)), b3: tone(clamp(24 + light * .6, 28, 74)) };
+  }
+  // fewer than three colours in the cover: the missing ones are neighbours of the main one, as before
+  const [first, second = { hue: first.hue + 55, s: first.s * .9 }, third = { hue: first.hue - 50, s: first.s * .9 }] = peaks;
+  const strong = s => clamp(s * 1.25, .4, .85);
+  return { accent: hsl(first.hue, strong(first.s), 62), b1: hsl(first.hue, strong(first.s), 52), b2: hsl(second.hue, strong(second.s), 56), b3: hsl(third.hue, strong(third.s), 58) };
 }
 
 /* ---------- spectrum ---------- */
