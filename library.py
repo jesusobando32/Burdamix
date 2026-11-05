@@ -79,6 +79,12 @@ class Library:
             self._known = fresh
         return found
 
+    def forget(self, path):
+        """A file that was deleted: it is no longer served nor remembered."""
+        with self._lock:
+            self._paths = {k: v for k, v in self._paths.items() if v != path}
+            self._known.pop(path, None)
+
     def path_of(self, track_id):
         with self._lock:
             return self._paths.get(track_id)

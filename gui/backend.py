@@ -19,6 +19,7 @@ import const
 import downloader
 import library
 import login
+import trash
 import tempdirs
 import updater
 from apis.spotify import Spotify, SpotifyNetworkError, SpotifyRateLimited
@@ -86,6 +87,7 @@ class Api:
         self._cover_tagger = None   # finds the pictures shown for searched songs (kept: it remembers what it found)
         self._library = library.Library()
         self._player_lock = threading.Lock()
+        self._trash = trash.move_to_recycle_bin          # what deletes a song; the tests give it a stand-in
         self._media = library.MediaServer(self._library)   # started with the first library request
         self._tags = TagJobs()      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
@@ -163,6 +165,27 @@ class Api:
 
     def _player_path(self):
         return os.path.join(const.data_dir(), "player.json")
+
+    def library_delete(self, ids):
+        """Send songs of the library to the Recycle Bin (they can be put back from there). Only files the last scan listed, and
+        only inside the downloads folder, are touched; a song the bin refuses is reported and the rest still go."""
+        deleted, failed = 0, []
+        root = os.path.normcase(os.path.realpath(self._downloads_dir()))
+        for track_id in ids if isinstance(ids, (list, tuple)) else []:
+            path = self._library.path_of(track_id) if isinstance(track_id, str) else None
+            if not path:
+                continue
+            if not os.path.normcase(os.path.realpath(path)).startswith(root + os.sep):
+                failed.append({"id": track_id, "error": "Ese archivo no está en tu carpeta de descargas."})
+                continue
+            try:
+                self._trash(path)
+            except trash.TrashError as error:
+                failed.append({"id": track_id, "error": str(error)})
+                continue
+            self._library.forget(path)
+            deleted += 1
+        return {"ok": True, "deleted": deleted, "failed": failed}
 
     def library_paths(self, ids):
         """The files behind some songs of the library, to hand them to "Completar etiquetas". The page only knows ids
