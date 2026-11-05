@@ -88,7 +88,7 @@ function bodyHTML(f) {
   return "";
 }
 
-function cardHTML(f) {
+function tagCardHTML(f) {
   const [label, kind] = TAG_STATUS[f.status] || ["", ""];
   const spin = kind === "busy" ? '<i class="spin"></i>' : "";
   const body = bodyHTML(f);
@@ -104,13 +104,13 @@ function renderTags() {
   $("#tags-options").classList.toggle("hidden", !has);
   $("#tags-one").classList.toggle("hidden", T.files.length !== 1);
   $("#tags-dock").classList.toggle("hidden", !has);
-  $("#tags-list").innerHTML = T.files.map(cardHTML).join("");
+  $("#tags-list").innerHTML = T.files.map(tagCardHTML).join("");
   renderTagBar();
 }
 
 function updateCard(f) {
   const el = [...$$("#tags-list .tcard")].find(c => c.dataset.path === f.path);
-  if (el) el.outerHTML = cardHTML(f); else renderTags();
+  if (el) el.outerHTML = tagCardHTML(f); else renderTags();
   renderTagBar();
 }
 
