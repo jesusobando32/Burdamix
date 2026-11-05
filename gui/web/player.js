@@ -1,5 +1,5 @@
 "use strict";
-/* Player: the library view, the bar that stays at the bottom, the queue and the equalizer.
+/* Player: the library view, the bar that stays at the bottom, the equalizer and the crossfade.
    Uses the helpers of app.js ($, $$, esc, fmt, call, toast, show); the program side is Api.library_list / get_player / save_player.
    Audio graph: two decks (so that two songs can overlap) -> preamp -> 10 filters -> analyser -> volume -> speakers. */
 
@@ -30,12 +30,12 @@ const TICK = 150;
 
 const P = {
   tracks: [], byId: new Map(), queue: [], original: null, pos: -1,
-  shuffle: false, repeat: "off", volume: .8, muted: false,
+  shuffle: false, repeat: "off", volume: .8, muted: false, xf: 0,
   eq: { on: true, bands: [...FLAT], preset: "flat" },
   custom: [1, 2, 3].map(n => ({ id: "c" + n, name: "Personalizado " + n, bands: [...FLAT] })),
   seen: new Map(), q: "", sort: "artist", ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
-  fading: null, timer: 0, saveTimer: 0, lastSaved: 0, wired: false,
+  fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
 };
 
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -166,7 +166,7 @@ function advance(auto, skipBroken = false) {
     }
     next = 0;
   }
-  goTo(next, auto ? 0 : QUICK_FADE);
+  goTo(next, auto ? Math.min(P.xf, Math.max(0, deck().el.duration - deck().el.currentTime)) : QUICK_FADE);
 }
 
 function goTo(position, seconds = QUICK_FADE) {
@@ -290,6 +290,7 @@ function trackChanged() {
   paintLibraryMarks();
   renderQueue();
   setMediaSession(track);
+  if (track) extractAccent(track);
   saveSoon(true);
 }
 
@@ -310,6 +311,7 @@ function render() {
   $("#pl-repeat").title = { off: "Repetir: no", all: "Repetir toda la cola", one: "Repetir esta canción" }[P.repeat];
   paintVolume();
   paint();
+  if (playing) loopSpectrum();
 }
 
 function paintCover(track) {
@@ -343,6 +345,10 @@ function tick() {
   if (!P.decks.length) return;
   paint();
   const el = deck().el;
+  if (!el.paused && P.xf > 0 && P.repeat !== "one" && !P.fading && hasNext()) {
+    const left = el.duration - el.currentTime;
+    if (isFinite(left) && el.duration > P.xf * 2 && left <= P.xf) advance(true);
+  }
   if (Date.now() - P.lastSaved > 5000 && !el.paused) { P.lastSaved = Date.now(); call("save_player", snapshot()); }
 }
 
@@ -353,6 +359,66 @@ function setMediaSession(track) {
     title: track.title, artist: track.artist, album: track.album,
     artwork: track.cover_url ? [{ src: track.cover_url, sizes: "320x320", type: "image/jpeg" }] : [],
   });
+}
+
+/* ---------- colour from the cover ---------- */
+const DEFAULT_ACCENT = "#b5ef4a";
+function extractAccent(track) {
+  const apply = color => { P.accent = color; $("#app").style.setProperty("--pc", color); };
+  if (!track.cover_url) return apply(DEFAULT_ACCENT);
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    if (current() !== track) return;
+    try {
+      const c = document.createElement("canvas"); c.width = c.height = 12;
+      const x = c.getContext("2d", { willReadFrequently: true });
+      x.drawImage(img, 0, 0, 12, 12);
+      const d = x.getImageData(0, 0, 12, 12).data;
+      let r = 0, g = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const max = Math.max(d[i], d[i + 1], d[i + 2]), min = Math.min(d[i], d[i + 1], d[i + 2]);
+        const weight = 0.05 + (max - min) / 255;
+        r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
+      }
+      apply(legible(r / w, g / w, b / w));
+    } catch (e) { apply(DEFAULT_ACCENT); }
+  };
+  img.onerror = () => apply(DEFAULT_ACCENT);
+  img.src = track.cover_url;
+}
+
+/* A cover's average can be muddy or nearly black: bring it to a colour that reads on the dark bar. */
+function legible(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = Math.round(((h * 60) + 360) % 360);
+  const s = clamp(d ? d / (1 - Math.abs(max + min - 1)) : 0, .45, .85) * 100;
+  return `hsl(${h} ${Math.round(s)}% 62%)`;
+}
+
+/* ---------- spectrum ---------- */
+function loopSpectrum() {
+  if (P.bars) return;
+  const canvas = $("#pl-spectrum"), ctx2 = canvas.getContext("2d"), data = new Uint8Array(P.analyser.frequencyBinCount);
+  const draw = () => {
+    P.bars = 0;
+    ctx2.clearRect(0, 0, canvas.width, canvas.height);
+    if (!isPlaying() || document.hidden || reduced()) return;
+    P.analyser.getByteFrequencyData(data);
+    const n = 20, w = canvas.width / n;
+    ctx2.fillStyle = P.accent || DEFAULT_ACCENT;
+    for (let i = 0; i < n; i++) {
+      const v = data[Math.floor(i * (data.length * .7) / n) + 1] / 255;
+      const h = Math.max(2, v * v * canvas.height);
+      ctx2.globalAlpha = .45 + v * .55;
+      ctx2.fillRect(i * w + 1, canvas.height - h, w - 3, h);
+    }
+    P.bars = requestAnimationFrame(draw);
+  };
+  P.bars = requestAnimationFrame(draw);
 }
 
 /* ---------- panels ---------- */
@@ -522,11 +588,17 @@ function paintEq(fromSlider = false) {
   }).join("");
 }
 
+function paintCrossfade() {
+  $("#xf").value = String(P.xf);
+  $("#xf").style.setProperty("--p", (P.xf / 12 * 100) + "%");
+  $("#xf-out").textContent = P.xf ? P.xf + " s" : "Apagado";
+}
+
 /* ---------- remembering ---------- */
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, shuffle: P.shuffle, repeat: P.repeat,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
@@ -542,7 +614,7 @@ function saveSoon(now = false) {
 function restore(saved) {
   if (!saved || typeof saved !== "object") return;
   const num = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : d;
-  P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted;
+  P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
   if (saved.eq && typeof saved.eq === "object") {
@@ -692,11 +764,13 @@ function wireBar() {
   const bar = $("#pl-progress");
   bar.addEventListener("input", () => { P.dragging = true; paint(); });   // the thumb is the user's until they let go
   bar.addEventListener("change", () => { P.dragging = false; seek(+bar.value); });
+  $("#xf").oninput = ev => { P.xf = +ev.target.value; paintCrossfade(); saveSoon(); };
   document.addEventListener("click", ev => {
     // the path is taken at the click: a button the panel redraws is already out of the page when this runs
     const inside = ev.composedPath().some(n => n.classList && (n.classList.contains("pl-panel") || n.id === "pl-queue" || n.id === "pl-eq"));
     if (!inside) closePanels();
   });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && isPlaying()) loopSpectrum(); });
   addEventListener("pagehide", () => { call("save_player", snapshot()); });
 }
 
@@ -705,7 +779,7 @@ const Player = {
     if (P.wired) return;
     P.wired = true;
     restore(await call("get_player"));
-    buildEq(); paintEq(); paintVolume();
+    buildEq(); paintEq(); paintCrossfade(); paintVolume();
     wireBar(); wireQueue(); wireLibrary(); wireKeys();
     P.timer = setInterval(tick, TICK);
     if (await loadLibrary()) restoreQueue(await call("get_player"));

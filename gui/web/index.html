@@ -283,6 +283,7 @@
         </div>
       </div>
       <div class="pl-side">
+        <canvas id="pl-spectrum" width="96" height="28" aria-hidden="true"></canvas>
         <button class="icon-btn" id="pl-eq" type="button" aria-label="Ecualizador y crossfade" aria-expanded="false" title="Ecualizador y crossfade">
           <svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="14" r="2" class="knob"/><circle cx="12" cy="8" r="2" class="knob"/><circle cx="19" cy="15" r="2" class="knob"/></svg></button>
         <button class="icon-btn" id="pl-queue" type="button" aria-label="Cola" aria-expanded="false" title="Cola">
@@ -304,6 +305,10 @@
         <div class="eq-presets" id="eq-presets" role="group" aria-label="Presets"></div>
         <div class="eq-custom-head"><span class="muted small">Mis ecualizadores</span><button class="btn small-btn" id="eq-save" type="button">Guardar ajuste actual</button></div>
         <div class="eq-custom" id="eq-custom"></div>
+        <div class="eq-xf">
+          <div><b>Crossfade</b><span class="muted small" id="xf-hint">Mezcla el final de una canción con el inicio de la siguiente</span></div>
+          <div class="slider"><input id="xf" type="range" min="0" max="12" step="1" value="0" aria-label="Segundos de crossfade"><output id="xf-out">Apagado</output></div>
+        </div>
       </aside>
     </footer>
   </main>
