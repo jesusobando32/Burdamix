@@ -342,7 +342,7 @@ function render() {
   $("#pl-repeat").title = { off: "Repetir: no", all: "Repetir toda la cola", one: "Repetir esta canción" }[P.repeat];
   paintVolume();
   paint();
-  if (playing) loopSpectrum();
+  loopSpectrum();   // also paused: the bars sink to a flat line (or draw it the first time)
 }
 
 function paintCover(track) {
@@ -443,23 +443,30 @@ function tonesOf(r, g, b) {
 }
 
 /* ---------- spectrum ---------- */
+/* The bars grow from the middle line up and down. Each one eases towards its level (quickly up, slowly down), so a pause
+   lets them sink to a flat line instead of vanishing; the loop stops by itself once they are flat. */
+const BARS = 20;
+const levels = new Float32Array(BARS);
 function loopSpectrum() {
-  if (P.bars) return;
+  if (P.bars || !P.analyser) return;
   const canvas = $("#pl-spectrum"), ctx2 = canvas.getContext("2d"), data = new Uint8Array(P.analyser.frequencyBinCount);
   const draw = () => {
     P.bars = 0;
+    const live = isPlaying() && !document.hidden && !reduced();
+    if (live) P.analyser.getByteFrequencyData(data);
+    const w = canvas.width / BARS, mid = canvas.height / 2;
+    let moving = false;
     ctx2.clearRect(0, 0, canvas.width, canvas.height);
-    if (!isPlaying() || document.hidden || reduced()) return;
-    P.analyser.getByteFrequencyData(data);
-    const n = 20, w = canvas.width / n;
     ctx2.fillStyle = P.accent || DEFAULT_ACCENT;
-    for (let i = 0; i < n; i++) {
-      const v = data[Math.floor(i * (data.length * .7) / n) + 1] / 255;
-      const h = Math.max(2, v * v * canvas.height);
-      ctx2.globalAlpha = .45 + v * .55;
-      ctx2.fillRect(i * w + 1, canvas.height - h, w - 3, h);
+    for (let i = 0; i < BARS; i++) {
+      const v = live ? (data[Math.floor(i * (data.length * .7) / BARS) + 1] / 255) ** 2 : 0;
+      levels[i] += (v - levels[i]) * (v > levels[i] ? .5 : .1);
+      if (levels[i] > .01) moving = true; else if (!live) levels[i] = 0;
+      const h = Math.max(2, levels[i] * canvas.height);
+      ctx2.globalAlpha = .4 + levels[i] * .6;
+      ctx2.fillRect(i * w + 1, mid - h / 2, w - 3, h);
     }
-    P.bars = requestAnimationFrame(draw);
+    if (live || moving) P.bars = requestAnimationFrame(draw);
   };
   P.bars = requestAnimationFrame(draw);
 }
