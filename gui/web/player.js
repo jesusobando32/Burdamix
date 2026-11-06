@@ -71,9 +71,11 @@ function buildAudio() {
     const d = { el, gain };
     el.addEventListener("ended", () => { if (d === deck()) advance(true); });
     el.addEventListener("error", () => { if (d === deck() && el.getAttribute("src")) onBroken(); });
-    el.addEventListener("play", () => { if (d === deck()) render(); });
+    el.addEventListener("play", () => { if (d === deck()) { render(); syncMediaState(); } });
+    el.addEventListener("seeked", () => { if (d === deck()) syncMediaState(); });
+    el.addEventListener("loadedmetadata", () => { if (d === deck()) syncMediaState(); });
     el.addEventListener("playing", () => { if (d === deck()) P.errors = 0; });   // a song that plays ends the run of broken ones
-    el.addEventListener("pause", () => { if (d === deck()) { render(); saveSoon(); } });
+    el.addEventListener("pause", () => { if (d === deck()) { render(); saveSoon(); syncMediaState(); } });
     return d;
   });
   P.decks[1].gain.gain.value = 0;
@@ -484,8 +486,20 @@ function setMediaSession(track) {
   if (!track) { navigator.mediaSession.metadata = null; return; }
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title, artist: track.artist, album: track.album,
-    artwork: track.cover_url ? [{ src: track.cover_url, sizes: "320x320", type: "image/jpeg" }] : [],
+    // Windows shows the cover in its media panel; sizes are a hint, the same picture serves them all
+    artwork: track.cover_url ? ["96x96", "256x256", "512x512"].map(sizes => ({ src: track.cover_url, sizes })) : [],
   });
+  syncMediaState();
+}
+
+// what the system panel (and the keyboard's media keys) show: playing or paused, and where in the song
+function syncMediaState() {
+  if (!("mediaSession" in navigator)) return;
+  const el = P.decks.length ? deck().el : null;
+  navigator.mediaSession.playbackState = !current() ? "none" : isPlaying() ? "playing" : "paused";
+  try {
+    if (el && isFinite(el.duration) && el.duration > 0) navigator.mediaSession.setPositionState({ duration: el.duration, position: Math.min(el.currentTime, el.duration), playbackRate: el.playbackRate || 1 });
+  } catch (e) { /* the browser refuses odd values while a song is loading */ }
 }
 
 /* ---------- colour from the cover ---------- */
@@ -1158,7 +1172,8 @@ function wireKeys() {
   });
   if ("mediaSession" in navigator) {
     const set = (name, fn) => { try { navigator.mediaSession.setActionHandler(name, fn); } catch (e) { /* not supported */ } };
-    set("play", toggle); set("pause", toggle); set("previoustrack", previous); set("nexttrack", () => advance(false));
+    set("play", () => { if (!isPlaying()) toggle(); }); set("pause", () => { if (isPlaying()) toggle(); });
+    set("stop", () => { if (isPlaying()) toggle(); }); set("previoustrack", previous); set("nexttrack", () => advance(false));
     set("seekto", d => seek(d.seekTime));
   }
 }

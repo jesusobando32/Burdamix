@@ -22,8 +22,20 @@ def _tell_user(text):
         print(text, file=sys.stderr)
 
 
+def _own_identity():
+    """Give the process its own Windows identity, so the media panel and the taskbar say "Burdamix", not "Python"."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Burdamix.Player")
+    except Exception:
+        pass   # only the name in the system panel is lost
+
+
 def main():
     import const
+    _own_identity()
     import updater
     updater.use_downloaded_ytdlp()   # compiled program: use the yt-dlp the user downloaded, before anything imports it
 
