@@ -1,5 +1,5 @@
 /* Motion layer ("Vinilo nocturno"): what happens between screens and around the cursor. Borrowed from award-winning sites:
-   an intro curtain (Obys), a circular wipe between sections with a lime edge (SPYLT), titles that rise out of a mask,
+   an intro curtain (Obys), titles that rise out of a mask,
    a list that dims everything but what you point at, depth in the background, counters and bars that grow.
    Only transform, opacity and clip-path move. Everything is off with prefers-reduced-motion. */
 
@@ -12,19 +12,6 @@
 @keyframes splash-line { to { transform: scaleX(1); } }
 @keyframes splash-out { 0%, 62% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 0 100% 0); } }
 
-/* ---------- curtain between sections ---------- */
-#curtain { position: fixed; inset: 0; z-index: 90; pointer-events: none; visibility: hidden; --cx: 50%; --cy: 50%; }
-#curtain.on { visibility: visible; }
-#curtain i { position: absolute; inset: 0; clip-path: circle(0 at var(--cx) var(--cy)); will-change: clip-path; }
-#curtain .c1 { background: var(--pc, var(--accent)); }
-#curtain .c2 { background: var(--bg); }
-#curtain.in .c1 { animation: cur-in 320ms var(--ease-in-out) forwards; }
-#curtain.in .c2 { animation: cur-in 320ms 60ms var(--ease-in-out) forwards; }
-#curtain.out .c1 { clip-path: circle(150vmax at var(--cx) var(--cy)); animation: cur-out 420ms 60ms var(--ease-out) forwards; }
-#curtain.out .c2 { clip-path: circle(150vmax at var(--cx) var(--cy)); animation: cur-out 420ms var(--ease-out) forwards; }
-@keyframes cur-in { to { clip-path: circle(150vmax at var(--cx) var(--cy)); } }
-@keyframes cur-out { to { clip-path: circle(0 at var(--cx) var(--cy)); } }
-
 /* ---------- titles rise out of a mask ---------- */
 .w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .12em; margin-bottom: -.12em; }
 .w > i { display: inline-block; font-style: normal; }
@@ -35,14 +22,6 @@
 .bg .b1 { translate: calc(var(--px, 0) * -34px) calc(var(--py, 0) * -24px); }
 .bg .b2 { translate: calc(var(--px, 0) * 40px) calc(var(--py, 0) * 28px); }
 .bg .b3 { translate: calc(var(--px, 0) * -22px) calc(var(--py, 0) * 36px); }
-
-/* ---------- cursor ring ---------- */
-#cursor { position: fixed; left: 0; top: 0; z-index: 95; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; pointer-events: none; opacity: 0;
-  border: 1.5px solid color-mix(in srgb, var(--pc, var(--accent)) 75%, transparent); transition: opacity var(--t-med) ease, scale var(--t-med) var(--ease-out), background var(--t-med) ease; will-change: transform; }
-#cursor.on { opacity: .9; }
-#cursor.hot { scale: 1.7; background: color-mix(in srgb, var(--pc, var(--accent)) 14%, transparent); }
-#cursor.down { scale: .75; }
-#cursor.text { scale: .4; }
 
 /* ---------- lists: dim what you are not pointing at ---------- */
 @media (hover: hover) and (pointer: fine) {
@@ -64,9 +43,8 @@
 .dialog:not(.hidden) .dialog-card { animation: dlg-in 380ms var(--ease-out) both; }
 @keyframes dlg-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
 
-@media (max-width: 760px) { #cursor { display: none; } }
 @media (prefers-reduced-motion: reduce) {
-  #splash, #curtain, #cursor { display: none; }
+  #splash { display: none; }
   .rv .w > i, .st-tile, .st-chart, .st-list, .st-bar i, .st-list li, .dialog:not(.hidden) .dialog-card { animation: none; }
   .bg .b1, .bg .b2, .bg .b3 { translate: none; }
 }

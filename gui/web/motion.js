@@ -1,11 +1,10 @@
-/* Motion only, no app logic. Wraps show() with a circular curtain, splits titles for the rise-out-of-a-mask reveal,
-   counts numbers up on the statistics screen and drives the cursor ring and the depth of the background. */
+/* Motion only, no app logic. Splits titles for the rise-out-of-a-mask reveal, counts numbers up on the statistics screen
+   and drives the depth of the background. */
 (() => {
   const app = document.getElementById("app");
   const calm = matchMedia("(prefers-reduced-motion: reduce)");
   const fine = matchMedia("(hover: hover) and (pointer: fine)");
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  const born = performance.now();
 
   /* ---- intro: it removes itself, and never blocks a click (pointer-events: none) ---- */
   const splash = document.getElementById("splash");
@@ -28,28 +27,13 @@
     h.classList.remove("rv"); void h.offsetWidth; h.classList.add("rv");
   };
 
-  /* ---- curtain ---- */
-  const curtain = document.createElement("div");
-  curtain.id = "curtain"; curtain.setAttribute("aria-hidden", "true"); curtain.innerHTML = '<i class="c1"></i><i class="c2"></i>';
-  app.append(curtain);
-  let busy = false, target = null, origin = [innerWidth / 2, innerHeight / 2];
-  document.addEventListener("pointerdown", e => { origin = [e.clientX, e.clientY]; }, true);
-  document.addEventListener("keydown", () => { origin = [innerWidth / 2, innerHeight / 2]; }, true);
-
+  /* ---- sections: the new title rises as soon as the section changes ---- */
   const plainShow = window.show;
   if (typeof plainShow === "function") {
     window.show = view => {
       const same = typeof S !== "undefined" && S.view === view;
-      if (busy) { target = view; return; }
-      if (calm.matches || same || performance.now() - born < 1700 || document.hidden) { plainShow(view); requestAnimationFrame(reveal); return; }
-      busy = true; target = view;
-      curtain.style.setProperty("--cx", origin[0] + "px"); curtain.style.setProperty("--cy", origin[1] + "px");
-      curtain.className = "on in";
-      setTimeout(() => {
-        plainShow(target); reveal();
-        curtain.className = "on out";
-        setTimeout(() => { curtain.className = ""; busy = false; }, 520);
-      }, 400);
+      plainShow(view);
+      if (!same) reveal();
     };
   }
 
@@ -72,29 +56,16 @@
     $$(".st-tile b", body).forEach(countUp);
   }).observe(body, { childList: true });
 
-  /* ---- cursor ring and depth ---- */
+  /* ---- depth: the colour blobs lean away from the cursor ---- */
   if (!fine.matches || calm.matches) return;
-  const ring = document.createElement("div");
-  ring.id = "cursor"; ring.setAttribute("aria-hidden", "true"); document.body.append(ring);
-  let mx = innerWidth / 2, my = innerHeight / 2, rx = mx, ry = my, dx = 0, dy = 0, awake = false, raf = 0;
-  const HOT = "a, button, input, select, summary, [role=button], .row, .lib-row, .q-row, .st-list li, .chip-btn, .pill, .switch";
+  let tx = 0, ty = 0, dx = 0, dy = 0, raf = 0;
   document.addEventListener("pointermove", e => {
-    mx = e.clientX; my = e.clientY;
-    if (!awake) { awake = true; ring.classList.add("on"); }
-    const t = e.target.closest ? e.target : null;
-    ring.classList.toggle("hot", !!(t && t.closest(HOT)));
-    ring.classList.toggle("text", !!(t && t.closest("input[type=text], input[type=search], input[type=number]")));
+    tx = (e.clientX / innerWidth - .5) * 2; ty = (e.clientY / innerHeight - .5) * 2;
     if (!raf) raf = requestAnimationFrame(loop);
   }, { passive: true });
-  document.addEventListener("pointerdown", () => ring.classList.add("down"), true);
-  document.addEventListener("pointerup", () => ring.classList.remove("down"), true);
-  document.documentElement.addEventListener("pointerleave", () => ring.classList.remove("on"));
-  document.documentElement.addEventListener("pointerenter", () => awake && ring.classList.add("on"));
   function loop() {
-    rx += (mx - rx) * .2; ry += (my - ry) * .2;
-    dx += ((mx / innerWidth - .5) * 2 - dx) * .06; dy += ((my / innerHeight - .5) * 2 - dy) * .06;
-    ring.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+    dx += (tx - dx) * .06; dy += (ty - dy) * .06;
     app.style.setProperty("--px", dx.toFixed(3)); app.style.setProperty("--py", dy.toFixed(3));
-    raf = (Math.abs(mx - rx) > .3 || Math.abs(my - ry) > .3 || Math.abs((mx / innerWidth - .5) * 2 - dx) > .002) && !document.hidden ? requestAnimationFrame(loop) : 0;
+    raf = (Math.abs(tx - dx) > .002 || Math.abs(ty - dy) > .002) && !document.hidden ? requestAnimationFrame(loop) : 0;
   }
 })();
