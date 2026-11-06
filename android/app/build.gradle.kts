@@ -62,7 +62,7 @@ val programPy = layout.buildDirectory.dir("generated/programpy")
 val copyProgram by tasks.registering(Sync::class) {
     from("../..") {
         include("*.py", "apis/**/*.py", "gui/*.py")
-        exclude("gui_app.py", "spotify2mp3.py", "tests/**", "android/**")
+        exclude("gui_app.py", "tests/**", "android/**")   // gui_app.py opens the desktop window (pywebview)
     }
     from("../../gui/bridge.py")
     into(programPy)
