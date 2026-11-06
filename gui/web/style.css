@@ -590,3 +590,31 @@ button.card:active { transform: scale(.985); }
 .album:focus-visible .disc { transform: translateX(36%) rotate(70deg); }
 button.card:focus-visible .disc { transform: translateX(22%) rotate(70deg); }
 @media (prefers-reduced-motion: reduce) { .disc { transition: none; } }
+
+/* ---------- statistics ---------- */
+.stats-page { max-width: 980px; }
+.st-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 8px 0 4px; }
+.st-tile { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); min-width: 0; }
+.st-tile b { font-size: 22px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-chart { margin: 18px 0 8px; padding: 16px 18px 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.st-chart h3, .st-list h3 { margin: 0 0 12px; font-size: 15px; }
+.st-bars { display: flex; align-items: flex-end; gap: 6px; height: 160px; }
+.st-bars.dense { gap: 2px; }
+.st-bar { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; }
+.st-bar i { display: block; width: 100%; max-width: 38px; border-radius: 6px 6px 2px 2px; background: var(--accent); transition: height .4s var(--ease-out); }
+.st-bar.none i { background: var(--surface-2); }
+.st-bar span { font-size: 11px; color: var(--muted); height: 14px; line-height: 14px; }
+.st-bar span.thin { font-size: 9px; }
+.st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 14px; }
+.st-list { padding: 16px 18px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); min-width: 0; }
+.st-list ol { list-style: none; margin: 0; padding: 0; }
+.st-list li { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 10px; min-width: 0; }
+.st-list li[data-id] { cursor: pointer; }
+.st-list li[data-id]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.st-n { width: 18px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.st-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.st-name b, .st-name small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-c { color: var(--muted); font-size: 12px; flex: none; }
+@media (hover: hover) and (pointer: fine) { .st-list li[data-id]:hover { background: var(--surface-2); } }
+@media (max-width: 760px) { .st-bars { height: 120px; } }
+@media (prefers-reduced-motion: reduce) { .st-bar i { transition: none; } }

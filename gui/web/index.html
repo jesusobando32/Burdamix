@@ -34,6 +34,10 @@
         <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
         <span>Biblioteca</span>
       </button>
+      <button class="nav" data-view="stats" title="Estadísticas">
+        <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
+        <span>Estadísticas</span>
+      </button>
       <button class="nav" data-view="tags" title="Completar etiquetas">
         <svg viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg>
         <span>Completar etiquetas</span>
@@ -152,6 +156,19 @@
     </section>
 
     <!-- Completar etiquetas -->
+    <!-- Estadísticas -->
+    <section class="view" id="view-stats">
+      <div class="scroll page stats-page">
+        <h1>Estadísticas</h1>
+        <p class="muted">Lo que has escuchado, solo guardado en este ordenador.</p>
+        <div class="seg" id="st-periods" role="group" aria-label="Periodo">
+          <i class="seg-ind" aria-hidden="true"></i>
+          <button type="button" data-p="week">Semana</button><button type="button" data-p="month">Mes</button><button type="button" data-p="year">Año</button><button type="button" data-p="all">Siempre</button>
+        </div>
+        <div id="st-body"></div>
+      </div>
+    </section>
+
     <section class="view" id="view-tags">
       <div class="scroll" id="tags-scroll">
         <div class="page">
@@ -385,6 +402,7 @@
 <script src="crate.js"></script>
 <script src="lyrics.js"></script>
 <script src="sleep.js"></script>
+<script src="stats.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

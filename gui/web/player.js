@@ -69,7 +69,7 @@ function buildAudio() {
     P.ctx.createMediaElementSource(el).connect(gain);
     gain.connect(P.pre);
     const d = { el, gain };
-    el.addEventListener("ended", () => { if (d === deck()) advance(true); });
+    el.addEventListener("ended", () => { if (d === deck()) { resetListening(); advance(true); } });
     el.addEventListener("error", () => { if (d === deck() && el.getAttribute("src")) onBroken(); });
     el.addEventListener("play", () => { if (d === deck()) { render(); syncMediaState(); } });
     el.addEventListener("seeked", () => { if (d === deck()) syncMediaState(); });
@@ -334,6 +334,7 @@ function trackChanged() {
   renderQueue();
   setMediaSession(track);
   lyricsTrackChanged();
+  resetListening();
   if (track) extractAccent(track);
   saveSoon(true);
 }
@@ -480,6 +481,7 @@ function tick() {
   if (!P.decks.length) return;
   paint();
   const el = deck().el;
+  countListening(el);
   if (!el.paused && P.xf > 0 && P.repeat !== "one" && !P.fading && hasNext()) {
     const left = el.duration - el.currentTime;
     if (isFinite(left) && el.duration > P.xf * 2 && left <= P.xf) advance(true);
@@ -1216,7 +1218,7 @@ const Player = {
     P.wired = true;
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
-    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireLyrics(); wireSleep(); wireKeys();
+    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireLyrics(); wireSleep(); wireStats(); wireKeys();
     setPulse(P.pulseOn);
     setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
@@ -1231,6 +1233,7 @@ const Player = {
 
 /* A browser with ?demo has no program side: short generated tones stand in for the songs. */
 function demoPlayerApi(art) {
+  const demoPlays = [];
   const tone = (notes, seconds) => {
     const rate = 22050, n = rate * seconds, data = new DataView(new ArrayBuffer(44 + n * 2));
     const text = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
@@ -1286,6 +1289,16 @@ function demoPlayerApi(art) {
       likes.forEach(id => { if (ids.includes(id)) likes.delete(id); });
       mine.forEach(p => { p.ids = p.ids.filter(id => !ids.includes(id)); });
       return { ok: true, deleted: gone.length, failed: [] };
+    },
+    stats_play: async (id, seconds) => { demoPlays.push({ id, seconds }); return { ok: true }; },
+    stats_summary: async period => {
+      const n = { week: 7, month: 30, year: 12, all: 12 }[period] || 12, days = period === "week" || period === "month";
+      const labels = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"], months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+      const series = Array.from({ length: n }, (_, i) => ({ date: String(i), label: days ? (period === "week" ? labels[i % 7] : String(i + 1)) : months[i % 12], minutes: Math.round((Math.sin(i * 1.7) + 1.2) * 40 * (days ? 1 : 6)) / 1 }));
+      const some = (tracks || []).slice(0, 10).map((t, i) => ({ id: t.id, title: t.title, artist: t.artist, album: t.album, plays: 40 - i * 3 + demoPlays.length, seconds: (40 - i * 3) * 190 }));
+      const artists = [...new Set(some.map(s => s.artist))].map((a, i) => ({ artist: a, plays: 90 - i * 11, seconds: (90 - i * 11) * 190 }));
+      const albums = [...new Set(some.map(s => s.album))].slice(0, 6).map((a, i) => ({ album: a, artist: (some.find(s => s.album === a) || {}).artist, plays: 60 - i * 7, seconds: (60 - i * 7) * 190 }));
+      return { period, plays: 214, seconds: 214 * 190, songs: some, artists, albums, series, streak: 5 };
     },
     lyrics_get: async id => {
       const n = [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 3;

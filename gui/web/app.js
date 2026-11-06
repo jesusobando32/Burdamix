@@ -71,6 +71,7 @@ function show(view) {
   if (view === "settings") loadSettings();
   if (view === "tags") { refreshRenameExample(); openPicker(); }
   if (view === "library") Player.open();
+  if (view === "stats") loadStats();
   if (innerWidth <= 760) $("#app").classList.remove("sidebar-open");
   moveNavInd();
   if (view === "favorites") requestAnimationFrame(moveSegInd);

@@ -21,6 +21,7 @@ import downloader
 import library
 import lyrics
 import login
+import stats_store
 import trash
 import tempdirs
 import updater
@@ -101,6 +102,7 @@ class Api:
         self._trash = trash.move_to_recycle_bin          # what deletes a song; the tests give it a stand-in
         self._media = library.MediaServer(self._library)   # started with the first library request
         self._collections = collections_store.Collections(os.path.join(const.data_dir(), "collections.json"))   # likes and your playlists
+        self._stats = stats_store.Stats(os.path.join(const.data_dir(), "plays.jsonl"))   # what you listened to, one line per listen
         self._lyrics = lyrics.Lyrics(os.path.join(const.data_dir(), "lyrics.json"))   # asked of LRCLIB once, then kept here
         self._tags = TagJobs(on_renamed=self._collections.renamed)      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
@@ -217,6 +219,25 @@ class Api:
         direct = {k for k, t in by_key.items() if k in liked or (t["kind"] == "liked" and k not in unliked)}
         identities = {self._identity(by_key[k]) for k in direct} - {None}
         return {t["id"] for k, t in by_key.items() if k in direct or self._identity(t) in identities}
+
+    def stats_play(self, track_id, seconds):
+        """One listen of a library song (the player says so after 30 seconds or half of it)."""
+        item = self._song(track_id)
+        if item is None or isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+            return {"ok": False}
+        return {"ok": self._stats.record(item.get("artist"), item.get("title"), item.get("album"), seconds)}
+
+    def stats_summary(self, period="all"):
+        """The numbers of the statistics screen. Songs still in the library come with their id, so they can be played from there."""
+        summary = self._stats.summary(period if isinstance(period, str) else "all")
+        ids = {}
+        for t in self._library.listing():
+            identity = self._identity(t)
+            if identity:
+                ids.setdefault(identity, t["id"])
+        for song in summary["songs"]:
+            song["id"] = ids.get((normalize(song["artist"]), normalize(song["title"])))
+        return summary
 
     def _song(self, track_id):
         return next((t for t in self._library.listing() if isinstance(track_id, str) and t["id"] == track_id), None)
