@@ -57,19 +57,25 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders"
 
 // One source for the desktop and the phone: the page is gui/web itself (served as assets) and the bridge is gui/bridge.py.
 android.sourceSets["main"].assets.srcDir("../../gui/web")
-val bridgePy = layout.buildDirectory.dir("generated/bridgepy")
-val copyBridge by tasks.registering(Sync::class) {
+// The program's Python (root modules, apis/, gui/) is packaged as it is; bridge.py goes to the top level so burdamix_host finds it.
+val programPy = layout.buildDirectory.dir("generated/programpy")
+val copyProgram by tasks.registering(Sync::class) {
+    from("../..") {
+        include("*.py", "apis/**/*.py", "gui/*.py")
+        exclude("gui_app.py", "spotify2mp3.py", "tests/**", "android/**")
+    }
     from("../../gui/bridge.py")
-    into(bridgePy)
+    into(programPy)
 }
-chaquopy.sourceSets.getByName("main").srcDir(bridgePy)
-tasks.matching { it.name.contains("Python") }.configureEach { dependsOn(copyBridge) }
+chaquopy.sourceSets.getByName("main").srcDir(programPy)
+tasks.matching { it.name.contains("Python") }.configureEach { dependsOn(copyProgram) }
 
 chaquopy {
     defaultConfig {
         version = "3.13"
         pip {
             install("yt-dlp")
+            listOf("flask", "mutagen", "pillow", "requests", "segno", "tekore", "eyed3").forEach { install(it) }
         }
     }
 }

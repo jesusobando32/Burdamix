@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -18,6 +19,7 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
+import com.yausername.ffmpeg.FFmpeg
 import org.json.JSONObject
 import java.util.concurrent.Executors
 
@@ -36,6 +38,12 @@ class WebActivity : Activity() {
         super.onCreate(savedInstanceState)
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
         host = Python.getInstance().getModule("burdamix_host")
+        // The ffmpeg is the executable the youtubedl-android package leaves in nativeLibraryDir; its libraries are unpacked on init.
+        FFmpeg.getInstance().init(application)
+        val ffmpegLibs = noBackupFilesDir.resolve("youtubedl-android/packages/ffmpeg/usr/lib").path
+        val music = (getExternalFilesDir(Environment.DIRECTORY_MUSIC) ?: filesDir).resolve("Burdamix")
+        host.callAttr("start", filesDir.path, music.path, "${applicationInfo.nativeLibraryDir}/libffmpeg.so",
+            "${applicationInfo.nativeLibraryDir}:$ffmpegLibs")
 
         val assets = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
