@@ -368,6 +368,25 @@ class Api:
         value = self._lyrics.set_offset(item.get("artist"), item.get("title"), seconds) if item else None
         return {"ok": True, "offset": value} if value is not None else {"ok": False, "error": "No pude ajustar la letra de esta canción."}
 
+    def lyrics_sync(self, track_id, offset, scale):
+        """Sets together the shift (seconds) and the speed (a factor) of the lyrics of a song, so a two-point adjustment is one change.
+        Answers {ok, offset, scale}."""
+        item = self._song(track_id)
+        if item is None:
+            return {"ok": False, "error": "No pude ajustar la letra de esta canción."}
+        a, t = item.get("artist"), item.get("title")
+        new_offset, new_scale = self._lyrics.set_offset(a, t, offset), self._lyrics.set_scale(a, t, scale)
+        if new_offset is None or new_scale is None:
+            return {"ok": False, "error": "No pude ajustar la letra de esta canción."}
+        return {"ok": True, "offset": new_offset, "scale": new_scale}
+
+    def lyrics_version(self, track_id, index):
+        """Chooses another version of the lyrics found for the song. Answers the lyrics as lyrics_get does."""
+        item = self._song(track_id)
+        if item is None or self._lyrics.set_version(item.get("artist"), item.get("title"), index) is None:
+            return {"ok": False, "error": "No hay otra versión de esta letra."}
+        return self.lyrics_get(track_id)
+
     def lyrics_save(self, track_id, text):
         """The user's own lyrics for a song (with or without LRC times); an empty text takes them away. Answers the lyrics now in force."""
         item = self._song(track_id)

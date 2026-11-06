@@ -2,6 +2,10 @@
    The lyrics come from the backend (LRCLIB, kept on disk); the user can paste their own. */
 const LY = { open: false, id: "", data: null, lines: [], at: -1, timer: 0, userScrolled: 0, editing: false, asking: 0, picking: false };
 const lyricOffset = () => (LY.data && LY.data.ok && LY.data.offset) || 0;
+const lyricScale = () => (LY.data && LY.data.ok && LY.data.scale) || 1;
+// a line sung at second t of the lyrics sounds at second t * scale + offset of the file (scale: the lyrics may run faster than the song)
+const lyricToAudio = t => t * lyricScale() + lyricOffset();
+const audioToLyric = a => (a - lyricOffset()) / lyricScale();
 
 const lyricsPanel = () => $("#lyrics");
 
@@ -20,7 +24,7 @@ function openLyrics() {
 
 function closeLyrics() {
   if (!LY.open) return;
-  LY.open = false; LY.editing = false; LY.picking = false;
+  LY.open = false; LY.editing = false; LY.picking = false; LY.anchor = null;
   clearInterval(LY.timer);
   lyricsPanel().classList.add("hidden");
   $("#pl-lyrics").setAttribute("aria-pressed", "false");
@@ -36,7 +40,7 @@ async function loadLyrics(force) {
   const track = current();
   if (!track || !LY.open) return;
   if (!force && LY.id === track.id && LY.data) return;
-  LY.id = track.id; LY.data = null; LY.editing = false; LY.picking = false;
+  LY.id = track.id; LY.data = null; LY.editing = false; LY.picking = false; LY.anchor = null;
   $("#ly-sync").hidden = true;
   const ask = ++LY.asking;
   paintLyricsHead(track);
@@ -63,6 +67,9 @@ function paintLyrics() {
   body.classList.remove("editing");
   $("#ly-edit").hidden = false;
   $("#ly-sync").hidden = !(d && d.ok && d.synced.length);
+  const more = $("#ly-version");
+  more.hidden = !(d && d.ok && d.synced.length && d.versions > 1);
+  if (!more.hidden) { more.textContent = `Otra versión ${d.version + 1}/${d.versions}`; more.title = d.label ? `Esta letra viene de: ${d.label}. Clic para probar la siguiente.` : "Probar la siguiente versión de la letra"; }
   paintLyricOffset();
   if (!d || !d.ok) {
     LY.lines = []; LY.at = -1;
@@ -97,7 +104,7 @@ function lyricLineAt(second) {
 
 function tickLyrics(jump) {
   if (!LY.open || !LY.lines.length || !P.decks.length) return;
-  const at = lyricLineAt(deck().el.currentTime + .15 - lyricOffset());     // a hair early: the eye reads before the ear is done
+  const at = lyricLineAt(audioToLyric(deck().el.currentTime + .15));     // a hair early: the eye reads before the ear is done
   if (at === LY.at && jump !== true) return;
   const lines = $$(".ly-line", $("#ly-body"));
   lines.forEach((el, i) => { el.classList.toggle("on", i === at); el.classList.toggle("past", i < at); });
@@ -142,21 +149,51 @@ function editLyrics() {
 const offsetText = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2).replace(".", ",")} s`;
 
 function paintLyricOffset() {
-  const value = lyricOffset(), out = $("#ly-off");
-  out.textContent = offsetText(value);
-  out.classList.toggle("set", value !== 0);
-  out.title = value ? "Clic para volver a 0" : "Desfase de esta canción";
+  const value = lyricOffset(), scale = lyricScale(), out = $("#ly-off");
+  out.textContent = offsetText(value) + (scale !== 1 ? ` · ×${scale.toFixed(2).replace(".", ",")}` : "");
+  out.classList.toggle("set", value !== 0 || scale !== 1);
+  out.title = value || scale !== 1 ? "Clic para volver a como venía" : "Desfase y velocidad de esta canción";
 }
 
-async function setLyricOffset(value) {
+async function setLyricSync(offset, scale) {
   const track = current();
   if (!track || !LY.data || !LY.data.ok) return;
-  const answer = await call("lyrics_offset", track.id, Math.round(value * 4) / 4);
+  const answer = await call("lyrics_sync", track.id, offset, scale);
   if (!answer || !answer.ok) return toast((answer && answer.error) || "No pude ajustar la letra.", true);
   if (!LY.data || current() === null || current().id !== track.id) return;
-  LY.data.offset = answer.offset;
+  LY.data.offset = answer.offset; LY.data.scale = answer.scale;
   paintLyricOffset();
   tickLyrics(true);
+}
+const setLyricOffset = value => setLyricSync(Math.round(value * 4) / 4, lyricScale());
+
+/* "This is the line I hear now". The first click fixes the shift. A second one, on a line far from the first, also fixes the speed
+   (two points make a line): that is what a lyric that runs faster or slower than the song needs. */
+function pickLyricLine(lineTime) {
+  const heard = deck().el.currentTime - .15, anchor = LY.anchor;
+  if (anchor && Math.abs(lineTime - anchor.line) >= 8 && Math.abs(heard - anchor.heard) >= 8) {
+    const scale = (heard - anchor.heard) / (lineTime - anchor.line);
+    if (scale >= .5 && scale <= 2) {
+      setLyricSync(anchor.heard - scale * anchor.line, scale);
+      toast(`Listo: la letra va ${scale > 1 ? "más despacio" : "más deprisa"} que antes (×${scale.toFixed(2).replace(".", ",")}).`);
+      LY.anchor = null;
+      return;
+    }
+    toast("Esas dos líneas no cuadran con la misma canción. Prueba con otras.", true);
+  }
+  LY.anchor = { line: lineTime, heard };
+  setLyricSync(heard - lyricScale() * lineTime, lyricScale());
+  toast("Ajustado. Si más adelante vuelve a descuadrarse, pulsa «Ajustar» otra vez y toca una línea lejos de esta: así también arreglo la velocidad.");
+}
+
+async function nextLyricVersion() {
+  const track = current();
+  if (!track || !LY.data || !LY.data.ok) return;
+  const answer = await call("lyrics_version", track.id, (LY.data.version + 1) % LY.data.versions);
+  if (!answer || !answer.ok) return toast((answer && answer.error) || "No pude cambiar de versión.", true);
+  if (current() === null || current().id !== track.id) return;
+  LY.data = answer; LY.anchor = null;
+  paintLyrics();
 }
 
 function startPicking() {
@@ -183,13 +220,14 @@ function wireLyrics() {
   $("#ly-edit").onclick = editLyrics;
   $("#ly-earlier").onclick = () => setLyricOffset(lyricOffset() - .25);
   $("#ly-later").onclick = () => setLyricOffset(lyricOffset() + .25);
-  $("#ly-off").onclick = () => setLyricOffset(0);
+  $("#ly-off").onclick = () => { LY.anchor = null; setLyricSync(0, 1); };
+  $("#ly-version").onclick = nextLyricVersion;
   $("#ly-pick").onclick = () => { LY.picking ? stopPicking() : startPicking(); };
   $("#ly-body").addEventListener("click", ev => {
     const line = ev.target.closest(".ly-line");
     if (!line) return;
-    if (LY.picking) { setLyricOffset(deck().el.currentTime - +line.dataset.t - .15); stopPicking(); return; }   // "this is the line I hear now"
-    seek(+line.dataset.t + lyricOffset()); LY.userScrolled = 0;
+    if (LY.picking) { pickLyricLine(+line.dataset.t); stopPicking(); return; }   // "this is the line I hear now"
+    seek(lyricToAudio(+line.dataset.t)); LY.userScrolled = 0;
   });
   const looked = () => { LY.userScrolled = Date.now(); };
   $("#ly-body").addEventListener("wheel", looked, { passive: true });

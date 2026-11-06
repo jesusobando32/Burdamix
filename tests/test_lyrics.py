@@ -68,7 +68,7 @@ SYNCED = {"syncedLyrics": "[00:05.00]Hola", "plainLyrics": "Hola", "duration": 2
 
 def test_an_exact_match_returns_the_synced_lines(cache_file):
     found = make(cache_file, FakeClient(get=SYNCED)).get("Feid", "Normal", "Feliz Cumpleaños Ferxxo", 200)
-    assert found == {"ok": True, "synced": [[5.0, "Hola"]], "plain": "Hola", "manual": False, "offset": 0}
+    assert found == {"ok": True, "synced": [[5.0, "Hola"]], "plain": "Hola", "manual": False, "offset": 0, "scale": 1, "version": 0, "versions": 1, "label": "3:20"}
 
 
 def test_without_timed_lyrics_only_the_plain_text_is_returned(cache_file):
@@ -255,3 +255,104 @@ def test_the_api_keeps_an_offset_per_song(tmp_path, monkeypatch):
     assert api.lyrics_offset(track["id"], 1.3) == {"ok": True, "offset": 1.25}
     assert api.lyrics_get(track["id"])["offset"] == 1.25
     assert api.lyrics_offset(track["id"], "mucho")["ok"] is False and api.lyrics_offset("no-existe", 1)["ok"] is False
+
+
+# --- versions: the same song timed in different ways ---------------------------------------------------------------------
+
+def result(artist, length, lines, end):
+    """A LRCLIB result whose lyrics run through `lines` lines and end (empty last line) at second `end`."""
+    body = "\n".join(f"[{int(i * end / lines) // 60:02d}:{(i * end / lines) % 60:05.2f}]línea {i}" for i in range(lines)) + f"\n[{int(end) // 60:02d}:{end % 60:05.2f}]"
+    return {"artistName": artist, "trackName": "Tema", "duration": length, "syncedLyrics": body, "plainLyrics": "x"}
+
+
+def test_the_version_whose_end_marker_matches_the_file_goes_first_even_if_its_length_is_a_bit_farther(cache_file):
+    squeezed = result("Duo & Otro", 122, 20, 88.43)          # same song, but timed as if it were 88 seconds long
+    right = result("Duo", 121.0, 20, 120.29)
+    client = FakeClient(get=squeezed, search=lambda params: [squeezed, right])
+    found = make(cache_file, client).get("Duo, Otro", "Tema", "", 121)
+    assert found["versions"] == 2 and found["label"].startswith("Duo · ") and found["synced"][-1][0] == 120.29
+
+
+def test_the_other_versions_can_be_chosen_and_the_choice_is_kept(cache_file):
+    a, b = result("Uno", 200, 5, 199), result("Dos", 201, 5, 150)
+    store = make(cache_file, FakeClient(get=a, search=lambda params: [a, b]))
+    first = store.get("Feid", "Tema", "", 200)
+    assert first["versions"] == 2 and first["version"] == 0 and first["label"].startswith("Uno")
+    assert store.set_version("Feid", "Tema", 1) == 1
+    again = make(cache_file, FakeClient(error=MetadataNetworkError("x"))).get("Feid", "Tema", "", 200)
+    assert again["version"] == 1 and again["label"].startswith("Dos") and again["synced"][-1][0] == 150
+    assert store.set_version("Feid", "Tema", 99) == 1 and store.set_version("Feid", "Tema", 0) == 0
+    assert store.set_version("Feid", "Tema", "x") is None and store.set_version("Nadie", "Nada", 1) is None
+
+
+def test_two_results_with_the_same_lyrics_are_one_version(cache_file):
+    a = result("Uno", 200, 5, 199)
+    found = make(cache_file, FakeClient(get=a, search=lambda params: [a, dict(a, artistName="Copia")])).get("Feid", "Tema", "", 200)
+    assert found["versions"] == 1
+
+
+def test_not_finding_the_other_versions_never_loses_the_exact_one(cache_file):
+    a = result("Uno", 200, 5, 199)
+    for broken in (None, MetadataNetworkError("sin red")):
+        client = FakeClient(get=a, search=None) if broken is None else FakeClient(get=a, search=lambda params: (_ for _ in ()).throw(broken))
+        assert make(cache_file + str(id(broken)), client).get("Feid", "Tema", "", 200)["ok"]
+
+
+def test_at_most_five_versions_are_kept(cache_file):
+    many = [result(f"A{i}", 200, 5, 199 - i) for i in range(9)]
+    assert make(cache_file, FakeClient(get=None, search=many)).get("Feid", "Tema", "", 200)["versions"] == lyrics.MAX_VERSIONS
+
+
+def test_lyrics_saved_before_versions_existed_are_asked_for_again_once_and_kept_if_that_fails(cache_file):
+    with open(cache_file, "w", encoding="utf-8") as f:
+        json.dump({"feid|normal": {"synced": [[1.0, "vieja"]], "plain": "vieja", "manual": False, "at": 1_000_000}}, f)
+    offline = make(cache_file, FakeClient(error=MetadataNetworkError("x"))).get("Feid", "Normal", "", 200)
+    assert offline["ok"] and offline["synced"] == [[1.0, "vieja"]] and offline["versions"] == 1      # no connection: the old one is not lost
+    nothing = make(cache_file, FakeClient(get=None, search=[])).get("Feid", "Normal", "", 200)
+    assert nothing["ok"] and nothing["synced"] == [[1.0, "vieja"]]                                      # the service has nothing: neither
+    renewed = make(cache_file, FakeClient(get=SYNCED)).get("Feid", "Normal", "", 200)
+    assert renewed["synced"] == [[5.0, "Hola"]]
+    assert "versions" in json.load(open(cache_file, encoding="utf-8"))["feid|normal"]                  # and it is saved in the new shape
+
+
+def test_end_marker_check():
+    assert lyrics.ends_wrong([[1.0, "a"], [88.4, ""]], 121) is True
+    assert lyrics.ends_wrong([[1.0, "a"], [120.3, ""]], 121) is False
+    assert lyrics.ends_wrong([[1.0, "a"], [88.4, "última línea"]], 121) is False       # no end marker: nothing to judge
+    assert lyrics.ends_wrong([[1.0, "a"], [250.0, ""]], 121) is True and lyrics.ends_wrong([], 121) is False and lyrics.ends_wrong([[1.0, ""]], 0) is False
+
+
+# --- the speed of the lyrics ----------------------------------------------------------------------------------------------
+
+def test_the_speed_is_kept_per_song_limited_and_one_removes_it(cache_file):
+    store = make(cache_file, FakeClient(get=SYNCED))
+    assert store.get("Feid", "Normal", "", 200)["scale"] == 1
+    assert store.set_scale("Feid", "Normal", 1.3612) == 1.3612
+    assert make(cache_file, FakeClient(error=MetadataNetworkError("x"))).get("feid", "NORMAL", "", 200)["scale"] == 1.3612
+    assert store.set_scale("Feid", "Normal", 9) == 2 and store.set_scale("Feid", "Normal", 0.1) == 0.5
+    assert store.set_scale("Feid", "Normal", 1) == 1 and json.load(open(cache_file, encoding="utf-8"))["_scales"] == {}
+    assert store.set_scale("Feid", "Normal", "rápido") is None and store.set_scale("Feid", "Normal", float("inf")) is None and store.set_scale("", "X", 1.1) is None
+
+
+def test_the_api_sets_shift_and_speed_together_and_switches_version(tmp_path, monkeypatch):
+    import const
+    import library
+    from gui import backend
+    from tagwriter import TagInfo
+    monkeypatch.setattr(const, "data_dir", lambda: str(tmp_path / "datos"))
+    songs = tmp_path / "songs"
+    songs.mkdir()
+    (songs / "a.mp3").write_bytes(b"x")
+    monkeypatch.setattr(library.tagwriter, "read_tags", lambda path: TagInfo(title="Tema", artist="Feid", album="X", duration=200))
+    api = backend.Api()
+    monkeypatch.setattr(api, "_downloads_dir", lambda: str(songs))
+    a, b = result("Uno", 200, 5, 199), result("Dos", 201, 5, 150)
+    api._lyrics.client = FakeClient(get=a, search=lambda params: [a, b])
+    track = api.library_list()["tracks"][0]
+    assert api.lyrics_get(track["id"])["versions"] == 2
+    assert api.lyrics_sync(track["id"], 2.3, 1.3612) == {"ok": True, "offset": 2.25, "scale": 1.3612}
+    got = api.lyrics_get(track["id"])
+    assert got["offset"] == 2.25 and got["scale"] == 1.3612
+    assert api.lyrics_version(track["id"], 1)["label"].startswith("Dos")
+    assert api.lyrics_sync(track["id"], "x", 1)["ok"] is False and api.lyrics_sync("no-existe", 0, 1)["ok"] is False
+    assert api.lyrics_version("no-existe", 1)["ok"] is False

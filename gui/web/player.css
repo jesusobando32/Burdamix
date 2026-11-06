@@ -426,3 +426,12 @@ body.has-player #toasts { bottom: 104px; }
 .ly-sync .btn.on { background: var(--accent); color: #0b0f0c; border-color: transparent; }
 .ly-body.picking .ly-line { cursor: crosshair; opacity: .75; }
 @media (max-width: 760px) { .ly-head { flex-wrap: wrap; } }
+
+/* ---------- lyrics take the colour of the cover (--pc is set from the picture of the song; the accent is the fallback) ---------- */
+.lyrics { --ly: var(--pc, var(--accent)); }
+.ly-line { color: color-mix(in srgb, var(--ly) 34%, #fff); }
+.ly-line.on { color: color-mix(in srgb, var(--ly) 52%, #fff); text-shadow: 0 0 30px color-mix(in srgb, var(--ly) 70%, transparent), 0 0 3px color-mix(in srgb, var(--ly) 35%, transparent); }
+.ly-plain { color: color-mix(in srgb, var(--ly) 28%, #fff); }
+.ly-sync output.set { color: color-mix(in srgb, var(--ly) 52%, #fff); }
+#pl-lyrics[aria-pressed="true"] { color: color-mix(in srgb, var(--pc, var(--accent)) 52%, #fff); }
+.ly-sync .btn.on { background: color-mix(in srgb, var(--ly) 52%, #fff); }

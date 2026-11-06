@@ -1233,7 +1233,7 @@ const Player = {
 
 /* A browser with ?demo has no program side: short generated tones stand in for the songs. */
 function demoPlayerApi(art) {
-  const demoPlays = [], demoOffsets = {};
+  const demoPlays = [], demoOffsets = {}, demoScales = {}, demoVersions = {};
   const tone = (notes, seconds) => {
     const rate = 22050, n = rate * seconds, data = new DataView(new ArrayBuffer(44 + n * 2));
     const text = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
@@ -1324,8 +1324,10 @@ function demoPlayerApi(art) {
       if (n === 1) return { ok: false, none: true, error: "No encontré la letra de esta canción." };
       const words = ["Bajo las luces de la ciudad", "el tiempo se detiene un momento", "y tu voz me lleva lejos", "más allá del último tren", "", "dime si todavía me esperas", "que yo vuelvo a casa esta noche", "con el corazón en la mano"];
       if (n === 2) return { ok: true, synced: [], plain: words.join("\n"), manual: false };
-      return { ok: true, synced: words.map((l, i) => [i * 3, l]), plain: words.join("\n"), manual: false, offset: demoOffsets[id] || 0 };
+      return { ok: true, synced: words.map((l, i) => [i * 3, l]), plain: words.join("\n"), manual: false, offset: demoOffsets[id] || 0, scale: demoScales[id] || 1, version: demoVersions[id] || 0, versions: 2, label: "Demo · 0:24" };
     },
+    lyrics_sync: async (id, offset, scale) => { demoOffsets[id] = Math.round(offset * 4) / 4; demoScales[id] = Math.round(scale * 10000) / 10000; return { ok: true, offset: demoOffsets[id], scale: demoScales[id] }; },
+    lyrics_version: async (id, index) => { demoVersions[id] = index; return { ok: true, synced: [[0, "Otra versión"], [4, "de la misma letra"], [9, "con otros tiempos"]], plain: "x", manual: false, offset: demoOffsets[id] || 0, scale: demoScales[id] || 1, version: index, versions: 2, label: "Demo 2 · 0:24" }; },
     lyrics_offset: async (id, seconds) => { demoOffsets[id] = Math.max(-30, Math.min(30, seconds)); return { ok: true, offset: demoOffsets[id] }; },
     lyrics_save: async (id, text) => (text.trim() ? { ok: true, synced: [], plain: text, manual: true } : { ok: false, none: true, error: "No encontré la letra de esta canción." }),
     collections_get: collections,
