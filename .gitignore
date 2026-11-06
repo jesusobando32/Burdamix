@@ -18,3 +18,11 @@ build_out/
 .impeccable/
 
 .playwright-cli/
+
+# Android (the build is made in GitHub Actions; these are what a local build would leave)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
