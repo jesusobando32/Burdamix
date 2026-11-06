@@ -55,6 +55,16 @@ val copyLibcxx by tasks.registering {
 android.sourceSets["main"].jniLibs.srcDir(libcxxDir)
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach { dependsOn(copyLibcxx) }
 
+// One source for the desktop and the phone: the page is gui/web itself (served as assets) and the bridge is gui/bridge.py.
+android.sourceSets["main"].assets.srcDir("../../gui/web")
+val bridgePy = layout.buildDirectory.dir("generated/bridgepy")
+val copyBridge by tasks.registering(Sync::class) {
+    from("../../gui/bridge.py")
+    into(bridgePy)
+}
+chaquopy.sourceSets.getByName("main").srcDir(bridgePy)
+tasks.matching { it.name.contains("Python") }.configureEach { dependsOn(copyBridge) }
+
 chaquopy {
     defaultConfig {
         version = "3.13"
@@ -65,6 +75,7 @@ chaquopy {
 }
 
 dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")   // WebViewAssetLoader: serves gui/web from https://appassets.androidplatform.net
     // yt-dlp and ffmpeg for Android (JunkFood02's maintained fork of yausername/youtubedl-android), from Maven Central.
     implementation("io.github.junkfood02.youtubedl-android:library:0.16.0")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.16.0")

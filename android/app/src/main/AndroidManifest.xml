@@ -12,8 +12,9 @@
         android:label="Burdamix"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
+        <!-- The app: gui/web in a WebView with the Python bridge. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".WebActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -21,5 +22,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The phone test of step one. No icon of its own: adb shell am start -n app.burdamix/.MainActivity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>
