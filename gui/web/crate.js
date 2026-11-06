@@ -167,7 +167,9 @@ function renderCrate() {
   const newTile = addTile ? `<button type="button" class="crate-item new" role="option" data-key="new" title="Crear una playlist">
       <span class="sleeve"><span class="new-art"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></span><b>Nueva playlist</b><span class="muted small">Con las canciones que quieras</span></button>
     <button type="button" class="crate-item new" role="option" data-key="newsmart" title="Crear una playlist inteligente">
-      <span class="sleeve"><span class="new-art">${ICON_BOLT}</span></span><b>Playlist inteligente</b><span class="muted small">Con reglas: se llena sola</span></button>` : "";
+      <span class="sleeve"><span class="new-art">${ICON_BOLT}</span></span><b>Playlist inteligente</b><span class="muted small">Con reglas: se llena sola</span></button>
+    <button type="button" class="crate-item new" role="option" data-key="import" title="Importar una playlist que te compartieron">
+      <span class="sleeve"><span class="new-art">${ICON_IMPORT}</span></span><b>Importar</b><span class="muted small">Con un código o una tarjeta</span></button>` : "";
   crate.innerHTML = newTile + list.map(g => `<button type="button" class="crate-item${g.ids.includes(playing) ? " playing" : ""}" role="option" data-key="${esc(g.key)}" title="${esc(g.title)}">
       <span class="sleeve"${labelStyle(g)}>${DISC}${groupArt(g)}${g.smart ? `<i class="bolt" aria-hidden="true">${ICON_BOLT}</i>` : ""}</span><b>${esc(g.title)}</b><span class="muted small">${esc(groupSub(g))}</span></button>`).join("");
   const target = L.focus && $$(".crate-item", crate).find(el => el.dataset.key === L.focus);
@@ -262,7 +264,7 @@ function wireLibraryBack() {
   document.addEventListener("keydown", ev => {
     if (!libraryVisible() || ev.ctrlKey || ev.metaKey) return;
     const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
-    const covered = LY.open || !$("#smart-dialog").classList.contains("hidden") || $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
+    const covered = LY.open || anyDialogOpen() || $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
     if (covered) { if (ev.key === "Escape" && !$("#ctx") && $("#dialog").classList.contains("hidden")) closePanels(); return; }
     if (ev.key === "/" && !typing) { ev.preventDefault(); $("#lib-q").focus(); return; }
     const back = ev.key === "Escape" || (ev.altKey && ev.key === "ArrowLeft") || (ev.key === "Backspace" && !typing);
@@ -279,6 +281,7 @@ function wireLibraryBack() {
 function openGroup(key) {
   if (key === "new") return newPlaylist();
   if (key === "newsmart") return openSmartEditor();
+  if (key === "import") return openImport();
   if (!L.byKey.has(key)) return;
   L.open = key; P.q = ""; $("#lib-q").value = "";
   renderLibrary();
@@ -302,12 +305,13 @@ function renderDetail() {
         <h2>${esc(g.title)}</h2>
         <p class="muted">${esc([album ? g.artist : "", plural(g.count, "canción", "canciones"), g.seconds ? durationText(g.seconds) : ""].filter(Boolean).join(" · "))}</p>
         ${g.smart ? `<p class="muted small smart-rules">${esc(describeSmart(g.def))}${g.builtin ? " Viene con Burdamix." : ""}</p>` : ""}
-        <div class="btn-row"><button class="btn primary" id="detail-play" type="button"${g.count ? "" : " disabled"}>Reproducir</button><button class="btn" id="detail-shuffle" type="button"${g.count ? "" : " disabled"}>Aleatorio</button>
+        <div class="btn-row"><button class="btn primary" id="detail-play" type="button"${g.count ? "" : " disabled"}>Reproducir</button><button class="btn" id="detail-shuffle" type="button"${g.count ? "" : " disabled"}>Aleatorio</button><button class="btn" id="detail-share" type="button"${g.count ? "" : " disabled"}>Compartir</button>
           ${g.mine ? '<button class="btn" id="detail-rename" type="button">Cambiar el nombre</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : g.smart && !g.builtin ? '<button class="btn" id="detail-edit" type="button">Editar reglas</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : ""}</div>
       </div>
     </div>`;
   $("#detail-back").onclick = closeGroup;
   $("#detail-play").onclick = () => playList(g.ids);
+  $("#detail-share").onclick = () => openShare(g);
   $("#detail-shuffle").onclick = () => { P.shuffle = true; playList(g.ids, g.ids[Math.floor(Math.random() * g.ids.length)]); render(); };
   if (g.mine) { $("#detail-rename").onclick = () => renamePlaylist(g); $("#detail-delete").onclick = () => deletePlaylist(g); }
   if (g.smart && !g.builtin) { $("#detail-edit").onclick = () => openSmartEditor(g.def); $("#detail-delete").onclick = () => deleteSmart(g); }

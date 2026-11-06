@@ -1307,6 +1307,12 @@ function demoPlayerApi(art) {
       const albums = [...new Set(some.map(s => s.album))].slice(0, 6).map((a, i) => ({ album: a, artist: (some.find(s => s.album === a) || {}).artist, plays: 60 - i * 7, seconds: (60 - i * 7) * 190 }));
       return { period, plays: 214, seconds: 214 * 190, songs: some, artists, albums, series, streak: 5 };
     },
+    share_make: async (ids, name, by) => (ids.length && name ? { ok: true, code: "BURDAMIX1:eJxdjMEKgzAQRH9F9tJL0jQxTSJC8Q8KwWyMSEXEoCj-e2dvPQjDMDPvg8AagyBqPoGv3tL7W0WYgGAXuPLYrt5XRCuoo9S0CNN3aeHs1_oKCwCWwPEgQmaDSQ-bzO0Y3Jkb0yMLPJJvV4qnnYgPoM_OyrLcz-YoL2qa0g1Hdkkd1JHNCm5cYwpU1-XL8vPnu8-vDz-FX0Y", count: ids.length, qr: true } : { ok: false, error: "Ponle un nombre a la playlist antes de compartirla." }),
+    share_read: async text => (String(text).includes("BURDAMIX1:") ? { ok: true, name: "Para el gimnasio", by: "Ana", total: 8, ids: (tracks || []).slice(0, 5).map(t => t.id), missing: [["Drake", "One Dance"], ["Dua Lipa", "Levitating"], ["Feid", "Normal"]] } : { ok: false, error: "Eso no parece un código de Burdamix. Empieza por «BURDAMIX1:»." }),
+    share_read_picture: async () => ({ ok: false, error: "Esa imagen no es una tarjeta de Burdamix." }),
+    share_read_file: async () => ({ ok: false, cancelled: true }),
+    share_card_save: async () => ({ ok: true, path: "C:\Users\demo\tarjeta.png" }),
+    playlist_export_m3u: async () => ({ ok: true, path: "C:\Users\demo\lista.m3u8" }),
     smart_save: async (def, id) => {
       if (!def.name) return { ok: false, error: "Ponle un nombre de hasta 80 letras." };
       if (id) { const at = mySmart.findIndex(s => s.id === id); mySmart[at] = { ...def, id }; return { ok: true, id }; }

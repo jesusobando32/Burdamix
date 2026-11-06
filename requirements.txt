@@ -7,5 +7,6 @@ pillow>=10.0         # shrinks covers to at most 1000x1000 JPEG (it already came
 moviepy>=1.0.3,<2     # 2.x removed moviepy.editor, which utils.py imports
 pywebview>=5.0       # the window of gui_app.py
 requests>=2.27.1
+segno>=1.6        # draws the QR code of the card for sharing a playlist (pure Python, no dependencies)
 tekore>=5.0.1         # only used for the Spotify login (token refresh)
 yt-dlp>=2025.1.1

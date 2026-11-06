@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui", "web")
-SCRIPTS = ("fx.js", "tags.js", "player.js", "crate.js", "lyrics.js", "sleep.js", "stats.js", "smart.js", "app.js")      # loaded by index.html into one global scope
+SCRIPTS = ("fx.js", "tags.js", "player.js", "crate.js", "lyrics.js", "sleep.js", "stats.js", "smart.js", "share.js", "app.js")      # loaded by index.html into one global scope
 TOP_LEVEL = re.compile(r"^(?:async function|function|const|let|var) ([A-Za-z_$][\w$]*)", re.M)
 
 

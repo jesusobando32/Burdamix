@@ -21,8 +21,10 @@ import downloader
 import library
 import lyrics
 import login
+import share
 import smart_playlists
 import stats_store
+import tagwriter
 import trash
 import tempdirs
 import updater
@@ -240,6 +242,115 @@ class Api:
         for song in summary["songs"]:
             song["id"] = ids.get((normalize(song["artist"]), normalize(song["title"])))
         return summary
+
+    # --- sharing a playlist: a code, a card (picture with the code inside) and a .m3u8 ---------------------------------
+
+    def _by_ids(self, ids):
+        """The library songs of `ids`, in that order (what is no longer in the library is left out)."""
+        by_id = {t["id"]: t for t in self._library.listing()}
+        return [by_id[i] for i in (ids if isinstance(ids, list) else []) if isinstance(i, str) and i in by_id]
+
+    @staticmethod
+    def _pairs(items):
+        return [[t.get("artist") or "", t.get("title") or ""] for t in items]
+
+    def share_make(self, ids, name, by=""):
+        """The code of a list of songs. Answers {ok, code, count, qr} (qr: whether it is small enough to be drawn as a QR)."""
+        items = self._by_ids(ids)
+        try:
+            code = share.encode(name, self._pairs(items), by)
+        except share.ShareError as error:
+            return {"ok": False, "error": str(error)}
+        return {"ok": True, "code": code, "count": len(share.decode(code)["songs"]), "qr": share.fits_qr(code)}
+
+    def share_card_save(self, ids, name, by=""):
+        """Draws the card of the playlist and asks where to save it. Answers {ok, path} (or {ok: False, cancelled: True})."""
+        made = self.share_make(ids, name, by)
+        if not made["ok"]:
+            return made
+        items = self._by_ids(ids)
+        covers = []
+        for t in items:
+            if len(covers) == 4:
+                break
+            data = tagwriter.read_cover(t["path"]) if t.get("cover") else None
+            if data:
+                covers.append(data)
+        card = share.render_card(name.strip()[:80], (by or "").strip()[:40], made["count"], sum(t.get("duration") or 0 for t in items), covers, made["code"])
+        return self._save_as(f"{sanitize_filename(name.strip()) or 'playlist'}.png", card, ("Imagen PNG (*.png)",))
+
+    def playlist_export_m3u(self, ids, name):
+        """The playlist as a .m3u8 for other players (it lists the files of this computer). Asks where to save it."""
+        items = self._by_ids(ids)
+        if not items:
+            return {"ok": False, "error": "Esa playlist no tiene canciones."}
+        text = share.m3u8(items)
+        return self._save_as(f"{sanitize_filename(str(name).strip()) or 'playlist'}.m3u8", text.encode("utf-8"), ("Lista de reproducción (*.m3u8)",))
+
+    def _save_as(self, filename, data, file_types):
+        path = self._ask_save(filename, file_types)
+        if not path:
+            return {"ok": False, "cancelled": True}
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            return {"ok": False, "error": "No pude guardar el archivo ahí. Prueba con otra carpeta."}
+        return {"ok": True, "path": path}
+
+    def _ask_save(self, filename, file_types):
+        if self._window is None:
+            return None
+        import webview
+        kind = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
+        chosen = self._window.create_file_dialog(kind, save_filename=filename, file_types=file_types)
+        return chosen if isinstance(chosen, str) else (chosen[0] if chosen else None)
+
+    def _ask_open(self, file_types):
+        if self._window is None:
+            return None
+        import webview
+        kind = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        chosen = self._window.create_file_dialog(kind, file_types=file_types)
+        return chosen[0] if chosen else None
+
+    def share_read(self, text):
+        """What a pasted code holds, and how much of it this library already has: {ok, name, by, total, ids, missing}."""
+        try:
+            data = share.decode(text if isinstance(text, str) else "")
+        except share.ShareError as error:
+            return {"ok": False, "error": str(error)}
+        ids, missing = share.match(data["songs"], self._library.listing())
+        return {"ok": True, "name": data["name"], "by": data["by"], "total": len(data["songs"]), "ids": ids, "missing": missing}
+
+    def share_read_picture(self, data_b64):
+        """The same, from a card (the bytes of the picture, in base64: what a drag onto the window gives)."""
+        import base64
+        if not isinstance(data_b64, str) or len(data_b64) > 40_000_000:
+            return {"ok": False, "error": "Esa imagen es demasiado grande."}
+        try:
+            data = base64.b64decode(data_b64, validate=False)
+        except ValueError:
+            return {"ok": False, "error": "No pude leer esa imagen."}
+        code = share.code_from_png(data)
+        if code is None:
+            return {"ok": False, "error": "Esa imagen no es una tarjeta de Burdamix, o llegó convertida a JPEG y perdió el código. Pídele el código de texto o que la mande como archivo."}
+        return self.share_read(code)
+
+    def share_read_file(self):
+        """Asks for a card on disk and reads it. {ok: False, cancelled: True} if the user closes the dialog."""
+        path = self._ask_open(("Tarjeta de Burdamix (*.png)", "Todos los archivos (*.*)"))
+        if not path:
+            return {"ok": False, "cancelled": True}
+        try:
+            if os.path.getsize(path) > share.MAX_PICTURE:
+                return {"ok": False, "error": "Ese archivo es demasiado grande para ser una tarjeta."}
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError:
+            return {"ok": False, "error": "No pude abrir ese archivo."}
+        code = share.code_from_png(data)
+        return self.share_read(code) if code else {"ok": False, "error": "Ese archivo no es una tarjeta de Burdamix."}
 
     def _song(self, track_id):
         return next((t for t in self._library.listing() if isinstance(track_id, str) and t["id"] == track_id), None)
