@@ -72,6 +72,20 @@ def test_the_whole_job_passes_when_every_stage_works(online, monkeypatch, tmp_pa
     assert os.path.exists(tmp_path / "prueba.mp3")
 
 
+def test_ffmpeg_gets_the_library_folders_it_needs(online, monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_ffmpeg(command, **kwargs):
+        seen["ld"] = kwargs["env"]["LD_LIBRARY_PATH"]
+        with open(command[-1], "wb") as f:
+            f.write(b"y" * 4096)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/already/there")
+    monkeypatch.setattr(subprocess, "run", fake_ffmpeg)
+    spike.probe("https://example.org/v", str(tmp_path), ffmpeg_path="/fake/ffmpeg", lib_dirs="/a/lib:/b/lib")
+    assert seen["ld"] == "/a/lib:/b/lib:/already/there"
+
+
 def test_a_failing_ffmpeg_says_why(online, monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 126, "", "Permission denied"))
     result = spike.probe("https://example.org/v", str(tmp_path), ffmpeg_path="/fake/ffmpeg")

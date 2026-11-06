@@ -24,16 +24,21 @@ def _stage(stages, name, fn):
         return False
 
 
-def _run_ffmpeg(ffmpeg, source, target):
+def _run_ffmpeg(ffmpeg, source, target, lib_dirs=""):
+    # The ffmpeg executable needs its shared libraries (libc++_shared.so, libav*.so) and Android does not look for them next to it.
+    env = dict(os.environ)
+    if lib_dirs:
+        env["LD_LIBRARY_PATH"] = lib_dirs + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
     done = subprocess.run([ffmpeg, "-y", "-i", source, "-vn", "-codec:a", "libmp3lame", "-q:a", "2", target],
-                          capture_output=True, text=True, timeout=300)
+                          capture_output=True, text=True, timeout=300, env=env)
     if done.returncode != 0:
         raise RuntimeError(f"ffmpeg exited with {done.returncode}: {(done.stderr or '').strip()[-300:]}")
     return f"{os.path.basename(target)} ({os.path.getsize(target) // 1024} KB)"
 
 
-def probe(url, out_dir, ffmpeg_path=""):
-    """Returns {"ok": bool, "stages": [...]}. `ffmpeg_path` is where the app found an ffmpeg executable ("" if it found none)."""
+def probe(url, out_dir, ffmpeg_path="", lib_dirs=""):
+    """Returns {"ok": bool, "stages": [...]}. `ffmpeg_path` is where the app found an ffmpeg executable ("" if it found none);
+    `lib_dirs` are the folders (":"-separated) with the shared libraries that executable loads."""
     stages, state = [], {}
     os.makedirs(out_dir, exist_ok=True)
 
@@ -73,7 +78,7 @@ def probe(url, out_dir, ffmpeg_path=""):
     if not ffmpeg_path:
         stages.append({"name": "Convertir a MP3", "ok": False, "detail": "la app no encontró un ejecutable de ffmpeg", "seconds": 0})
         return {"ok": False, "stages": stages}
-    ok = _stage(stages, "Convertir a MP3", lambda: _run_ffmpeg(ffmpeg_path, state["audio"], os.path.join(out_dir, "prueba.mp3")))
+    ok = _stage(stages, "Convertir a MP3", lambda: _run_ffmpeg(ffmpeg_path, state["audio"], os.path.join(out_dir, "prueba.mp3"), lib_dirs))
     return {"ok": ok, "stages": stages}
 
 

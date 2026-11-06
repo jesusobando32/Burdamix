@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.system.Os
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.view.Gravity
@@ -67,11 +68,14 @@ class MainActivity : Activity() {
 
     private fun runPython() = work("Python (Chaquopy + yt-dlp)") {
         val module = Python.getInstance().getModule("burdamix_spike")
-        val result = module.callAttr("probe", url.text.toString().trim(), outDir().absolutePath, findFfmpeg() ?: "")
+        val libDirs = listOf(applicationInfo.nativeLibraryDir, noBackupFilesDir.resolve("youtubedl-android/packages/ffmpeg/usr/lib").path)
+        val result = module.callAttr("probe", url.text.toString().trim(), outDir().absolutePath, findFfmpeg() ?: "", libDirs.joinToString(":"))
         say(module.callAttr("render", result).toString())
     }
 
     private fun runKotlin() = work("Motor Kotlin (youtubedl-android)") {
+        // Chaquopy leaves PYTHONPATH set in this process; the library's own Python 3.8 inherits it and cannot start.
+        Os.unsetenv("PYTHONPATH")
         val request = YoutubeDLRequest(url.text.toString().trim())
         request.addOption("-x")
         request.addOption("--audio-format", "mp3")
