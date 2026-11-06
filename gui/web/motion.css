@@ -1,0 +1,72 @@
+/* Motion layer ("Vinilo nocturno"): what happens between screens and around the cursor. Borrowed from award-winning sites:
+   an intro curtain (Obys), a circular wipe between sections with a lime edge (SPYLT), titles that rise out of a mask,
+   a list that dims everything but what you point at, depth in the background, counters and bars that grow.
+   Only transform, opacity and clip-path move. Everything is off with prefers-reduced-motion. */
+
+/* ---------- intro ---------- */
+#splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; align-content: center; gap: 22px; background: var(--bg); pointer-events: none;
+  animation: splash-out 1500ms var(--ease-in-out) forwards; }
+#splash img { width: 92px; height: 92px; border-radius: 24px; animation: splash-logo 900ms var(--ease-out) both; }
+#splash i { display: block; width: 160px; height: 3px; border-radius: 3px; background: var(--accent); transform: scaleX(0); transform-origin: left; animation: splash-line 800ms 160ms var(--ease-in-out) forwards; }
+@keyframes splash-logo { from { opacity: 0; transform: scale(.6) rotate(-18deg); } }
+@keyframes splash-line { to { transform: scaleX(1); } }
+@keyframes splash-out { 0%, 62% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 0 100% 0); } }
+
+/* ---------- curtain between sections ---------- */
+#curtain { position: fixed; inset: 0; z-index: 90; pointer-events: none; visibility: hidden; --cx: 50%; --cy: 50%; }
+#curtain.on { visibility: visible; }
+#curtain i { position: absolute; inset: 0; clip-path: circle(0 at var(--cx) var(--cy)); will-change: clip-path; }
+#curtain .c1 { background: var(--pc, var(--accent)); }
+#curtain .c2 { background: var(--bg); }
+#curtain.in .c1 { animation: cur-in 320ms var(--ease-in-out) forwards; }
+#curtain.in .c2 { animation: cur-in 320ms 60ms var(--ease-in-out) forwards; }
+#curtain.out .c1 { clip-path: circle(150vmax at var(--cx) var(--cy)); animation: cur-out 420ms 60ms var(--ease-out) forwards; }
+#curtain.out .c2 { clip-path: circle(150vmax at var(--cx) var(--cy)); animation: cur-out 420ms var(--ease-out) forwards; }
+@keyframes cur-in { to { clip-path: circle(150vmax at var(--cx) var(--cy)); } }
+@keyframes cur-out { to { clip-path: circle(0 at var(--cx) var(--cy)); } }
+
+/* ---------- titles rise out of a mask ---------- */
+.w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .12em; margin-bottom: -.12em; }
+.w > i { display: inline-block; font-style: normal; }
+.rv .w > i { animation: w-up 760ms var(--ease-out) both; animation-delay: calc(var(--k, 0) * 70ms + 60ms); }
+@keyframes w-up { from { transform: translateY(105%) rotate(3deg); } }
+
+/* ---------- depth: the colour blobs lean away from the cursor ---------- */
+.bg .b1 { translate: calc(var(--px, 0) * -34px) calc(var(--py, 0) * -24px); }
+.bg .b2 { translate: calc(var(--px, 0) * 40px) calc(var(--py, 0) * 28px); }
+.bg .b3 { translate: calc(var(--px, 0) * -22px) calc(var(--py, 0) * 36px); }
+
+/* ---------- cursor ring ---------- */
+#cursor { position: fixed; left: 0; top: 0; z-index: 95; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; pointer-events: none; opacity: 0;
+  border: 1.5px solid color-mix(in srgb, var(--pc, var(--accent)) 75%, transparent); transition: opacity var(--t-med) ease, scale var(--t-med) var(--ease-out), background var(--t-med) ease; will-change: transform; }
+#cursor.on { opacity: .9; }
+#cursor.hot { scale: 1.7; background: color-mix(in srgb, var(--pc, var(--accent)) 14%, transparent); }
+#cursor.down { scale: .75; }
+#cursor.text { scale: .4; }
+
+/* ---------- lists: dim what you are not pointing at ---------- */
+@media (hover: hover) and (pointer: fine) {
+  .tracks:has(.row:hover) .row:not(:hover), .lib-list:has(.lib-row:hover) .lib-row:not(:hover), .st-list ol:has(li:hover) li:not(:hover), .q-list:has(.q-row:hover) .q-row:not(:hover) { opacity: .58; }
+}
+.lib-row, .q-row, .st-list li { transition-property: background-color, transform, opacity; transition-duration: var(--t-fast), var(--t-med), var(--t-med); }
+
+/* ---------- statistics: glass, counters and growing bars ---------- */
+.st-tile, .st-chart, .st-list { background: var(--glass); border-color: var(--glass-line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  animation: rise var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--k, 0) * 60ms); }
+.st-list { padding: 16px 18px; border: 1px solid var(--glass-line); border-radius: var(--radius); }
+.st-tile b { font-variant-numeric: tabular-nums; }
+.st-bar i { transform-origin: bottom; animation: bar-grow 800ms var(--ease-out) both; animation-delay: calc(var(--k, 0) * 55ms + 200ms); background: linear-gradient(180deg, var(--accent-strong), var(--accent)); }
+@keyframes bar-grow { from { transform: scaleY(0); } }
+.st-list li { animation: rise var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--k, 0) * 40ms + 300ms); }
+@media (hover: hover) and (pointer: fine) { .st-bar:hover i { filter: brightness(1.15); } .st-tile { transition: transform var(--t-med) var(--ease-out); } .st-tile:hover { transform: translateY(-3px); } }
+
+/* ---------- dialogs and panels that appear ---------- */
+.dialog:not(.hidden) .dialog-card { animation: dlg-in 380ms var(--ease-out) both; }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
+
+@media (max-width: 760px) { #cursor { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #splash, #curtain, #cursor { display: none; }
+  .rv .w > i, .st-tile, .st-chart, .st-list, .st-bar i, .st-list li, .dialog:not(.hidden) .dialog-card { animation: none; }
+  .bg .b1, .bg .b2, .bg .b3 { translate: none; }
+}
