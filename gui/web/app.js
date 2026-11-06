@@ -703,6 +703,14 @@ function init() {
     else show(n.dataset.view);
   });
   $("#clear").onclick = clearSearch;
+  // going back from an album or playlist you opened in Descargar: Esc, Backspace, Alt+←, the mouse's back button (like the library)
+  document.addEventListener("keydown", ev => {
+    if (S.view !== "home" || !S.stack.length || ev.ctrlKey || ev.metaKey) return;
+    const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
+    if (typing || anyDialogOpen() || $("#ctx") || LY.open || !$("#dialog").classList.contains("hidden")) return;
+    if (ev.key === "Escape" || ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowLeft")) { ev.preventDefault(); goBack(); }
+  });
+  addEventListener("mouseup", ev => { if (ev.button === 3 && S.view === "home" && S.stack.length) { ev.preventDefault(); goBack(); } });
   $("#link").addEventListener("input", syncClear);
   $("#link").addEventListener("keydown", ev => { if (ev.key === "Escape" && ($("#link").value || S.cur)) { ev.preventDefault(); clearSearch(); } });
   $("#toggle").onclick = () => setSidebar(!$("#app").classList.contains("sidebar-open"));
