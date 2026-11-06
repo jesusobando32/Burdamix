@@ -35,11 +35,11 @@ Se escribió sin poder compilarlo en el PC de desarrollo: la primera compilació
 ## Cómo compilar y probar (sin instalar nada)
 
 1. Sube el branch `movil` a GitHub (hace falta tu permiso: es una publicación).
-2. En la pestaña **Actions** del repositorio, elige **Android → Run workflow** sobre `movil`.
+2. La compilación arranca sola al subir cambios de `android/` al branch `movil` (pestaña **Actions** del repositorio, flujo **Android**). Cuando el flujo esté también en `main`, se podrá lanzar a mano con **Run workflow**.
 3. Al terminar, descarga el artefacto `burdamix-apk`, pásalo al teléfono e instálalo (hay que permitir «instalar apps desconocidas» para el navegador o el gestor de archivos).
 4. Abre **Burdamix**, espera a que se activen los botones y pulsa **Probar: Python** y **Probar: motor Kotlin**. Cuéntame lo que dice la pantalla (se puede seleccionar y copiar el texto).
 
-El flujo solo corre cuando se pide (manual o al subir una etiqueta `movil-v*`, que además publica un release marcado como prueba).
+El flujo corre al subir cambios de `android/` a `movil`, a mano, o al subir una etiqueta `movil-v*`, que además publica un release marcado como prueba.
 
 ## Pruebas del lado Python
 

@@ -1,10 +1,14 @@
 # Builds the Android app in GitHub's cloud, so nothing has to be installed on the PC (no Android Studio).
-# It runs only when asked: from the "Actions" tab (Run workflow) or by pushing a tag named movil-v*, which also publishes a release.
+# It runs when something under android/ changes on the movil branch, from the "Actions" tab once this file is on the default branch,
+# or by pushing a tag named movil-v*, which also publishes a release. (A workflow can only be started by hand from the Actions tab
+# when its file is on the default branch; until then the push of the movil branch is what starts it.)
 name: Android
 
 on:
   workflow_dispatch:
   push:
+    branches: [movil]
+    paths: ["android/**", ".github/workflows/android.yml", "tests/test_android_spike.py"]
     tags: ["movil-v*"]
 
 permissions:
