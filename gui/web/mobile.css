@@ -1,0 +1,200 @@
+/* Phone layout: everything here is inside the narrow-window query, so the desktop window is untouched. The views, the player and the
+   vinyl are the same ones; this file moves them (tab bar below, small player above it, the player that fills the screen, the vinyl
+   and its needle centred in it). mobile.js builds the tab bar, the start page and the "More" page. */
+#tabbar { display: none; }
+
+@media (max-width: 760px) {
+  :root { --nav-h: 66px; --sab: env(safe-area-inset-bottom, 0px); --sat: env(safe-area-inset-top, 0px); }
+  body { overscroll-behavior: none; }
+  #sidebar, .float-toggle { display: none !important; }
+  #main { width: 100%; }
+
+  /* ---------- room for the tab bar and the small player ---------- */
+  .view { padding-bottom: calc(var(--nav-h) + var(--sab)); }
+  #app.has-player .view { padding-bottom: calc(var(--nav-h) + var(--sab) + 82px); }
+  .page { padding: calc(var(--sat) + 22px) 14px 36px; }
+  .lib-head { padding-top: calc(var(--sat) + 22px); }
+  .hero.small { padding-top: calc(var(--sat) + 4vh); }
+  #view-home .hero { padding-top: calc(var(--sat) + 8vh); }
+  .scroll { scrollbar-gutter: auto; }
+  body.has-player #toasts { bottom: calc(var(--nav-h) + var(--sab) + 90px); }
+  #toasts { bottom: calc(var(--nav-h) + var(--sab) + 16px); }
+
+  /* ---------- tab bar, with the download button in the middle ---------- */
+  #tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--sab)); padding-bottom: var(--sab);
+    display: grid; grid-template-columns: 1fr 1fr 84px 1fr 1fr; align-items: center;
+    background: rgba(9, 12, 10, .88); border-top: 1px solid var(--glass-line);
+    -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3); transition: transform 460ms var(--ease-out); }
+  #app.mfull #tabbar { transform: translateY(calc(100% + 40px)); }
+  .tab { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none;
+    color: var(--muted); font-size: 11px; font-weight: 560; transition: color var(--t-med) ease; }
+  .tab svg { width: 24px; height: 24px; transition: transform 400ms var(--ease-out); }
+  .tab.on { color: var(--text); }
+  .tab.on svg { color: var(--accent); transform: translateY(-2px); }
+  .tab::after { content: ""; position: absolute; top: 6px; width: 20px; height: 3px; border-radius: 3px; background: var(--accent); transform: scaleX(0); transition: transform 400ms var(--ease-out); }
+  .tab.on::after { transform: scaleX(1); }
+  .tab:active svg { transform: scale(.85); }
+  .fab { position: relative; justify-self: center; width: 64px; height: 64px; margin-top: -30px; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center; box-shadow: 0 0 0 6px var(--bg), 0 14px 30px rgba(0, 0, 0, .55); transition: transform 350ms var(--ease-out); }
+  .fab svg { width: 30px; height: 30px; stroke-width: 2.4; transition: transform 450ms var(--ease-out); }
+  .fab:active { transform: scale(.9); }
+  .fab.on svg { transform: translateY(2px); }
+  .fab::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+  .fab.on::before { animation: fab-pulse 2.6s var(--ease-out) infinite; }
+  @keyframes fab-pulse { from { opacity: .7; transform: scale(.9); } to { opacity: 0; transform: scale(1.35); } }
+
+  /* ---------- the small player, above the tab bar ---------- */
+  .player { position: fixed; z-index: 12; left: 8px; right: 8px; top: auto; bottom: calc(var(--nav-h) + var(--sab) + 8px); height: 66px;
+    grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "now play next"; align-items: center; gap: 2px; padding: 8px 10px 8px 8px;
+    border: 1px solid var(--glass-line); border-radius: 22px; box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--pc) 24%, transparent), transparent 70%), rgba(16, 21, 17, .9);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3); }
+  .player .pl-now { grid-area: now; cursor: pointer; }
+  .player:not(.full) .pl-mid, .player:not(.full) .pl-ctrl { display: contents; }
+  .player:not(.full) #pl-play { grid-area: play; }
+  .player:not(.full) #pl-next { grid-area: next; }
+  .player:not(.full) #pl-shuffle, .player:not(.full) #pl-prev, .player:not(.full) #pl-repeat, .player:not(.full) .pl-seek,
+  .player:not(.full) .pl-side, .player:not(.full) #pl-like, .player:not(.full) .pl-panel { display: none !important; }
+  .player:not(.full) .pl-cover { width: 50px; height: 50px; }
+  .player:not(.full) .pl-text b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mp-head, .mp-stage, .mp-scrim { display: none; }
+  .mp-line { position: absolute; left: 22px; right: 22px; bottom: 0; height: 2px; border-radius: 2px; background: var(--pc); transform-origin: left; transform: scaleX(var(--mp, 0)); opacity: .9; }
+
+  /* ---------- the player that fills the screen ---------- */
+  .player.full { left: 0; right: 0; top: 0; bottom: 0; height: auto; z-index: 50; display: flex; flex-direction: column; align-items: stretch; gap: 0;
+    padding: calc(var(--sat) + 10px) 22px calc(var(--sab) + 18px); border: 0; border-radius: 0; box-shadow: none;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 32%, #0a0d0b), #0a0d0b 62%);
+    -webkit-backdrop-filter: none; backdrop-filter: none; translate: 0 var(--mdy, 0px); animation: mp-in 520ms var(--ease-out) both; }
+  .player.full.closing { animation: mp-out 340ms var(--ease-in-out) both; }
+  @keyframes mp-in { from { transform: translateY(8%); opacity: 0; } }
+  @keyframes mp-out { to { transform: translateY(100%); opacity: .4; } }
+  #app.mdrag .player.full { transition: none; }
+  .player.full .mp-line { display: none; }
+  .player.full .mp-head { order: 0; display: flex; align-items: center; justify-content: space-between; min-height: 46px; touch-action: none; }
+  .player.full .mp-head .icon-btn { width: 44px; height: 44px; }
+  .player.full .mp-head > span { width: 44px; }
+  .mp-ctx { text-align: center; line-height: 1.25; min-width: 0; }
+  .mp-ctx small { display: block; color: var(--muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .mp-ctx b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56vw; }
+  .player.full .mp-stage { order: 1; display: block; flex: 1; min-height: 120px; touch-action: none; }
+  .player.full .pl-now { order: 2; cursor: default; margin-top: 6px; gap: 10px; }
+  .player.full .pl-cover { display: none; }
+  .player.full .pl-text { flex: 1; }
+  .player.full .pl-text b { font-size: 24px; letter-spacing: -.03em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player.full .pl-text span { font-size: 15px; }
+  .player.full #pl-like { display: grid; width: 48px; height: 48px; }
+  .player.full #pl-like svg { width: 28px; height: 28px; }
+  .player.full .pl-mid { display: contents; }
+  .player.full .pl-seek { order: 3; margin-top: 10px; }
+  .player.full .pl-ctrl { order: 4; display: flex; justify-content: space-between; margin-top: 2px; }
+  .player.full .pl-ctrl .icon-btn { width: 52px; height: 52px; }
+  .player.full .pl-ctrl .icon-btn svg { width: 26px; height: 26px; }
+  .player.full .pl-play { width: 72px; height: 72px; margin: 0; }
+  .player.full .pl-play svg { width: 30px; height: 30px; }
+  .player.full input[type=range]::-webkit-slider-thumb { transform: scale(1); width: 16px; height: 16px; margin-top: -6px; }
+  .player.full .pl-side { order: 5; display: flex; justify-content: space-around; margin-top: 6px; }
+  .player.full #pl-spectrum, .player.full #pl-mute, .player.full #pl-volume { display: none; }
+  .player.full .pl-side .icon-btn { width: auto; height: auto; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 14px; color: var(--muted); font-size: 11px; }
+  .player.full .pl-side .icon-btn svg { width: 22px; height: 22px; }
+  #pl-sleep::after { content: "Dormir"; } #pl-lyrics::after { content: "Letra"; } #pl-eq::after { content: "Ecualizador"; } #pl-queue::after { content: "Cola"; }
+  .player.full .pl-side .icon-btn[aria-pressed="true"], .player.full .pl-side .icon-btn[aria-expanded="true"] { color: var(--pc); }
+  .icon-btn.sleep i { right: 8px; bottom: auto; top: 2px; }
+
+  /* queue and equalizer: drawers that rise from the bottom of the player */
+  .player.full .pl-panel { left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 78%; z-index: 6; border-radius: 26px 26px 0 0;
+    padding-bottom: calc(var(--sab) + 18px); transform-origin: bottom center; animation: mp-drawer 460ms var(--ease-out) both; }
+  @keyframes mp-drawer { from { transform: translateY(100%); } }
+  .player.full:has(.pl-panel:not(.hidden)) .mp-scrim { display: block; position: absolute; inset: 0; z-index: 5; background: rgba(0, 0, 0, .55); animation: fade-only var(--t-med) both; }
+
+  /* the vinyl and its needle, the same ones as the desktop, centred under the header */
+  #app.mfull .vinyl { display: block; position: fixed; z-index: 55; right: auto; left: 50%; top: var(--mt, calc(var(--sat) + 66px));
+    width: calc(360px * var(--ms, .8)); height: calc(360px * var(--ms, .8)); margin-left: calc(-180px * var(--ms, .8)); translate: 0 var(--mdy, 0px); }
+  #app.mfull .tonearm { display: block; position: fixed; z-index: 56; right: auto; left: calc(50% + 70px * var(--ms, .8)); top: calc(var(--mt, calc(var(--sat) + 66px)) + 6px * var(--ms, .8));
+    scale: var(--ms, .8); transform-origin: 0 0; translate: 0 var(--mdy, 0px); }
+  #app#app.mfull[data-view] .vinyl, #app#app.mfull[data-view] .tonearm { opacity: 1; }
+  #app#app.mfull[data-view]:has(.pl-panel:not(.hidden)) :is(.vinyl, .tonearm), #app#app.mfull[data-view]:has(#lyrics:not(.hidden)) :is(.vinyl, .tonearm),
+  #app#app.mfull[data-view]:has(#player.closing) :is(.vinyl, .tonearm) { opacity: 0; pointer-events: none; }
+  #app.mfull #lyrics { position: fixed; z-index: 60; top: 0; left: 0; right: 0; bottom: var(--mp-ctl, 300px) !important; padding-top: var(--sat); }
+  #app.mdrag .vinyl, #app.mdrag .tonearm { transition: none; }
+
+  /* ---------- the start page and the "More" page ---------- */
+  #start-scroll, #more-scroll { padding: calc(var(--sat) + 18px) 0 24px; }
+  .ms-in { animation: rise 600ms var(--ease-out) both; animation-delay: calc(var(--k, 0) * 60ms); }
+  .ms-top { display: flex; align-items: center; gap: 12px; padding: 0 18px; }
+  .ms-logo { width: 42px; height: 42px; border-radius: 13px; overflow: hidden; flex: none; box-shadow: 0 8px 20px rgba(0, 0, 0, .4); }
+  .ms-logo img { width: 100%; height: 100%; display: block; }
+  .ms-hi { flex: 1; min-width: 0; line-height: 1.2; }
+  .ms-hi small { display: block; color: var(--muted); }
+  .ms-hi b { font-size: 22px; letter-spacing: -.03em; }
+  .ms-round { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--glass-line); transition: transform var(--t-med) var(--ease-out); }
+  .ms-round:active { transform: scale(.9); }
+  .ms-search { display: flex; align-items: center; gap: 12px; width: calc(100% - 36px); height: 54px; margin: 18px 18px 0; padding: 0 8px 0 20px; border-radius: 27px; text-align: left; color: var(--muted);
+    background: var(--glass); border: 1px solid var(--glass-line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
+    transition: transform var(--t-slow) var(--ease-out), border-color var(--t-fast) ease; }
+  .ms-search:active { transform: scale(.985); border-color: var(--accent); }
+  .ms-search span { flex: 1; }
+  .ms-search i { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+  .ms-chips { display: flex; gap: 8px; overflow-x: auto; padding: 14px 18px 0; scrollbar-width: none; }
+  .ms-chips::-webkit-scrollbar, .ms-hs::-webkit-scrollbar { display: none; }
+  .ms-chip { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; display: flex; align-items: center; gap: 7px; font-size: 13.5px; background: var(--glass); border: 1px solid var(--glass-line); transition: transform var(--t-med) var(--ease-out), background var(--t-fast) ease; }
+  .ms-chip svg { width: 16px; height: 16px; }
+  .ms-chip:active { transform: scale(.94); background: var(--glass-2); }
+  .ms-sec { display: flex; align-items: baseline; justify-content: space-between; padding: 24px 18px 10px; }
+  .ms-sec h2 { font-size: 19px; letter-spacing: -.02em; }
+  .ms-sec button { color: var(--accent); font-size: 13.5px; font-weight: 600; border: 0; background: none; }
+  .ms-hs { display: flex; gap: 14px; overflow-x: auto; padding: 2px 18px 8px; scroll-snap-type: x proximity; scroll-padding: 0 18px; scrollbar-width: none; }
+  .ms-card { flex: none; width: 136px; text-align: left; scroll-snap-align: start; border: 0; background: none; padding: 0; color: inherit; transition: transform var(--t-slow) var(--ease-out); }
+  .ms-card:active { transform: scale(.95); }
+  .ms-cov { display: block; position: relative; width: 136px; height: 136px; border-radius: 14px; overflow: hidden; background: var(--surface-2); box-shadow: 0 10px 24px rgba(0, 0, 0, .4); }
+  .ms-cov img, .ms-cov .cover-ph { display: grid; width: 100%; height: 100%; object-fit: cover; }
+  .ms-cov .initial { font-size: 40px; }
+  .ms-card b { display: block; margin-top: 8px; font-weight: 620; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ms-card small { display: block; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ms-sleeve { width: 156px; }
+  .ms-wrap { position: relative; display: block; width: 156px; height: 136px; }
+  .ms-wrap .ms-cov { position: absolute; left: 0; top: 0; width: 126px; height: 126px; z-index: 1; }
+  .ms-rec { position: absolute; top: 6px; left: 34px; width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 6px 16px rgba(0, 0, 0, .5);
+    background: repeating-radial-gradient(circle, #101210 0 2px, #1b1e1b 3px 4px); transition: transform 500ms var(--ease-out); }
+  .ms-rec::after { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: var(--cover, linear-gradient(135deg, var(--accent), #3aa220)) center / cover; }
+  .ms-sleeve:active .ms-rec { transform: translateX(14px) rotate(40deg); }
+  .ms-week { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; width: calc(100% - 36px); margin: 0 18px; padding: 16px; border-radius: 20px; text-align: left; color: inherit;
+    background: var(--glass); border: 1px solid var(--glass-line); transition: transform var(--t-slow) var(--ease-out); }
+  .ms-week:active { transform: scale(.985); }
+  .ms-week b { font-size: 26px; letter-spacing: -.03em; line-height: 1.1; }
+  .ms-bars { grid-column: 2; grid-row: 1 / span 3; display: flex; align-items: flex-end; gap: 5px; height: 56px; }
+  .ms-bars i { width: 9px; border-radius: 3px; background: linear-gradient(180deg, var(--accent-strong), var(--accent)); height: var(--h); transform-origin: bottom; animation: ms-grow 800ms var(--ease-out) both; animation-delay: calc(var(--k) * 50ms + 300ms); }
+  @keyframes ms-grow { from { transform: scaleY(0); } }
+  .ms-wait { display: grid; gap: 10px; padding: 24px 18px; }
+  .ms-wait i { height: 64px; border-radius: 16px; background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%) 0 0 / 300% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+  .ms-empty { margin: 28px 18px 0; padding: 22px; border-radius: 20px; background: var(--glass); border: 1px solid var(--glass-line); }
+  .ms-empty b { font-size: 18px; } .ms-empty p { margin: 8px 0 0; color: var(--muted); }
+  .ms-title { font-size: 32px; letter-spacing: -.035em; padding: 0 18px; line-height: 1.1; }
+  .ms-list { margin: 16px 18px 0; border-radius: 20px; overflow: hidden; background: var(--glass); border: 1px solid var(--glass-line); }
+  .ms-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left; border: 0; background: none; color: inherit; transition: background var(--t-fast) ease; }
+  .ms-item + .ms-item { border-top: 1px solid var(--glass-line); }
+  .ms-item:active { background: var(--glass-2); }
+  .ms-ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .ms-ic svg { width: 20px; height: 20px; }
+  .ms-item span { flex: 1; min-width: 0; }
+  .ms-item small { display: block; color: var(--muted); font-size: 12.5px; }
+  .ms-item > svg { width: 18px; height: 18px; color: var(--muted); }
+  .ms-foot { text-align: center; padding: 22px; }
+
+  /* the library header: one row of buttons and the search under it; opening the folder in the Explorer means nothing on a phone */
+  #lib-folder { display: none; }
+  .lib-tools { width: 100%; }
+  #lib-play-all, #lib-shuffle { flex: 1; }
+  .lib-tools .lib-search { flex: 1 1 100%; order: 3; }
+  .lib-tools .lib-search input { width: 100%; }
+  .lib-tools #lib-sort, .lib-tools .dd { order: 4; }
+
+  /* the rest of the views keep their phone rules (crate.css, player.css); the lists need the touch size */
+  .lib-row { min-height: 56px; }
+  .nav-ind { display: none; }
+}
+
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  .ms-in, .ms-bars i, .player.full, .player.full .pl-panel { animation: none; }
+  .fab.on::before { animation: none; }
+  #app.mfull .vinyl { animation: none; }
+}

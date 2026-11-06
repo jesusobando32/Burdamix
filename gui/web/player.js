@@ -27,6 +27,7 @@ const FLAT = EQ_PRESETS[0].bands;
 const MAX_CUSTOM = 8, MIN_CUSTOM = 3, MAX_SAVED_QUEUE = 2000;
 const QUICK_FADE = .35;     // seconds: when the user skips by hand
 const TICK = 150;
+const MAX_RECENT = 30;
 
 const P = {
   tracks: [], byId: new Map(), queue: [], original: null, pos: -1,
@@ -36,6 +37,7 @@ const P = {
   seen: new Map(), q: "", sort: "artist", pulseOn: true, discId: "", swapToken: 0, armAngle: null, armLifted: true, armBusy: false, ready: false, dragging: false, errors: 0,
   ctx: null, decks: [], active: 0, pre: null, filters: [], analyser: null, master: null,
   fading: null, timer: 0, saveTimer: 0, lastSaved: 0, accent: "", bars: 0, wired: false,
+  recent: [],      // the ids of the songs played last, newest first (the start page of the phone layout shows them)
 };
 
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -325,8 +327,13 @@ function coverHTML(track) {
   return track.cover_url ? `<img src="${esc(track.cover_url)}" alt="" loading="lazy" decoding="async">` : "";
 }
 
+function noteRecent(track) {
+  P.recent = [track.id, ...P.recent.filter(id => id !== track.id)].slice(0, MAX_RECENT);
+}
+
 function trackChanged() {
   const track = current();
+  if (track) noteRecent(track);
   if (!track) extractAccent({});
   paintCover(track);
   render();
@@ -855,7 +862,7 @@ function snapshot() {
     volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, tab: L.tab,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
-    queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "",
+    queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "", recent: P.recent,
     time: el && isFinite(el.currentTime) ? Math.floor(el.currentTime) : 0,
   };
 }
@@ -872,6 +879,7 @@ function restore(saved) {
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
   // on unless it was turned off (older saves kept a mode: "off" was off, the other modes — pulse among them — become the pulse)
   P.pulseOn = typeof saved.pulse === "boolean" ? saved.pulse : saved.viz !== "off";
+  if (Array.isArray(saved.recent)) P.recent = saved.recent.filter(id => typeof id === "string").slice(0, MAX_RECENT);
   if (TABS.some(([id]) => id === saved.tab)) L.tab = saved.tab;      // the section of the library you were in
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;
   if (saved.eq && typeof saved.eq === "object") {

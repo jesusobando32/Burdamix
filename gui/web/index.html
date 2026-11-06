@@ -2,12 +2,13 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Burdamix</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="player.css">
 <link rel="stylesheet" href="crate.css">
 <link rel="stylesheet" href="motion.css">
+<link rel="stylesheet" href="mobile.css">
 </head>
 <body>
 <div id="splash" aria-hidden="true"><img src="logo.png" alt=""><i></i></div>
@@ -310,6 +311,10 @@
       </div>
     </section>
 
+    <!-- Inicio y Más: solo existen en el diseño del teléfono (mobile.js los llena) -->
+    <section class="view" id="view-start"><div class="scroll ms" id="start-scroll"></div></section>
+    <section class="view" id="view-more"><div class="scroll ms" id="more-scroll"></div></section>
+
     <!-- Letras: un panel sobre la ventana, sin tapar la barra del reproductor -->
     <section id="lyrics" class="lyrics hidden" aria-label="Letra de la canción">
       <header class="ly-head">
@@ -420,5 +425,6 @@
 <script src="share.js"></script>
 <script src="app.js"></script>
 <script src="motion.js"></script>
+<script src="mobile.js"></script>
 </body>
 </html>
