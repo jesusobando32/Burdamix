@@ -6,8 +6,34 @@ Rama `movil`. La app móvil descarga **en el propio teléfono**, sin PC, y funci
 
 **Paso 1 de 5: la prueba del teléfono.** Esta carpeta todavía no es la app: es un APK de prueba que dice, etapa por etapa, si el
 teléfono puede hacer todo el trabajo (Python dentro de la app, yt-dlp, descargar un audio, convertirlo a MP3 con ffmpeg).
-Se escribió sin poder compilarlo en el PC de desarrollo: la primera compilación en GitHub puede pedir arreglos de sintaxis
-(los imports de `youtubedl-android` no estaban en su README).
+Ya compila en el PC de desarrollo con Android Studio/Gradle (los imports de `youtubedl-android` estaban bien).
+
+## Resultado de la prueba (6 nov 2026)
+
+Compilado con Gradle 8.10.2 (wrapper incluido), JDK 21 y Python 3.13 en el PC; probado en el emulador `Medium_Phone_API_37.0`
+(x86_64). **No se probó en un teléfono físico arm64**: no había ninguno conectado. El APK de `arm64-v8a` compila, pero su ejecución
+real queda por verificar.
+
+| Etapa | Motor Python (Chaquopy) | Motor Kotlin (youtubedl-android 0.16.0) |
+|---|---|---|
+| Arranca | ✔ Python 3.13 | ✔ (con arreglo, ver abajo) |
+| yt-dlp | ✔ 2026.10.26 (de pip, actual) | ✘ el yt-dlp que trae la librería está viejo: YouTube responde «Precondition check failed» |
+| Descarga el audio | ✔ `.webm`, 246 KB | no llegó a esta etapa |
+| Ejecutar ffmpeg y pasar a MP3 | ✔ `prueba.mp3`, 175 KB (libmp3lame incluido) | no llegó a esta etapa |
+
+Lo que se aprendió:
+- **El ffmpeg empaquetado sí se puede ejecutar** desde `nativeLibraryDir` (viene como `libffmpeg.so`). Necesita dos cosas: que la app
+  incluya `libc++_shared.so` (la librería no la trae; ahora se copia del NDK al compilar) y `LD_LIBRARY_PATH` con
+  `nativeLibraryDir` y `noBackupFilesDir/youtubedl-android/packages/ffmpeg/usr/lib`.
+- **Los dos motores en un mismo proceso chocan**: Chaquopy deja `PYTHONPATH` en el entorno del proceso y el Python 3.8 de la librería lo
+  hereda y no arranca. Se resolvió con `Os.unsetenv("PYTHONPATH")`, pero es frágil.
+- Compilar desde una ruta con caracteres no ASCII (como `programación`) falla en AGP; se compiló desde una unidad `subst` ASCII.
+- Para emuladores x86_64: `./gradlew assembleDebug -Pburdamix.abis=arm64-v8a,x86_64`.
+
+**Motor recomendado: Python con Chaquopy**, más el ffmpeg empaquetado ejecutado como subproceso. Conserva un solo código con el
+escritorio, usa el yt-dlp más nuevo (se actualiza con pip y con la actualización automática ya acordada) y no mezcla un segundo Python.
+El motor Kotlin se descarta como descargador principal. De `youtubedl-android` solo hace falta el ffmpeg; queda por evaluar si el módulo `ffmpeg`
+puede usarse sin el módulo `library`, o si conviene empaquetar ffmpeg por otro medio.
 
 ## Decisiones (acordadas)
 
