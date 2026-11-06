@@ -241,3 +241,12 @@ def test_the_m3u8_export_writes_the_files_of_the_playlist(api, monkeypatch):
 def test_an_unwritable_destination_is_reported_not_raised(api, monkeypatch):
     monkeypatch.setattr(api, "_ask_save", lambda filename, types: str(api.tmp / "no" / "hay" / "x.png"))
     assert api.share_card_save([api.ids["Normal"]], "X")["ok"] is False
+
+
+def test_without_the_qr_library_the_code_and_the_card_still_work_and_the_card_says_why(monkeypatch):
+    """A program started from a folder whose environment has not installed segno yet must not lose sharing altogether."""
+    monkeypatch.setitem(sys.modules, "segno", None)            # makes `import segno` raise ImportError
+    code = share.encode("Sin QR", SONGS)
+    assert share.fits_qr(code) is False
+    data = share.render_card("Sin QR", "", 4, 600, [png("red")], code)
+    assert share.code_from_png(data) == code and Image.open(io.BytesIO(data)).size == (share.CARD_W, share.CARD_H)

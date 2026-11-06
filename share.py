@@ -139,11 +139,23 @@ def _qr(code):
 
 
 def fits_qr(code):
-    import segno
+    """Whether the code can be drawn as a QR. False too when the drawing library is missing: the card and the code still work."""
+    try:
+        import segno
+    except ImportError:
+        return False
     try:
         _qr(code)
         return True
     except segno.DataOverflowError:
+        return False
+
+
+def _has_segno():
+    try:
+        import segno  # noqa: F401
+        return True
+    except ImportError:
         return False
 
 
@@ -243,7 +255,8 @@ def render_card(name, by, count, seconds, covers, code):
                     draw.rectangle((x0 + c * scale, y0 + r * scale, x0 + (c + 1) * scale - 1, y0 + (r + 1) * scale - 1), fill=INK)
     else:
         mid = (PANEL[0] + PANEL[2]) // 2
-        for i, (text, size) in enumerate((("Esta playlist es muy grande", 44), ("para caber en un QR.", 44), ("Usa el código de texto o arrastra", 32), ("esta imagen a Burdamix.", 32))):
+        reason = ("Esta playlist es muy grande", "para caber en un QR.") if _has_segno() else ("Este equipo no tiene", "el dibujante de QR instalado.")
+        for i, (text, size) in enumerate(((reason[0], 44), (reason[1], 44), ("Usa el código de texto o arrastra", 32), ("esta imagen a Burdamix.", 32))):
             font = _font(size, i < 2)
             draw.text((mid - draw.textlength(text, font=font) / 2, PANEL[1] + 230 + i * (58 if i < 2 else 46)), text, font=font, fill=INK)
     foot, ff = _fit(draw, "Burdamix · Playlists → Importar, o arrastra esta imagen a la app", lambda s: _font(s), CARD_W - 160, (26, 22, 18))
