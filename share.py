@@ -6,6 +6,7 @@ picture of the playlist with a QR of that same code, and the code hidden inside 
 possible, for other players. Songs travel as artist and title, never as files: the friend gets the ones they already have and a list of
 the ones they do not."""
 import base64
+import colorsys
 import io
 import json
 import os
@@ -180,6 +181,44 @@ def _tone(covers):
     return best
 
 
+def _hex(rgb):
+    return "#%02x%02x%02x" % tuple(rgb)
+
+
+def _luminance(rgb):
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= .03928 else ((v + .055) / 1.055) ** 2.4
+    r, g, b = (channel(v) for v in rgb)
+    return .2126 * r + .7152 * g + .0722 * b
+
+
+def palette(covers):
+    """The colours of a playlist for its QR: a deep shade of the covers' main colour for the modules and a pale tint of it for the
+    plate. Whatever the cover, they keep a contrast of at least 7:1, which is what a phone camera needs to read the code."""
+    tone = _tone(covers)
+    hue, _, sat = colorsys.rgb_to_hls(*(v / 255 for v in tone))
+    colourful = sat > .15
+    dark = light = None
+    for lightness in (.17, .14, .11, .08, .05):
+        dark = tuple(round(v * 255) for v in colorsys.hls_to_rgb(hue, lightness, .6 if colourful else 0))
+        if _luminance(dark) < .1:
+            break
+    for lightness in (.95, .96, .97, .98, .99):
+        light = tuple(round(v * 255) for v in colorsys.hls_to_rgb(hue, lightness, .7 if colourful else 0))
+        if (_luminance(light) + .05) / (_luminance(dark) + .05) >= 7:
+            break
+    return {"tone": tone, "dark": dark, "light": light}
+
+
+def qr_uri(code, colours):
+    """The QR of the code as a picture the window can show (an SVG as a data address), in the colours of the playlist; None when the code
+    does not fit in a QR or the drawing library is missing."""
+    if not fits_qr(code):
+        return None
+    return _qr(code).svg_data_uri(scale=1, border=4, dark=_hex(colours["dark"]), light=_hex(colours["light"]), xmldecl=False, nl=False)
+
+
 def _fit(draw, text, font_for, width, sizes):
     """The biggest size of `sizes` at which `text` fits in `width`; if none does, the smallest with an ellipsis."""
     for size in sizes:
@@ -201,7 +240,8 @@ def _rounded(image, radius):
 
 
 def render_card(name, by, count, seconds, covers, code):
-    tone = _tone(covers)
+    colours = palette(covers)
+    tone = colours["tone"]
     top = tuple(int(c * .55 + 14 * .45) for c in tone)
     image = Image.composite(Image.new("RGB", (CARD_W, CARD_H), top), Image.new("RGB", (CARD_W, CARD_H), (9, 12, 10)),
                             Image.linear_gradient("L").rotate(180).resize((CARD_W, CARD_H))).convert("RGBA")
@@ -244,7 +284,7 @@ def render_card(name, by, count, seconds, covers, code):
         line, f2 = _fit(draw, f"Compartida por {by}", lambda s: _font(s), width, (30, 26, 22))
         draw.text((left, y + 52), line, font=f2, fill=(190, 200, 192))
     # the panel with the QR
-    draw.rounded_rectangle(PANEL, 40, fill=PAPER)
+    draw.rounded_rectangle(PANEL, 40, fill=colours["light"])
     if fits_qr(code):
         matrix = _qr(code).matrix
         size = len(matrix)
@@ -252,7 +292,7 @@ def render_card(name, by, count, seconds, covers, code):
         for r, row in enumerate(matrix):
             for c, dark in enumerate(row):
                 if dark:
-                    draw.rectangle((x0 + c * scale, y0 + r * scale, x0 + (c + 1) * scale - 1, y0 + (r + 1) * scale - 1), fill=INK)
+                    draw.rectangle((x0 + c * scale, y0 + r * scale, x0 + (c + 1) * scale - 1, y0 + (r + 1) * scale - 1), fill=colours["dark"])
     else:
         mid = (PANEL[0] + PANEL[2]) // 2
         reason = ("Esta playlist es muy grande", "para caber en un QR.") if _has_segno() else ("Este equipo no tiene", "el dibujante de QR instalado.")

@@ -134,3 +134,16 @@
 .im-missing li + li { border-top: 1px solid var(--glass-line); }
 .im-missing span { min-width: 0; display: flex; flex-direction: column; }
 .im-missing b, .im-missing small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- the QR of a shared playlist, in the colours of its covers ---------- */
+.sh-qr { --tone: var(--accent); --qr-light: #fff; margin: 4px 0 12px; padding: 16px; border-radius: 22px; text-align: center;
+  background: radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--tone) 70%, transparent), transparent 75%), color-mix(in srgb, var(--tone) 22%, #0b0f0c);
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent); }
+.sh-qr:empty { display: none; }
+.sh-qr-plate { display: block; width: min(260px, 100%); margin: 0 auto 10px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--qr-light); cursor: zoom-in;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .4); transition: width .25s cubic-bezier(.2, .8, .2, 1); }
+.sh-qr-plate img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.sh-qr.big .sh-qr-plate { width: min(470px, 100%); cursor: zoom-out; }
+.sh-qr p { margin: 0; color: color-mix(in srgb, var(--tone) 30%, #fff); }
+.sh-qr .sh-noqr { padding: 18px 8px; }
+@media (prefers-reduced-motion: reduce) { .sh-qr-plate { transition: none; } }

@@ -261,7 +261,22 @@ class Api:
             code = share.encode(name, self._pairs(items), by)
         except share.ShareError as error:
             return {"ok": False, "error": str(error)}
-        return {"ok": True, "code": code, "count": len(share.decode(code)["songs"]), "qr": share.fits_qr(code)}
+        colours = share.palette(self._covers_of(items))
+        uri = share.qr_uri(code, colours)
+        return {"ok": True, "code": code, "count": len(share.decode(code)["songs"]), "qr": uri is not None, "qr_uri": uri,
+                "tone": share._hex(colours["tone"]), "dark": share._hex(colours["dark"]), "light": share._hex(colours["light"])}
+
+    @staticmethod
+    def _covers_of(items, wanted=4):
+        """The pictures of the first songs that have one (the colours and the sleeve of a playlist come from them)."""
+        covers = []
+        for t in items:
+            if len(covers) == wanted:
+                break
+            data = tagwriter.read_cover(t["path"]) if t.get("cover") else None
+            if data:
+                covers.append(data)
+        return covers
 
     def share_card_save(self, ids, name, by=""):
         """Draws the card of the playlist and asks where to save it. Answers {ok, path} (or {ok: False, cancelled: True})."""
@@ -269,13 +284,7 @@ class Api:
         if not made["ok"]:
             return made
         items = self._by_ids(ids)
-        covers = []
-        for t in items:
-            if len(covers) == 4:
-                break
-            data = tagwriter.read_cover(t["path"]) if t.get("cover") else None
-            if data:
-                covers.append(data)
+        covers = self._covers_of(items)
         card = share.render_card(name.strip()[:80], (by or "").strip()[:40], made["count"], sum(t.get("duration") or 0 for t in items), covers, made["code"])
         return self._save_as(f"{sanitize_filename(name.strip()) or 'playlist'}.png", card, ("Imagen PNG (*.png)",))
 

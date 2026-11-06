@@ -250,3 +250,58 @@ def test_without_the_qr_library_the_code_and_the_card_still_work_and_the_card_sa
     assert share.fits_qr(code) is False
     data = share.render_card("Sin QR", "", 4, 600, [png("red")], code)
     assert share.code_from_png(data) == code and Image.open(io.BytesIO(data)).size == (share.CARD_W, share.CARD_H)
+
+
+# --- the QR in the colours of the playlist --------------------------------------------------------------------------------------
+
+def luminance(rgb):
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= .03928 else ((v + .055) / 1.055) ** 2.4
+    r, g, b = (channel(v) for v in rgb)
+    return .2126 * r + .7152 * g + .0722 * b
+
+
+def contrast(a, b):
+    la, lb = sorted((luminance(a), luminance(b)), reverse=True)
+    return (la + .05) / (lb + .05)
+
+
+@pytest.mark.parametrize("color", ["red", "blue", (0, 160, 90), "orange", "yellow", "white", "black", (128, 128, 128), (255, 255, 0), (10, 10, 40), (250, 250, 240), (255, 0, 255)])
+def test_whatever_the_cover_the_qr_colours_keep_a_contrast_a_phone_can_read(color):
+    palette = share.palette([png(color)])
+    assert contrast(palette["dark"], palette["light"]) >= 7
+    assert luminance(palette["dark"]) < .12 and luminance(palette["light"]) > .75
+
+
+def test_the_palette_follows_the_hue_of_the_covers_and_has_a_default_without_covers():
+    reddish, bluish = share.palette([png((200, 40, 40))]), share.palette([png((40, 60, 200))])
+    assert reddish["dark"][0] > reddish["dark"][2] and bluish["dark"][2] > bluish["dark"][0]
+    assert reddish["light"] != bluish["light"]
+    assert share.palette([])["tone"] == share.FALLBACK and share.palette([b"no es una imagen"])["tone"] == share.FALLBACK
+
+
+def test_the_qr_picture_for_the_window_is_an_svg_with_those_colours_and_none_when_it_does_not_fit():
+    palette = share.palette([png((200, 40, 40))])
+    code = share.encode("Roja", SONGS)
+    uri = share.qr_uri(code, palette)
+    assert uri.startswith("data:image/svg+xml") and "%23" in uri or "#" in uri
+    songs = [[f"Artista número {i} de la lista", f"Una canción con un título bastante largo {i}"] for i in range(400)]
+    assert share.qr_uri(share.encode("Enorme", songs), palette) is None
+
+
+def test_the_card_draws_the_qr_in_the_same_colours(monkeypatch):
+    import segno
+    code = share.encode("Azul", SONGS)
+    data = share.render_card("Azul", "", 4, 800, [png((40, 60, 200))], code)
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    palette = share.palette([png((40, 60, 200))])
+    x0, y0, scale = share.qr_geometry(len(segno.make(code, error="l", micro=False, boost_error=False).matrix))
+    assert img.getpixel((x0 + scale // 2, y0 + scale // 2)) == palette["dark"]          # the top-left finder pattern starts with a dark module
+    assert img.getpixel((share.PANEL[0] + 12, share.PANEL[1] + 40)) == palette["light"]  # the plate
+
+
+def test_the_api_returns_the_qr_picture_and_the_tone(api):
+    made = api.share_make([api.ids["Normal"], api.ids["Memorias"]], "Mis temas", "Yo")
+    assert made["qr"] is True and made["qr_uri"].startswith("data:image/svg+xml")
+    assert len(made["tone"]) == 7 and made["tone"].startswith("#") and len(made["light"]) == 7

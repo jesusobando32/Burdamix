@@ -38,12 +38,13 @@ function openShare(group) {
   const close = openShareBox(box, `<div class="dialog-card sh-card"><h3>Compartir «${esc(group.title)}»</h3>
     <p class="muted small">${plural(group.count, "canción", "canciones")}. Tu amigo necesita Burdamix: recibe los nombres, no los archivos.</p>
     <label class="sh-field">Tu nombre en la tarjeta (opcional)<input id="sh-by" class="dialog-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Por ejemplo, Yisus"></label>
-    <label class="sh-field">Código<textarea id="sh-code" readonly rows="4" spellcheck="false" aria-label="Código de la playlist"></textarea></label>
+    <div class="sh-qr" id="sh-qr" aria-live="polite"></div>
     <p class="sh-error" id="sh-error" role="alert" hidden></p>
     <div class="sh-actions"><button class="btn primary" id="sh-copy" type="button">Copiar código</button><button class="btn" id="sh-card" type="button">Guardar tarjeta con QR</button><button class="btn" id="sh-m3u" type="button">Para otros reproductores (.m3u8)</button></div>
     <p class="muted small sh-tip">La tarjeta es una imagen: mándala como <b>archivo</b> o documento. Si el chat la convierte en foto pierde el código; en ese caso manda el código de texto.</p>
     <div class="btn-row"><button class="btn" id="sh-close" type="button">Cerrar</button></div></div>`);
-  const by = $("#sh-by"), code = $("#sh-code"), err = $("#sh-error");
+  const by = $("#sh-by"), qr = $("#sh-qr"), err = $("#sh-error");
+  let code = "";                                    // the code is long and meant for machines: it is never shown, only copied
   by.value = shareName();
   let ask = 0, timer = 0;
   const refresh = async () => {
@@ -51,13 +52,13 @@ function openShare(group) {
     const made = await call("share_make", group.ids, group.title, by.value);
     if (mine !== ask) return;
     err.hidden = !!made.ok; err.textContent = made.ok ? "" : (made.error || "No pude preparar el código.");
-    code.value = made.ok ? made.code : "";
+    code = made.ok ? made.code : "";
+    paintShareQr(qr, made);
     $("#sh-copy").disabled = !made.ok;
     $("#sh-card").title = made.ok && !made.qr ? "La lista es muy grande para un QR: la tarjeta lleva el código dentro y lo explica" : "";
   };
   by.oninput = () => { rememberShareName(by.value); clearTimeout(timer); timer = setTimeout(refresh, 250); };
-  code.onfocus = () => code.select();
-  $("#sh-copy").onclick = async () => toast(await copyToClipboard(code.value) ? "Código copiado. Pégalo en un chat." : "No pude copiarlo: selecciónalo y copia a mano.", false);
+  $("#sh-copy").onclick = async () => toast(await copyToClipboard(code) ? "Código copiado. Pégalo en un chat." : "No pude copiarlo: selecciónalo y copia a mano.", false);
   $("#sh-card").onclick = async () => {
     const answer = await call("share_card_save", group.ids, group.title, by.value);
     if (answer && answer.ok) toast("Tarjeta guardada. Mándala como archivo.", false, { label: "Ver carpeta", run: () => call("open_folder", answer.path.replace(/[\/][^\/]*$/, "")) });
@@ -71,6 +72,20 @@ function openShare(group) {
   $("#sh-close").onclick = close;
   refresh();
   $("#sh-copy").focus();
+}
+
+/* The QR of the playlist, drawn in its own colours (the backend picks a dark and a pale shade of the covers that a camera can still read).
+   Click it to make it bigger. */
+function paintShareQr(box, made) {
+  if (!made.ok) { box.innerHTML = ""; return; }
+  box.style.setProperty("--tone", made.tone); box.style.setProperty("--qr-light", made.light);
+  if (!made.qr_uri) {
+    box.innerHTML = '<p class="sh-noqr">Esta playlist es demasiado grande para un QR. Usa «Copiar código» o la tarjeta.</p>';
+    return;
+  }
+  box.innerHTML = `<button type="button" class="sh-qr-plate" title="Clic para ampliar o reducir" aria-label="Código QR de la playlist. Clic para ampliar"><img alt="" src="${made.qr_uri}"></button>
+    <p class="muted small">Escanéalo con el móvil: sale el código para pegarlo en Burdamix.</p>`;
+  $(".sh-qr-plate", box).onclick = () => box.classList.toggle("big");
 }
 
 /* ---------- import ---------- */
