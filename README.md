@@ -101,6 +101,16 @@ La biblioteca tiene cuatro secciones, que son solo formas de mirar los mismos ar
 - **Ecualizador de 10 bandas** con presets (Bajos, Agudos, Pop, Rock, Hip-hop y reggaetón, Electrónica, Jazz, Clásica, Acústica, Voz, Volumen bajo) y **Mis ecualizadores**: tres huecos «Personalizado» (hasta ocho si guardas más) a los que puedes cambiar el nombre. Un ecualizador propio recuerda cada ajuste que le haces. Los presets son puntos de partida moderados, no una verdad absoluta: ajústalos a tu oído.
 - **Crossfade** de 0 a 12 s, apagado por defecto: mezcla el final de una canción con el principio de la siguiente.
 - Al abrir de nuevo, recuerda la última canción, el volumen, la cola y tus ajustes del ecualizador.
+- **Letra** (botón de la barra): letra sincronizada de [LRCLIB](https://lrclib.net) con la línea actual resaltada; clic en una línea para saltar ahí. Solo se envían artista, título, álbum y duración; se guarda en tu PC y puedes pegar la tuya.
+- **Temporizador para dormir** (luna): 15, 30, 45 o 60 minutos, personalizado o al terminar la canción; baja el volumen poco a poco y pausa. No apaga el ordenador.
+- **Windows:** el panel de medios y las teclas ⏯ ⏭ ⏮ controlan la música aunque la ventana esté en segundo plano (el nombre «Burdamix» solo se ve bien con la app instalada).
+- **Atrás:** `Esc`, `Retroceso`, `Alt+←` o el botón atrás del ratón salen de un álbum o playlist; pulsar «Biblioteca» o la pestaña activa también. `/` busca.
+
+### Estadísticas, playlists inteligentes y compartir
+
+- **Estadísticas** (menú lateral): tiempo, racha, gráfico y lo más escuchado por semana, mes, año o siempre. Una escucha cuenta a los 30 s o la mitad de la canción. Todo queda en tu ordenador (`plays.jsonl`).
+- **Playlists inteligentes** (pestaña Playlists): reglas (artista, álbum, «me gusta», duración, cuándo se añadió, escuchas…) que se recalculan solas. Vienen tres hechas: Recién añadidas, Más escuchadas y Olvidadas.
+- **Compartir una playlist** («Compartir» en cada álbum o playlist): un **código** de texto para pegar en un chat, una **tarjeta** con QR (guárdala y mándala como archivo: lleva el código dentro) o un `.m3u8` para otros reproductores. Quien lo recibe usa **Importar** en Playlists: ve cuántas canciones tiene y cuáles le faltan. Viajan nombres, no archivos.
 
 ## Completar etiquetas y portadas
 
