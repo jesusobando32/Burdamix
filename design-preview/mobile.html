@@ -46,6 +46,7 @@ h1,h2,h3,p { margin: 0; }
 .view.on { opacity: 1; pointer-events: auto; transform: none; }
 .pad { padding: 0 18px; }
 .rise { animation: rise .6s var(--ease) both; animation-delay: calc(var(--k,0) * 60ms); }
+.still .rise { animation: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 .sec { display: flex; align-items: baseline; justify-content: space-between; padding: 22px 18px 10px; }
 .sec h2 { font-size: 19px; letter-spacing: -.02em; }
@@ -382,8 +383,8 @@ function go(tab) {
   S.tab = tab;
   $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
   $$("#tabbar [data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-  $("#phone").classList.toggle("dlmode", tab === "dl" && $("#dlbar").classList.contains("on"));
-  render(tab); $("#v-" + tab).scrollTop = 0;
+  render(tab);
+  if (tab !== "dl") { $("#dlbar").classList.remove("on"); $("#phone").classList.remove("dlmode"); } $("#v-" + tab).scrollTop = 0;
 }
 $("#tabbar").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) go(b.dataset.tab); });
 
@@ -424,6 +425,8 @@ function renderDl() {
   let list = "";
   if (r === "loading") list = `<div class="sk"><i></i><i></i><i></i></div>`;
   else if (r) list = `<div class="sec"><h2>Resultados</h2><button data-act="selall">${S.sel.size === RESULTS.length ? "Ninguna" : "Marcar todas"}</button></div><div class="rows">${RESULTS.map((t, i) => { const d = S.dl[i]; return `<div class="row rise ${S.sel.has(i) ? "sel" : ""}" style="--k:${i};grid-template-columns:52px 1fr auto auto" data-sel="${i}" role="checkbox" aria-checked="${S.sel.has(i)}"><div class="cov" style="--c:linear-gradient(135deg,${t[2][0]},${t[2][1]})"><b>${t[0][0]}</b></div><div class="tx"><div class="t">${t[0]}</div><div class="a">${t[1]} · ${t[3]}</div></div><span class="st ${d === "ok" ? "ok" : ""}">${d === "run" ? '<span class="bar3"><i></i><i></i><i></i></span>Bajando' : d === "ok" ? I.check.replace("<svg", '<svg style="width:16px;height:16px;stroke-width:3"') + "Listo" : ""}</span><span class="chk">${I.check}</span></div>`; }).join("")}</div>`;
+  $("#v-dl").classList.toggle("still", !!S.seen);
+  if (r && r !== "loading") S.seen = true;
   $("#v-dl").innerHTML = (r ? `<h1 class="big rise">Descargar</h1>` : hero) + `<form class="composer rise" style="--k:1" id="dl-form" autocomplete="off"><input id="dl-q" placeholder="Canción y artista, o enlace de Spotify" value="${r ? "blinding lights weeknd" : ""}" aria-label="Buscar"><button type="button" class="round" style="width:40px;height:40px" data-toast="Pegado del portapapeles" aria-label="Pegar">${I.paste}</button><button class="send" aria-label="Buscar">${I.arrow}</button></form>
   ${r ? "" : `<div class="chips rise" style="--k:2;justify-content:center;flex-wrap:wrap"><span class="chip">Canción + artista</span><span class="chip">Álbum</span><span class="chip">Playlist tuya</span></div>`}${list}`;
   const bar = $("#dlbar"), n = [...S.sel].filter(i => S.dl[i] !== "ok").length;
@@ -538,7 +541,7 @@ document.addEventListener("click", e => {
   const s = e.target.closest("[data-sel]"); if (s) { const i = +s.dataset.sel; S.sel.has(i) ? S.sel.delete(i) : S.sel.add(i); s.classList.toggle("sel", S.sel.has(i)); renderDlBar(); }
 });
 function renderDlBar() { const n = [...S.sel].filter(i => S.dl[i] !== "ok").length; $("#dl-t").textContent = n ? `${n} ${n === 1 ? "canción" : "canciones"} para bajar` : "Todo descargado"; $("#dl-go").textContent = n ? `Descargar ${n}` : "Listo"; $("#dl-go").disabled = !n; $("#dlbar").classList.toggle("on", S.sel.size > 0); $("#phone").classList.toggle("dlmode", S.tab === "dl" && S.sel.size > 0); }
-document.addEventListener("submit", e => { if (e.target.id !== "dl-form") return; e.preventDefault(); S.results = "loading"; S.dl = {}; S.sel = new Set([0, 1]); renderDl(); setTimeout(() => { S.results = RESULTS; renderDl(); }, 900); });
+document.addEventListener("submit", e => { if (e.target.id !== "dl-form") return; e.preventDefault(); S.results = "loading"; S.seen = false; S.dl = {}; S.sel = new Set([0, 1]); renderDl(); setTimeout(() => { S.results = RESULTS; renderDl(); }, 900); });
 $("#dl-go").onclick = () => {
   const ids = [...S.sel].filter(i => S.dl[i] !== "ok"); let done = 0;
   ids.forEach((i, k) => { setTimeout(() => { S.dl[i] = "run"; renderDl(); }, k * 250); setTimeout(() => { S.dl[i] = "ok"; $("#dl-p").style.width = (++done / ids.length * 100) + "%"; renderDl(); if (done === ids.length) { toast(`${done} ${done === 1 ? "canción descargada" : "canciones descargadas"} ✓`); setTimeout(() => $("#dl-p").style.width = "0", 800); } }, 1400 + k * 900); });
