@@ -15,7 +15,7 @@ const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAI
 async function call(name, ...args) {
   if (needsNet(name) && navigator.onLine === false) return { error: OFFLINE_TEXT };      // net.js: only these need internet
   try { return await api[name](...args); }
-  catch (e) { return { error: "Algo salió mal dentro del programa." }; }
+  catch (e) { return { error: "Algo salió mal dentro del programa." + (e && e.name ? ` (${e.name}: ${String(e.message || "").slice(0, 160)})` : "") }; }
 }
 
 function toast(text, bad = false, action = null) {

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import webbrowser
@@ -799,7 +800,8 @@ class Api:
         except (SpotifyRetrievalError, InvalidSpotifyURL):
             return {"error": "No pude leer eso de Spotify. Las playlists solo se pueden leer si son TUYAS."}
         except Exception as error:
-            return {"error": f"Algo salió mal al leer el enlace ({type(error).__name__})."}
+            traceback.print_exc()   # on Android this reaches logcat (python.stderr)
+            return {"error": f"Algo salió mal al leer el enlace ({type(error).__name__}: {str(error)[:160]})."}
 
         tracks, interludes = helper.split_interludes(tracks)
         plan, repeated, _renamed = plan_filenames(tracks, self._settings["name_style"])
