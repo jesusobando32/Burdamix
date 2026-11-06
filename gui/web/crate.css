@@ -94,3 +94,23 @@
 @media (max-width: 560px) {
   .lib-tabs button { padding: 0 10px; font-size: 13.5px; }
 }
+
+/* ---------- smart playlists ---------- */
+.sleeve .bolt { position: absolute; right: 7px; bottom: 7px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--accent); color: #0b0f0c; box-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
+.sleeve .bolt svg { width: 15px; height: 15px; fill: currentColor; stroke: none; }
+.new-art svg path[d^="M13 3"] { fill: currentColor; stroke: none; }
+.smart-rules { max-width: 62ch; margin: 2px 0 12px; line-height: 1.5; }
+.sm-card { width: min(640px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.sm-card .dialog-input { margin-bottom: 12px; }
+.sm-match { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.sm-rules { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.sm-rule { display: grid; grid-template-columns: minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(90px, 1.2fr) 36px; gap: 8px; align-items: center; }
+.sm-rule select, .sm-rule input, .sm-order select, .sm-order input, .sm-match select { height: 38px; min-width: 0; border-radius: 10px; border: 1px solid var(--glass-line); background-color: var(--bg); color: var(--text); padding: 0 10px; }
+.sm-rule select, .sm-order select, .sm-match select { padding-right: 30px; }
+.sm-rule input:focus, .sm-rule select:focus, .sm-order input:focus, .sm-order select:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.sm-order { display: flex; gap: 14px; flex-wrap: wrap; margin: 14px 0; }
+.sm-order label { display: flex; align-items: center; gap: 8px; }
+.sm-order input { width: 130px; }
+.sm-error { margin: 0 0 12px; color: var(--danger); font-size: 13px; }
+@media (max-width: 560px) { .sm-rule { grid-template-columns: 1fr 1fr 36px; } .sm-rule .sm-value { grid-column: 1 / 3; } .sm-rule .sm-del { grid-row: 1; grid-column: 3; } }

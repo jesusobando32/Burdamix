@@ -1256,13 +1256,20 @@ function demoPlayerApi(art) {
   const cover = seed => art(`hsl(${seed * 47 % 360} 55% 36%)`, `hsl(${(seed * 47 + 55) % 360} 65% 60%)`);
   let tracks = null, saved = {}, likes = null;
   const mine = [];                                                       // the user's playlists, in memory
+  const mySmart = [];                                                    // …and the smart ones
   let madeLists = 0;
   const collections = async () => {                                      // what the program side answers: liked ids (copies of a liked song count) and playlists
     if (!tracks) tracks = makeTracks();
     if (!likes) likes = new Set(tracks.filter(t => t.kind === "liked").map(t => t.id));
     const identity = t => `${t.artist}|${t.title}`;
     const known = new Set([...likes].map(id => tracks.find(t => t.id === id)).filter(Boolean).map(identity));
-    return { liked: tracks.filter(t => likes.has(t.id) || known.has(identity(t))).map(t => t.id), playlists: mine.map(p => ({ ...p, ids: [...p.ids] })) };
+    const text = (t, r) => { const h = String(t[r.field] || "").toLowerCase(), w = String(r.value).toLowerCase(); return r.op === "is" ? h === w : r.op === "not_contains" ? !h.includes(w) : h.includes(w); };
+    const pick = d => { const rs = d.rules.filter(r => ["artist", "album", "title"].includes(r.field)); return tracks.filter(t => !rs.length || (d.match === "all" ? rs.every(r => text(t, r)) : rs.some(r => text(t, r)))).slice(0, d.limit || 999).map(t => t.id); };
+    const builtin = [{ id: "recent", name: "Recién añadidas", match: "all", rules: [{ field: "added_days", op: "lt", value: 30 }], sort: "recent", limit: 50, builtin: true, ids: tracks.slice(0, 9).map(t => t.id) },
+      { id: "top", name: "Más escuchadas", match: "all", rules: [{ field: "plays", op: "gt", value: 0 }], sort: "plays", limit: 50, builtin: true, ids: tracks.slice(10, 22).map(t => t.id) },
+      { id: "forgotten", name: "Olvidadas", match: "all", rules: [{ field: "added_days", op: "gt", value: 30 }, { field: "last_played_days", op: "gt", value: 90 }], sort: "oldest", limit: 50, builtin: true, ids: tracks.slice(30, 33).map(t => t.id) }];
+    return { liked: tracks.filter(t => likes.has(t.id) || known.has(identity(t))).map(t => t.id), playlists: mine.map(p => ({ ...p, ids: [...p.ids] })),
+      smart: [...builtin, ...mySmart.map(d => ({ ...d, builtin: false, ids: pick(d) }))] };
   };
   const tones = [], toneFor = i => tones[i] || (tones[i] = tone(scales[i], 24));      // six sounds shared by all the demo songs
   const makeTracks = () => {
@@ -1300,6 +1307,12 @@ function demoPlayerApi(art) {
       const albums = [...new Set(some.map(s => s.album))].slice(0, 6).map((a, i) => ({ album: a, artist: (some.find(s => s.album === a) || {}).artist, plays: 60 - i * 7, seconds: (60 - i * 7) * 190 }));
       return { period, plays: 214, seconds: 214 * 190, songs: some, artists, albums, series, streak: 5 };
     },
+    smart_save: async (def, id) => {
+      if (!def.name) return { ok: false, error: "Ponle un nombre de hasta 80 letras." };
+      if (id) { const at = mySmart.findIndex(s => s.id === id); mySmart[at] = { ...def, id }; return { ok: true, id }; }
+      const made = "s" + (mySmart.length + 1); mySmart.push({ ...def, id: made }); return { ok: true, id: made };
+    },
+    smart_delete: async id => { const at = mySmart.findIndex(s => s.id === id); if (at < 0) return { ok: false, error: "Esa playlist inteligente no existe." }; mySmart.splice(at, 1); return { ok: true }; },
     lyrics_get: async id => {
       const n = [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 3;
       if (n === 1) return { ok: false, none: true, error: "No encontré la letra de esta canción." };

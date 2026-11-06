@@ -4,7 +4,7 @@
    Uses player.js (P, trackOf, playList, renderSongList, ...) and the helpers of app.js ($, $$, esc, fmt, plural, call, toast, placeInd). */
 
 const L = { tab: "albums", open: null, groups: { albums: [], playlists: [] }, byKey: new Map(), focus: "", moved: false,
-  liked: new Set(), mine: [] };            // the ids of the songs you like; your own playlists ({ id, name, ids })
+  liked: new Set(), mine: [], smart: [] };   // smart: the rule-based playlists ({ id, name, builtin, rules, ids, ... })            // the ids of the songs you like; your own playlists ({ id, name, ids })
 const TABS = [["albums", "Álbumes"], ["playlists", "Playlists"], ["likes", "Me gusta"], ["songs", "Canciones"]];
 const CRATE_TABS = ["albums", "playlists"];
 
@@ -27,7 +27,7 @@ function makeGroup(kind, name, tracks, order = "tracks", extra = {}) {
   if (order === "tracks") tracks.sort((a, b) => (a.disc || 1) - (b.disc || 1) || (a.number || 999) - (b.number || 999) || a.title.localeCompare(b.title));
   else if (order === "added") tracks.sort((a, b) => a.added - b.added);
   return {
-    ...extra, key: (extra.mine ? "mine" : kind) + ":" + (extra.pid || name), kind, name, tracks, ids: tracks.map(t => t.id), count: tracks.length,
+    ...extra, key: (extra.smart ? "smart" : extra.mine ? "mine" : kind) + ":" + (extra.pid || extra.sid || name), kind, name, tracks, ids: tracks.map(t => t.id), count: tracks.length,
     seconds: tracks.reduce((s, t) => s + (t.duration || 0), 0),
     title: kind === "album" ? mostCommon(tracks.map(t => t.album), .5) || name : name,                  // the album's own name when the songs agree on it
     artist: kind === "album" ? mostCommon(tracks.map(t => t.artist), .6) || "Varios artistas" : "",
@@ -42,9 +42,10 @@ function buildGroups() {
     if (bucket && t.group) (bucket.get(t.group) || bucket.set(t.group, []).get(t.group)).push(t);
   }
   const mine = L.mine.map(p => makeGroup("playlist", p.name, p.ids.map(id => P.byId.get(id)).filter(Boolean), "keep", { mine: true, pid: p.id }));
+  const smart = L.smart.map(s => makeGroup("playlist", s.name, s.ids.map(id => P.byId.get(id)).filter(Boolean), "keep", { smart: true, sid: s.id, builtin: s.builtin, def: s }));
   L.groups = {
     albums: [...albums].map(([name, tracks]) => makeGroup("album", name, tracks)).sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title)),
-    playlists: [...mine, ...[...lists].map(([name, tracks]) => makeGroup("playlist", name, tracks, "added")).sort((a, b) => a.title.localeCompare(b.title))],   // yours first
+    playlists: [...mine, ...smart, ...[...lists].map(([name, tracks]) => makeGroup("playlist", name, tracks, "added")).sort((a, b) => a.title.localeCompare(b.title))],   // yours first
   };
   L.byKey = new Map([...L.groups.albums, ...L.groups.playlists].map(g => [g.key, g]));
   if (L.open && !L.byKey.has(L.open)) L.open = null;
@@ -164,9 +165,11 @@ function renderCrate() {
   }
   const playing = current() && current().id;
   const newTile = addTile ? `<button type="button" class="crate-item new" role="option" data-key="new" title="Crear una playlist">
-      <span class="sleeve"><span class="new-art"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></span><b>Nueva playlist</b><span class="muted small">Con las canciones que quieras</span></button>` : "";
+      <span class="sleeve"><span class="new-art"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></span><b>Nueva playlist</b><span class="muted small">Con las canciones que quieras</span></button>
+    <button type="button" class="crate-item new" role="option" data-key="newsmart" title="Crear una playlist inteligente">
+      <span class="sleeve"><span class="new-art">${ICON_BOLT}</span></span><b>Playlist inteligente</b><span class="muted small">Con reglas: se llena sola</span></button>` : "";
   crate.innerHTML = newTile + list.map(g => `<button type="button" class="crate-item${g.ids.includes(playing) ? " playing" : ""}" role="option" data-key="${esc(g.key)}" title="${esc(g.title)}">
-      <span class="sleeve"${labelStyle(g)}>${DISC}${groupArt(g)}</span><b>${esc(g.title)}</b><span class="muted small">${esc(groupSub(g))}</span></button>`).join("");
+      <span class="sleeve"${labelStyle(g)}>${DISC}${groupArt(g)}${g.smart ? `<i class="bolt" aria-hidden="true">${ICON_BOLT}</i>` : ""}</span><b>${esc(g.title)}</b><span class="muted small">${esc(groupSub(g))}</span></button>`).join("");
   const target = L.focus && $$(".crate-item", crate).find(el => el.dataset.key === L.focus);
   crate.scrollLeft = target ? target.offsetLeft + target.offsetWidth / 2 - crate.clientWidth / 2 : 0;
   layoutCrate();
@@ -259,7 +262,7 @@ function wireLibraryBack() {
   document.addEventListener("keydown", ev => {
     if (!libraryVisible() || ev.ctrlKey || ev.metaKey) return;
     const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
-    const covered = LY.open || $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
+    const covered = LY.open || !$("#smart-dialog").classList.contains("hidden") || $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
     if (covered) { if (ev.key === "Escape" && !$("#ctx") && $("#dialog").classList.contains("hidden")) closePanels(); return; }
     if (ev.key === "/" && !typing) { ev.preventDefault(); $("#lib-q").focus(); return; }
     const back = ev.key === "Escape" || (ev.altKey && ev.key === "ArrowLeft") || (ev.key === "Backspace" && !typing);
@@ -275,6 +278,7 @@ function wireLibraryBack() {
 /* ---------- the page of an album or a playlist ---------- */
 function openGroup(key) {
   if (key === "new") return newPlaylist();
+  if (key === "newsmart") return openSmartEditor();
   if (!L.byKey.has(key)) return;
   L.open = key; P.q = ""; $("#lib-q").value = "";
   renderLibrary();
@@ -294,17 +298,19 @@ function renderDetail() {
     <div class="detail-top">
       <div class="detail-art"><span class="sleeve big"${labelStyle(g)}>${DISC}${groupArt(g)}</span></div>
       <div class="detail-info">
-        <span class="kind">${album ? "Álbum" : "Playlist"}</span>
+        <span class="kind">${album ? "Álbum" : g.smart ? "Playlist inteligente" : "Playlist"}</span>
         <h2>${esc(g.title)}</h2>
         <p class="muted">${esc([album ? g.artist : "", plural(g.count, "canción", "canciones"), g.seconds ? durationText(g.seconds) : ""].filter(Boolean).join(" · "))}</p>
+        ${g.smart ? `<p class="muted small smart-rules">${esc(describeSmart(g.def))}${g.builtin ? " Viene con Burdamix." : ""}</p>` : ""}
         <div class="btn-row"><button class="btn primary" id="detail-play" type="button"${g.count ? "" : " disabled"}>Reproducir</button><button class="btn" id="detail-shuffle" type="button"${g.count ? "" : " disabled"}>Aleatorio</button>
-          ${g.mine ? '<button class="btn" id="detail-rename" type="button">Cambiar el nombre</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : ""}</div>
+          ${g.mine ? '<button class="btn" id="detail-rename" type="button">Cambiar el nombre</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : g.smart && !g.builtin ? '<button class="btn" id="detail-edit" type="button">Editar reglas</button><button class="btn danger" id="detail-delete" type="button">Eliminar playlist</button>' : ""}</div>
       </div>
     </div>`;
   $("#detail-back").onclick = closeGroup;
   $("#detail-play").onclick = () => playList(g.ids);
   $("#detail-shuffle").onclick = () => { P.shuffle = true; playList(g.ids, g.ids[Math.floor(Math.random() * g.ids.length)]); render(); };
   if (g.mine) { $("#detail-rename").onclick = () => renamePlaylist(g); $("#detail-delete").onclick = () => deletePlaylist(g); }
+  if (g.smart && !g.builtin) { $("#detail-edit").onclick = () => openSmartEditor(g.def); $("#detail-delete").onclick = () => deleteSmart(g); }
 }
 
 /* ---------- likes and your playlists ---------- */
@@ -315,6 +321,7 @@ async function loadCollections() {
   if (!state || state.error) return;
   L.liked = new Set(Array.isArray(state.liked) ? state.liked : []);
   L.mine = Array.isArray(state.playlists) ? state.playlists : [];
+  L.smart = Array.isArray(state.smart) ? state.smart : [];
 }
 
 async function refreshCollections() {

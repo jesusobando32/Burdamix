@@ -21,6 +21,7 @@ import downloader
 import library
 import lyrics
 import login
+import smart_playlists
 import stats_store
 import trash
 import tempdirs
@@ -102,6 +103,7 @@ class Api:
         self._trash = trash.move_to_recycle_bin          # what deletes a song; the tests give it a stand-in
         self._media = library.MediaServer(self._library)   # started with the first library request
         self._collections = collections_store.Collections(os.path.join(const.data_dir(), "collections.json"))   # likes and your playlists
+        self._smart = smart_playlists.SmartStore(os.path.join(const.data_dir(), "smart.json"))   # your smart playlists (rules, not songs)
         self._stats = stats_store.Stats(os.path.join(const.data_dir(), "plays.jsonl"))   # what you listened to, one line per listen
         self._lyrics = lyrics.Lyrics(os.path.join(const.data_dir(), "lyrics.json"))   # asked of LRCLIB once, then kept here
         self._tags = TagJobs(on_renamed=self._collections.renamed)      # "Completar etiquetas": its own jobs and events, apart from the downloads
@@ -263,7 +265,26 @@ class Api:
         items = self._library.listing()
         by_key = {collections_store.key(t["path"]): t["id"] for t in items}
         playlists = [{"id": p["id"], "name": p["name"], "ids": [by_key[k] for k in p["paths"] if k in by_key]} for p in self._collections.snapshot()[2]]
-        return {"liked": sorted(self._liked_ids(items)), "playlists": playlists}
+        liked = self._liked_ids(items)
+        counts, now = self._stats.counts(), time.time()
+        smart = [{**d, "builtin": b, "ids": smart_playlists.evaluate(d, items, liked, counts, now)}
+                 for b, group in ((True, smart_playlists.BUILTIN), (False, self._smart.all())) for d in group]
+        return {"liked": sorted(liked), "playlists": playlists, "smart": smart}
+
+    def smart_save(self, definition, smart_id=None):
+        """Creates (or, with its id, changes) a smart playlist of the user's. Answers {ok, id} or {ok: False, error}."""
+        if smart_id is not None and not isinstance(smart_id, str):
+            return {"ok": False, "error": "Esa playlist inteligente no existe."}
+        try:
+            return {"ok": True, "id": self._smart.save(definition, smart_id)}
+        except smart_playlists.SmartError as error:
+            return {"ok": False, "error": str(error)}
+
+    def smart_delete(self, smart_id):
+        try:
+            return {"ok": True} if isinstance(smart_id, str) and self._smart.delete(smart_id) else {"ok": False, "error": "Esa playlist inteligente no existe."}
+        except smart_playlists.SmartError as error:
+            return {"ok": False, "error": str(error)}
 
     def like_toggle(self, track_id):
         """Likes the song, or takes the like off all its copies. Answers the new state."""
