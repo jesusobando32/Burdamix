@@ -46,6 +46,21 @@ def test_with_the_host_the_api_and_the_ready_event_appear():
     assert out == {"names": ["hello", "boom"], "events": ["pywebviewready"]}
 
 
+def test_the_page_is_marked_as_android_so_the_css_can_hide_desktop_only_buttons():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    script = HARNESS % """
+      console.log(JSON.stringify(classes));"""
+    script = script.replace("const events = [], sent = [];",
+                            "const events = [], sent = [], classes = [];") \
+                   .replace("const window = { dispatchEvent: e => events.push(e.type) };",
+                            "const window = { dispatchEvent: e => events.push(e.type), document: { documentElement: { classList: { add: c => classes.push(c) } } } };")
+    done = subprocess.run([node, "-e", script, os.path.join(WEB, "android.js"), "host"], capture_output=True, text=True, timeout=30, encoding="utf-8")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert json.loads(done.stdout.strip().splitlines()[-1]) == ["android"]
+
+
 def test_a_call_resolves_with_the_value():
     out = run("""
       const p = window.pywebview.api.hello("Ana", 2);

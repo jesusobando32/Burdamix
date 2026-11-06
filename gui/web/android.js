@@ -28,6 +28,8 @@
       catch (error) { waiting.delete(id); reject(error); }
     });
   }
+  // mobile.css hides what has no meaning on a phone (opening or choosing folders, picking files from disk).
+  if (window.document && window.document.documentElement) window.document.documentElement.classList.add("android");
   window.pywebview = { platform: "android", api };
   window.dispatchEvent(new Event("pywebviewready"));
 })();

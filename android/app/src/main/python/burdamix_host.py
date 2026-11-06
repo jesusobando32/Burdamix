@@ -52,6 +52,7 @@ def start(files_dir, music_dir, ffmpeg, lib_dirs):
 
     _api = Api()
     _api._trash = move_to_trash
+    _api.open_folder = lambda path=None: False   # the app's folder is private to it; the page hides these buttons anyway
 
 
 def methods():

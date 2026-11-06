@@ -198,3 +198,6 @@
   .fab.on::before { animation: none; }
   #app.mfull .vinyl { animation: none; }
 }
+
+/* Inside the Android app: folders are not something the user browses, and there is no disk to pick files from. */
+.android #set-folder-open, .android #set-folder-change, .android #lib-folder, .android #tags-pick-files, .android #tags-pick-folder { display: none; }
