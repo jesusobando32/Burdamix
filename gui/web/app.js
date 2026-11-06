@@ -695,7 +695,11 @@ function init() {
   $("#app").dataset.view = S.view;
   Player.init();
   // a second click on the section you are already in takes you back to its clean start
-  $$(".nav").forEach(n => n.onclick = () => (n.dataset.view === "home" && S.view === "home" && (S.cur || $("#link").value)) ? clearSearch() : show(n.dataset.view));
+  $$(".nav").forEach(n => n.onclick = () => {
+    if (n.dataset.view === "home" && S.view === "home" && (S.cur || $("#link").value)) clearSearch();
+    else if (n.dataset.view === "library" && S.view === "library") libraryHome();    // Biblioteca again: back to the shelf
+    else show(n.dataset.view);
+  });
   $("#clear").onclick = clearSearch;
   $("#link").addEventListener("input", syncClear);
   $("#link").addEventListener("keydown", ev => { if (ev.key === "Escape" && ($("#link").value || S.cur)) { ev.preventDefault(); clearSearch(); } });

@@ -16,3 +16,5 @@ tekore_cfg.ini
 *.part
 build_out/
 .impeccable/
+
+.playwright-cli/

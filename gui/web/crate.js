@@ -233,7 +233,43 @@ function wireCrate() {
     if (!item || L.moved) { L.moved = false; return; }
     openGroup(item.dataset.key);
   });
-  $("#lib-tabs").addEventListener("click", ev => { const b = ev.target.closest("[data-tab]"); if (b && b.dataset.tab !== L.tab) showTab(b.dataset.tab); });
+  // the tab you are already on takes you back to its shelf, out of any album you have open
+  $("#lib-tabs").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-tab]");
+    if (!b) return;
+    if (b.dataset.tab !== L.tab) showTab(b.dataset.tab); else if (L.open) closeGroup();
+  });
+  wireLibraryBack();
+}
+
+/* ---------- ways back: Esc, Backspace, Alt+←, the mouse's back button, the sidebar entry ---------- */
+const libraryVisible = () => S.view === "library";
+function libraryBack() {
+  if (!libraryVisible()) return false;
+  if (L.open) { closeGroup(); return true; }
+  if (P.q) { P.q = ""; $("#lib-q").value = ""; renderLibrary(); return true; }
+  return false;
+}
+// clicking "Biblioteca" while already in it: leave any album and clear the search; a tab with nothing to leave scrolls to the top
+function libraryHome() {
+  if (!libraryBack()) $("#lib-scroll").scrollTo({ top: 0, behavior: "smooth" });
+}
+function wireLibraryBack() {
+  // capture phase: look at what is open before the player closes its own panels on the same key
+  document.addEventListener("keydown", ev => {
+    if (!libraryVisible() || ev.ctrlKey || ev.metaKey) return;
+    const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
+    const covered = $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
+    if (covered) { if (ev.key === "Escape" && !$("#ctx") && $("#dialog").classList.contains("hidden")) closePanels(); return; }
+    if (ev.key === "/" && !typing) { ev.preventDefault(); $("#lib-q").focus(); return; }
+    const back = ev.key === "Escape" || (ev.altKey && ev.key === "ArrowLeft") || (ev.key === "Backspace" && !typing);
+    if (!back) return;
+    if (typing && ev.key === "Escape" && t.id === "lib-q" && t.value) { P.q = ""; t.value = ""; renderLibrary(); ev.preventDefault(); return; }
+    if (typing && t.id === "lib-q") { if (ev.key === "Escape") t.blur(); return; }
+    if (typing) return;
+    if (libraryBack()) ev.preventDefault();
+  }, true);
+  addEventListener("mouseup", ev => { if (ev.button === 3 && libraryBack()) ev.preventDefault(); });
 }
 
 /* ---------- the page of an album or a playlist ---------- */
