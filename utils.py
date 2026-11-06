@@ -1,20 +1,36 @@
 import contextlib
 import functools
-import logging
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 
 import eyed3
 import requests
 from eyed3.id3.frames import ImageFrame
-from moviepy.editor import AudioFileClip
 
 import tempdirs
 from const import colours
 from pathutils import long_path
 
-logging.getLogger('moviepy').setLevel(logging.CRITICAL)
+
+def ffmpeg_command():
+    """The ffmpeg that converts the audio: the one the host gives (BURDAMIX_FFMPEG, on Android) or the one imageio-ffmpeg carries."""
+    given = os.environ.get("BURDAMIX_FFMPEG")
+    if given:
+        return given
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def convert_to_mp3(source_path, target_path, kbps):
+    """Writes `source_path` as an mp3 of `kbps` kbps (video, if any, is dropped). Raises RuntimeError with ffmpeg's last words."""
+    command = [ffmpeg_command(), "-y", "-i", source_path, "-vn", "-codec:a", "libmp3lame", "-b:a", f"{int(kbps)}k", target_path]
+    done = subprocess.run(command, capture_output=True, text=True, errors="replace",
+                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    if done.returncode != 0:
+        raise RuntimeError(f"ffmpeg salió con {done.returncode}: {(done.stderr or '').strip()[-300:]}")
 
 
 def print_splash_screen():
@@ -55,11 +71,7 @@ def resave_audio_clip_with_metadata(audio_input_path, song_metadata, song_output
     partial_output_path = final_path + ".part"
 
     try:
-        clip = AudioFileClip(audio_input_path)
-        try:
-            clip.write_audiofile(temporary_audio_path, logger=None, bitrate=f'{int(audio_quality)}k')
-        finally:
-            clip.close()  # releases the ffmpeg handle; otherwise Windows can't delete the file
+        convert_to_mp3(audio_input_path, temporary_audio_path, audio_quality)
 
         if tag:
             audiofile = eyed3.load(temporary_audio_path)
