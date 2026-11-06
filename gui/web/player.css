@@ -374,3 +374,41 @@ body.has-player #toasts { bottom: 104px; }
 
 .eq-xf > div.eq-viz-row:first-child { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }     /* beats the first-child rule of the crossfade block */
 .eq-viz-row .switch { flex: none; }
+
+/* ---------- lyrics: a panel over the window, above the views and below the bar ---------- */
+.lyrics {
+  position: absolute; inset: 0 0 86px 0; z-index: 5; display: flex; flex-direction: column;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--pc, var(--accent)) 38%, transparent), transparent 70%), rgba(8, 10, 9, .92);
+  backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  animation: ly-in .28s cubic-bezier(.2, .8, .2, 1);
+}
+.lyrics.hidden { display: none; }
+@keyframes ly-in { from { opacity: 0; transform: translateY(14px); } }
+.ly-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 28px 6px; }
+.ly-head > div:first-child { min-width: 0; display: flex; flex-direction: column; }
+.ly-head b { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ly-head .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ly-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.ly-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 clamp(20px, 6vw, 80px); scrollbar-width: thin; outline: none; mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent); }
+.ly-pad { height: 36vh; }
+.ly-line {
+  max-width: 900px; margin: 0 auto; padding: 8px 0; font-size: clamp(22px, 3.2vw, 36px); line-height: 1.25; font-weight: 700; letter-spacing: -.01em;
+  color: var(--text); opacity: .34; cursor: pointer; transform-origin: left center; transition: opacity .35s, transform .35s, color .35s;
+}
+.ly-line.past { opacity: .5; }
+.ly-line.on { opacity: 1; transform: scale(1.04); color: var(--accent-text, var(--text)); text-shadow: 0 0 28px color-mix(in srgb, var(--accent) 40%, transparent); }
+.ly-line.gap { opacity: .2; }
+@media (hover: hover) and (pointer: fine) { .ly-line:hover { opacity: .85; } }
+.ly-plain { max-width: 900px; margin: 18px auto 0; white-space: pre-wrap; font: inherit; font-size: clamp(18px, 2.2vw, 24px); line-height: 1.6; font-weight: 600; }
+.ly-hint { max-width: 900px; margin: 18px auto 24px; }
+.ly-note { max-width: 520px; margin: 18vh auto 0; text-align: center; }
+.ly-note.wait { opacity: .7; }
+.ly-note h3 { margin: 0 0 6px; font-size: 20px; }
+.ly-note .btn-row { justify-content: center; margin-top: 14px; }
+.ly-editor { max-width: 760px; margin: 12px auto 0; display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.ly-editor textarea { flex: 1; min-height: 200px; resize: none; padding: 14px; border-radius: 14px; border: 1px solid var(--glass-line); background: var(--glass-2); color: var(--text); font-family: inherit; font-size: 15px; line-height: 1.6; }
+.ly-body.editing { mask-image: none; padding-bottom: 12px; }
+.ly-editor textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#pl-lyrics[aria-pressed="true"] { color: var(--accent); }
+@media (max-width: 760px) { .lyrics { bottom: 120px; } .ly-head { padding: 12px 16px 4px; } }
+@media (prefers-reduced-motion: reduce) { .lyrics { animation: none; } .ly-line { transition: none; } }

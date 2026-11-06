@@ -63,6 +63,7 @@ const moveSegInd = () => placeInd($("#fav-counts .seg-ind"), $("#fav-counts butt
 /* ---------- navigation ---------- */
 function show(view) {
   S.view = view;
+  closeLyrics();
   $("#app").dataset.view = view;
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
   $$(".nav").forEach(n => n.classList.toggle("active", n.dataset.view === view));

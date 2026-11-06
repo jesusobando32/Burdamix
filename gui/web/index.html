@@ -291,6 +291,16 @@
       </div>
     </section>
 
+    <!-- Letras: un panel sobre la ventana, sin tapar la barra del reproductor -->
+    <section id="lyrics" class="lyrics hidden" aria-label="Letra de la canción">
+      <header class="ly-head">
+        <div><b id="ly-title"></b><span id="ly-artist" class="muted"></span></div>
+        <div class="ly-actions"><button class="btn small-btn" id="ly-edit" type="button" hidden>Mi letra</button>
+          <button class="icon-btn" id="ly-close" type="button" aria-label="Cerrar la letra" title="Cerrar (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      </header>
+      <div id="ly-body" class="ly-body" tabindex="0"></div>
+    </section>
+
     <!-- Reproductor: siempre abajo -->
     <footer id="player" class="player hidden" aria-label="Reproductor">
       <div class="pl-now">
@@ -320,6 +330,8 @@
       </div>
       <div class="pl-side">
         <canvas id="pl-spectrum" width="96" height="28" aria-hidden="true"></canvas>
+        <button class="icon-btn" id="pl-lyrics" type="button" aria-label="Letra" aria-pressed="false" title="Letra">
+          <svg viewBox="0 0 24 24"><path d="M5 5h14M5 10h9M5 15h14M5 20h7"/></svg></button>
         <button class="icon-btn" id="pl-eq" type="button" aria-label="Ecualizador y crossfade" aria-expanded="false" title="Ecualizador y crossfade">
           <svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="14" r="2" class="knob"/><circle cx="12" cy="8" r="2" class="knob"/><circle cx="19" cy="15" r="2" class="knob"/></svg></button>
         <button class="icon-btn" id="pl-queue" type="button" aria-label="Cola" aria-expanded="false" title="Cola">
@@ -369,6 +381,7 @@
 <script src="tags.js"></script>
 <script src="player.js"></script>
 <script src="crate.js"></script>
+<script src="lyrics.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

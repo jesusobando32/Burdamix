@@ -19,6 +19,7 @@ import collections_store
 import const
 import downloader
 import library
+import lyrics
 import login
 import trash
 import tempdirs
@@ -100,6 +101,7 @@ class Api:
         self._trash = trash.move_to_recycle_bin          # what deletes a song; the tests give it a stand-in
         self._media = library.MediaServer(self._library)   # started with the first library request
         self._collections = collections_store.Collections(os.path.join(const.data_dir(), "collections.json"))   # likes and your playlists
+        self._lyrics = lyrics.Lyrics(os.path.join(const.data_dir(), "lyrics.json"))   # asked of LRCLIB once, then kept here
         self._tags = TagJobs(on_renamed=self._collections.renamed)      # "Completar etiquetas": its own jobs and events, apart from the downloads
         self._settings = self._load_settings()
         self._apply_settings()
@@ -215,6 +217,25 @@ class Api:
         direct = {k for k, t in by_key.items() if k in liked or (t["kind"] == "liked" and k not in unliked)}
         identities = {self._identity(by_key[k]) for k in direct} - {None}
         return {t["id"] for k, t in by_key.items() if k in direct or self._identity(t) in identities}
+
+    def _song(self, track_id):
+        return next((t for t in self._library.listing() if isinstance(track_id, str) and t["id"] == track_id), None)
+
+    def lyrics_get(self, track_id):
+        """The lyrics of a song of the library: {ok, synced: [[second, line]], plain, manual}, or {ok: False, error}."""
+        item = self._song(track_id)
+        if item is None:
+            return {"ok": False, "error": "Esa canción ya no está en la biblioteca."}
+        return self._lyrics.get(item.get("artist"), item.get("title"), item.get("album"), item.get("duration") or 0)
+
+    def lyrics_save(self, track_id, text):
+        """The user's own lyrics for a song (with or without LRC times); an empty text takes them away. Answers the lyrics now in force."""
+        item = self._song(track_id)
+        if item is None or not isinstance(text, str) or len(text) > 200_000:
+            return {"ok": False, "error": "No pude guardar esa letra."}
+        if not self._lyrics.set_manual(item.get("artist"), item.get("title"), text):
+            return {"ok": False, "error": "A esta canción le faltan el artista o el título."}
+        return self.lyrics_get(track_id)
 
     def collections_get(self):
         """The ids of the liked songs and the playlists with the ids of their songs (those no longer in the library are left out)."""

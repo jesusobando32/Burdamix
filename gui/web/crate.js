@@ -259,7 +259,7 @@ function wireLibraryBack() {
   document.addEventListener("keydown", ev => {
     if (!libraryVisible() || ev.ctrlKey || ev.metaKey) return;
     const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
-    const covered = $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
+    const covered = LY.open || $("#ctx") || !$("#dialog").classList.contains("hidden") || !$("#pl-queue-panel").classList.contains("hidden") || !$("#pl-eq-panel").classList.contains("hidden");
     if (covered) { if (ev.key === "Escape" && !$("#ctx") && $("#dialog").classList.contains("hidden")) closePanels(); return; }
     if (ev.key === "/" && !typing) { ev.preventDefault(); $("#lib-q").focus(); return; }
     const back = ev.key === "Escape" || (ev.altKey && ev.key === "ArrowLeft") || (ev.key === "Backspace" && !typing);

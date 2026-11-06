@@ -328,6 +328,7 @@ function trackChanged() {
   paintLibraryMarks();
   renderQueue();
   setMediaSession(track);
+  lyricsTrackChanged();
   if (track) extractAccent(track);
   saveSoon(true);
 }
@@ -1210,7 +1211,7 @@ const Player = {
     P.wired = true;
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
-    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireKeys();
+    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireLyrics(); wireKeys();
     setPulse(P.pulseOn);
     setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
@@ -1281,6 +1282,14 @@ function demoPlayerApi(art) {
       mine.forEach(p => { p.ids = p.ids.filter(id => !ids.includes(id)); });
       return { ok: true, deleted: gone.length, failed: [] };
     },
+    lyrics_get: async id => {
+      const n = [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 3;
+      if (n === 1) return { ok: false, none: true, error: "No encontré la letra de esta canción." };
+      const words = ["Bajo las luces de la ciudad", "el tiempo se detiene un momento", "y tu voz me lleva lejos", "más allá del último tren", "", "dime si todavía me esperas", "que yo vuelvo a casa esta noche", "con el corazón en la mano"];
+      if (n === 2) return { ok: true, synced: [], plain: words.join("\n"), manual: false };
+      return { ok: true, synced: words.map((l, i) => [i * 3, l]), plain: words.join("\n"), manual: false };
+    },
+    lyrics_save: async (id, text) => (text.trim() ? { ok: true, synced: [], plain: text, manual: true } : { ok: false, none: true, error: "No encontré la letra de esta canción." }),
     collections_get: collections,
     like_toggle: async id => {
       const t = (tracks || []).find(x => x.id === id);
