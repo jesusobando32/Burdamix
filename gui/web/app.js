@@ -13,6 +13,7 @@ const S = { view: "home", state: {}, cur: null, running: false, poll: null, rows
 const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 async function call(name, ...args) {
+  if (needsNet(name) && navigator.onLine === false) return { error: OFFLINE_TEXT };      // net.js: only these need internet
   try { return await api[name](...args); }
   catch (e) { return { error: "Algo salió mal dentro del programa." }; }
 }
@@ -170,8 +171,9 @@ function handlePreview(view, r) {
       $$("[data-fill]", box).forEach(b => b.onclick = () => { $("#link").value = b.dataset.fill; submitLink(); });
       return;
     }
-    box.innerHTML = `<div class="panel with-ic ${needsSetup ? "warn" : "bad"}"><div class="panel-ic">${ICONS.alert}</div><div class="panel-body">
-      <h3>${needsSetup ? "Falta un paso" : "No se pudo leer"}</h3>
+    const offline = r.error === OFFLINE_TEXT;
+    box.innerHTML = `<div class="panel with-ic ${needsSetup || offline ? "warn" : "bad"}"><div class="panel-ic">${ICONS.alert}</div><div class="panel-body">
+      <h3>${needsSetup ? "Falta un paso" : offline ? "Sin conexión" : "No se pudo leer"}</h3>
       <p>${esc(r.message || r.error)}</p>
       ${needsSetup ? '<div class="btn-row"><button class="btn primary" id="go-tutorial">Ir al tutorial</button></div>'
         : S.retry ? `<div class="btn-row"><button class="btn" id="retry">${ICONS.retry} Reintentar</button></div>` : ""}</div></div>`;

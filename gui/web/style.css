@@ -544,6 +544,14 @@ button.card:active { transform: scale(.985); }
   .bg .b1 { width: 480px; height: 480px; } .bg .b2 { width: 520px; height: 520px; } .bg .b3 { display: none; }
 }
 
+/* ---------- no connection: a small notice, the rest of the window is untouched ---------- */
+#offline { position: fixed; z-index: 80; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 10px); display: flex; align-items: center; gap: 9px; padding: 8px 16px; border-radius: 999px;
+  font-size: 13px; background: rgba(20, 26, 21, .92); border: 1px solid var(--glass-line); box-shadow: var(--shadow); pointer-events: none; white-space: nowrap; max-width: calc(100vw - 24px);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); opacity: 0; transform: translate(-50%, -14px); transition: opacity var(--t-med) ease, transform var(--t-slow) var(--ease-out); }
+#offline.on { opacity: 1; transform: translate(-50%, 0); }
+#offline i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+#offline span { overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- reduced motion: fewer, gentler; keep fades and state color ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
