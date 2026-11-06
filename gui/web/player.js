@@ -1233,7 +1233,7 @@ const Player = {
 
 /* A browser with ?demo has no program side: short generated tones stand in for the songs. */
 function demoPlayerApi(art) {
-  const demoPlays = [];
+  const demoPlays = [], demoOffsets = {};
   const tone = (notes, seconds) => {
     const rate = 22050, n = rate * seconds, data = new DataView(new ArrayBuffer(44 + n * 2));
     const text = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
@@ -1324,8 +1324,9 @@ function demoPlayerApi(art) {
       if (n === 1) return { ok: false, none: true, error: "No encontré la letra de esta canción." };
       const words = ["Bajo las luces de la ciudad", "el tiempo se detiene un momento", "y tu voz me lleva lejos", "más allá del último tren", "", "dime si todavía me esperas", "que yo vuelvo a casa esta noche", "con el corazón en la mano"];
       if (n === 2) return { ok: true, synced: [], plain: words.join("\n"), manual: false };
-      return { ok: true, synced: words.map((l, i) => [i * 3, l]), plain: words.join("\n"), manual: false };
+      return { ok: true, synced: words.map((l, i) => [i * 3, l]), plain: words.join("\n"), manual: false, offset: demoOffsets[id] || 0 };
     },
+    lyrics_offset: async (id, seconds) => { demoOffsets[id] = Math.max(-30, Math.min(30, seconds)); return { ok: true, offset: demoOffsets[id] }; },
     lyrics_save: async (id, text) => (text.trim() ? { ok: true, synced: [], plain: text, manual: true } : { ok: false, none: true, error: "No encontré la letra de esta canción." }),
     collections_get: collections,
     like_toggle: async id => {

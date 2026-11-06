@@ -2,6 +2,7 @@
 the second at which each is sung. What was found, and what was not, is kept in a small file so the service is not asked twice; lyrics the
 user pastes themselves win over everything."""
 import json
+import math
 import os
 import re
 import tempfile
@@ -15,8 +16,23 @@ API = "https://lrclib.net"
 LENGTH_TOLERANCE = 5            # seconds: a search result of another length is another recording
 RETRY_MISSING_AFTER = 7 * 86400  # what was not found is looked for again after a week; the service may have it by then
 
+MAX_OFFSET = 30                  # seconds either way: more than that is not a sync problem, it is another song
+_JOINERS = re.compile(r"\s*(?:,|;|&|\s(?:feat\.?|ft\.?|featuring|with|x|y|con|and)\s)\s*", re.IGNORECASE)
+_CREDIT_BRACKET = re.compile(r"\s*[\(\[][^\)\]]*\b(?:feat|ft|featuring|with|prod|remaster\w*|version|deluxe|mono|stereo|bonus|explicit|single)\b[^\)\]]*[\)\]]", re.IGNORECASE)
+_LABEL_TAIL = re.compile(r"\s+-\s+[^-]*\b(?:remaster\w*|version|single|mono|stereo|deluxe)\b.*$", re.IGNORECASE)
+
 _STAMP = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
 _OFFSET = re.compile(r"^\[offset:\s*([+-]?\d+)\s*\]", re.IGNORECASE)
+
+
+def first_artist(artist):
+    """"SAIKO, ULI" -> "SAIKO"; "Mora feat. Feid" -> "Mora". Services list a song under one name, tags list all of them."""
+    return _JOINERS.split(artist.strip(), maxsplit=1)[0].strip() or artist.strip()
+
+
+def clean_title(title):
+    """Without credits and remaster labels ("Tema (feat. X) - Remastered 2011" -> "Tema"). A remix or a live version keeps its label."""
+    return _LABEL_TAIL.sub("", _CREDIT_BRACKET.sub("", title.strip())).strip() or title.strip()
 
 
 def parse_lrc(text):
@@ -79,17 +95,17 @@ class Lyrics:
     # --- what the panel gets ---------------------------------------------------------------------------------------
 
     @staticmethod
-    def _shape(entry):
-        return {"ok": True, "synced": entry.get("synced") or [], "plain": entry.get("plain") or "", "manual": bool(entry.get("manual"))}
+    def _shape(entry, offset=0):
+        return {"ok": True, "synced": entry.get("synced") or [], "plain": entry.get("plain") or "", "manual": bool(entry.get("manual")), "offset": offset}
 
     def get(self, artist, title, album="", duration=0):
         key = self._key(artist, title)
         if key is None:
             return {"ok": False, "error": "A esta canción le faltan el artista o el título, y sin ellos no puedo buscar la letra."}
         data = self._load()
-        entry = data.get(key)
+        entry, offset = data.get(key), self._offset(data, key)
         if entry and (entry.get("manual") or not entry.get("none") or self.clock() - entry.get("at", 0) < RETRY_MISSING_AFTER):
-            return self._shape(entry) if not entry.get("none") else self._missing()
+            return self._shape(entry, offset) if not entry.get("none") else self._missing(offset)
         try:
             found = self._ask(artist, title, album, duration)
         except MetadataError as error:
@@ -97,14 +113,37 @@ class Lyrics:
         if found is None:
             data[key] = {"none": True, "at": self.clock()}
             self._save(data)
-            return self._missing()
+            return self._missing(offset)
         data[key] = found
         self._save(data)
-        return self._shape(found)
+        return self._shape(found, offset)
 
     @staticmethod
-    def _missing():
-        return {"ok": False, "none": True, "error": "No encontré la letra de esta canción."}
+    def _missing(offset=0):
+        return {"ok": False, "none": True, "error": "No encontré la letra de esta canción.", "offset": offset}
+
+    @staticmethod
+    def _offset(data, key):
+        offsets = data.get("_offsets")
+        value = offsets.get(key) if isinstance(offsets, dict) else None
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and abs(value) <= MAX_OFFSET else 0
+
+    def set_offset(self, artist, title, seconds):
+        """How many seconds later (+) or earlier (-) the lyrics of this song must run to match the file you have. Answers the value
+        kept (rounded to a quarter of a second, within ±30), or None when it is not a number or the song has no name."""
+        key = self._key(artist, title)
+        if key is None or isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds):
+            return None
+        value = round(max(-MAX_OFFSET, min(MAX_OFFSET, seconds)) * 4) / 4
+        data = self._load()
+        offsets = data.get("_offsets") if isinstance(data.get("_offsets"), dict) else {}
+        if value:
+            offsets[key] = value
+        else:
+            offsets.pop(key, None)
+        data["_offsets"] = offsets
+        self._save(data)
+        return value
 
     def set_manual(self, artist, title, text):
         """The user's own lyrics (with or without LRC times). An empty text takes them away."""
@@ -124,6 +163,7 @@ class Lyrics:
     # --- the service -----------------------------------------------------------------------------------------------
 
     def _ask(self, artist, title, album, duration):
+        """The exact lookup, then searches by the full name, by the name without credits, and by the first artist: a handful of requests."""
         params = {"artist_name": artist, "track_name": title}
         if album:
             params["album_name"] = album
@@ -133,7 +173,18 @@ class Lyrics:
             return self._entry(self.client.get_json(f"{API}/api/get", params))
         except MetadataNotFound:
             pass   # not under that exact name and length: search
-        results = self.client.get_json(f"{API}/api/search", {"track_name": title, "artist_name": artist})
+        first, plain = first_artist(artist), clean_title(title)
+        tried = []
+        for a, t in ((artist, title), (artist, plain), (first, title), (first, plain)):
+            if (a, t) not in tried:
+                tried.append((a, t))
+                found = self._search({"track_name": t, "artist_name": a}, duration)
+                if found:
+                    return found
+        return self._search({"q": f"{plain} {first}"}, duration)
+
+    def _search(self, params, duration):
+        results = self.client.get_json(f"{API}/api/search", params)
         near = [r for r in results if isinstance(r, dict) and (not duration or abs((r.get("duration") or 0) - duration) <= LENGTH_TOLERANCE)]
         near.sort(key=lambda r: (not r.get("syncedLyrics"), abs((r.get("duration") or 0) - duration)))
         for result in near:

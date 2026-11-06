@@ -47,6 +47,8 @@ class FakeClient:
         if self.error:
             raise self.error
         answer = self.answers[self.calls[-1][0]]
+        if callable(answer):
+            answer = answer(params)
         if answer is None:
             raise MetadataNotFound("x")
         return answer
@@ -66,7 +68,7 @@ SYNCED = {"syncedLyrics": "[00:05.00]Hola", "plainLyrics": "Hola", "duration": 2
 
 def test_an_exact_match_returns_the_synced_lines(cache_file):
     found = make(cache_file, FakeClient(get=SYNCED)).get("Feid", "Normal", "Feliz Cumpleaños Ferxxo", 200)
-    assert found == {"ok": True, "synced": [[5.0, "Hola"]], "plain": "Hola", "manual": False}
+    assert found == {"ok": True, "synced": [[5.0, "Hola"]], "plain": "Hola", "manual": False, "offset": 0}
 
 
 def test_without_timed_lyrics_only_the_plain_text_is_returned(cache_file):
@@ -160,3 +162,96 @@ def test_the_api_looks_up_a_library_song_by_its_id_and_keeps_pasted_lyrics(tmp_p
     assert api.lyrics_save(track["id"], "[00:01.00]Mía")["manual"] is True
     assert api.lyrics_get("no-existe")["ok"] is False
     assert api.lyrics_save(track["id"], 5)["ok"] is False
+
+
+# --- more ways to find it ---------------------------------------------------------------------------------------------
+
+def only_for(artist, title, entry):
+    """A search that answers only when asked for exactly this artist and title."""
+    return lambda params: [entry] if (params.get("artist_name"), params.get("track_name")) == (artist, title) else []
+
+
+def test_a_song_with_several_artists_is_also_searched_by_the_first_one(cache_file):
+    client = FakeClient(get=None, search=only_for("El Chombo", "El Gato Volador", {"syncedLyrics": "[00:01.00]Toasty", "plainLyrics": "Toasty", "duration": 114}))
+    found = make(cache_file, client).get("El Chombo, Cracker Jack & Jr Crack", "El Gato Volador", "", 114)
+    assert found["ok"] and found["synced"] == [[1.0, "Toasty"]]
+
+
+def test_the_whole_name_is_tried_before_the_pieces(cache_file):
+    duo = {"syncedLyrics": "[00:01.00]dúo", "plainLyrics": "dúo", "duration": 200}
+    client = FakeClient(get=None, search=lambda params: [duo] if params.get("artist_name") == "Chino & Nacho" else [])
+    assert make(cache_file, client).get("Chino & Nacho", "Mi Niña Bonita", "", 200)["synced"] == [[1.0, "dúo"]]
+    assert [c[1].get("artist_name") for c in client.calls if c[0] == "/api/search"][0] == "Chino & Nacho"
+
+
+@pytest.mark.parametrize("artist,expected", [
+    ("SAIKO, ULI", "SAIKO"), ("Mora feat. Feid", "Mora"), ("Mora ft. Feid", "Mora"), ("Mora; Feid", "Mora"), ("Mora x Feid", "Mora"), ("Mora & Feid", "Mora"),
+])
+def test_the_first_artist_is_taken_from_the_usual_ways_of_joining_names(cache_file, artist, expected):
+    client = FakeClient(get=None, search=only_for(expected, "Tema", {"syncedLyrics": "[00:01.00]x", "plainLyrics": "x", "duration": 100}))
+    assert make(cache_file, client).get(artist, "Tema", "", 100)["ok"]
+
+
+@pytest.mark.parametrize("title", ["Tema (feat. Feid)", "Tema [with Feid]", "Tema - Remastered 2011", "Tema - Single Version", "Tema (Remastered)"])
+def test_credits_and_remaster_labels_are_taken_off_the_title(cache_file, title):
+    client = FakeClient(get=None, search=only_for("Mora", "Tema", {"syncedLyrics": "[00:01.00]x", "plainLyrics": "x", "duration": 100}))
+    assert make(cache_file, client).get("Mora", title, "", 100)["ok"]
+
+
+def test_a_remix_or_a_live_version_keeps_its_label_because_it_is_another_recording(cache_file):
+    client = FakeClient(get=None, search=only_for("Mora", "Tema", {"syncedLyrics": "[00:01.00]x", "plainLyrics": "x", "duration": 100}))
+    assert make(cache_file, client).get("Mora", "Tema (Remix)", "", 100)["ok"] is False
+
+
+def test_a_miss_costs_a_few_requests_not_dozens(cache_file):
+    client = FakeClient(get=None, search=[])
+    make(cache_file, client).get("A, B, C & D feat. E", "Título (feat. F) - Remastered 2011", "", 100)
+    assert len(client.calls) <= 8
+
+
+# --- the offset of each song -----------------------------------------------------------------------------------------
+
+def test_an_offset_is_kept_per_song_and_comes_with_the_lyrics(cache_file):
+    store = make(cache_file, FakeClient(get=SYNCED))
+    assert store.get("Feid", "Normal", "", 200)["offset"] == 0
+    assert store.set_offset("Feid", "Normal", 1.25) == 1.25
+    assert make(cache_file, FakeClient(error=MetadataNetworkError("x"))).get("FEID", "normal", "", 200)["offset"] == 1.25
+
+
+def test_the_offset_is_limited_rounded_and_zero_removes_it(cache_file):
+    store = make(cache_file, FakeClient(get=SYNCED))
+    assert store.set_offset("A", "B", 999) == 30 and store.set_offset("A", "B", -999) == -30
+    assert store.set_offset("A", "B", 0.3) == 0.25
+    assert store.set_offset("A", "B", 0) == 0 and "|" not in json.dumps(json.load(open(cache_file, encoding="utf-8")).get("_offsets", {}))
+
+
+def test_nonsense_offsets_and_songs_without_names_are_refused(cache_file):
+    store = make(cache_file, FakeClient(get=SYNCED))
+    assert store.set_offset("A", "B", "mucho") is None and store.set_offset("A", "B", float("nan")) is None and store.set_offset("", "B", 1) is None
+
+
+def test_an_offset_survives_new_lyrics_being_pasted_and_missing_lyrics(cache_file):
+    store = make(cache_file, FakeClient(get=None, search=[]))
+    store.set_offset("A", "B", 2)
+    assert store.get("A", "B", "", 10)["offset"] == 2          # the miss answer also carries it, so the buttons keep their value
+    store.set_manual("A", "B", "[00:01.00]hola")
+    assert store.get("A", "B", "", 10)["offset"] == 2
+
+
+def test_the_api_keeps_an_offset_per_song(tmp_path, monkeypatch):
+    import const
+    import library
+    from gui import backend
+    from tagwriter import TagInfo
+    monkeypatch.setattr(const, "data_dir", lambda: str(tmp_path / "datos"))
+    songs = tmp_path / "songs"
+    songs.mkdir()
+    (songs / "a.mp3").write_bytes(b"x")
+    monkeypatch.setattr(library.tagwriter, "read_tags", lambda path: TagInfo(title="Normal", artist="Feid", album="FERXXO", duration=200))
+    api = backend.Api()
+    monkeypatch.setattr(api, "_downloads_dir", lambda: str(songs))
+    api._lyrics.client = FakeClient(get=SYNCED)
+    track = api.library_list()["tracks"][0]
+    assert api.lyrics_offset(track["id"], 1.3) == {"ok": True, "offset": 1.25}
+    assert api.lyrics_get(track["id"])["offset"] == 1.25
+    assert api.lyrics_offset(track["id"], "mucho")["ok"] is False and api.lyrics_offset("no-existe", 1)["ok"] is False

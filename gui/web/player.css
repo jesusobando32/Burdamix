@@ -417,3 +417,12 @@ body.has-player #toasts { bottom: 104px; }
 .icon-btn.sleep { position: relative; }
 .icon-btn.sleep i { position: absolute; right: -4px; bottom: -3px; padding: 1px 5px; border-radius: 99px; font-size: 10px; line-height: 14px; font-weight: 600; font-style: normal; font-variant-numeric: tabular-nums; background: var(--accent); color: #0b0f0c; }
 .icon-btn.sleep[aria-pressed="true"] { color: var(--accent); }
+
+/* ---------- lyrics sync ---------- */
+.ly-sync { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ly-sync[hidden] { display: none; }
+.ly-sync output { min-width: 62px; text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); cursor: default; }
+.ly-sync output.set { color: var(--accent); cursor: pointer; }
+.ly-sync .btn.on { background: var(--accent); color: #0b0f0c; border-color: transparent; }
+.ly-body.picking .ly-line { cursor: crosshair; opacity: .75; }
+@media (max-width: 760px) { .ly-head { flex-wrap: wrap; } }

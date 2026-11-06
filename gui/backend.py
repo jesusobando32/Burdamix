@@ -362,6 +362,12 @@ class Api:
             return {"ok": False, "error": "Esa canción ya no está en la biblioteca."}
         return self._lyrics.get(item.get("artist"), item.get("title"), item.get("album"), item.get("duration") or 0)
 
+    def lyrics_offset(self, track_id, seconds):
+        """Moves the lyrics of one song later (+) or earlier (-) so they match the file you have. Answers {ok, offset}."""
+        item = self._song(track_id)
+        value = self._lyrics.set_offset(item.get("artist"), item.get("title"), seconds) if item else None
+        return {"ok": True, "offset": value} if value is not None else {"ok": False, "error": "No pude ajustar la letra de esta canción."}
+
     def lyrics_save(self, track_id, text):
         """The user's own lyrics for a song (with or without LRC times); an empty text takes them away. Answers the lyrics now in force."""
         item = self._song(track_id)

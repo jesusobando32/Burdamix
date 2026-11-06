@@ -314,7 +314,14 @@
     <section id="lyrics" class="lyrics hidden" aria-label="Letra de la canción">
       <header class="ly-head">
         <div><b id="ly-title"></b><span id="ly-artist" class="muted"></span></div>
-        <div class="ly-actions"><button class="btn small-btn" id="ly-edit" type="button" hidden>Mi letra</button>
+        <div class="ly-actions">
+          <div class="ly-sync" id="ly-sync" role="group" aria-label="Sincronía de la letra" hidden>
+            <button class="btn small-btn" id="ly-earlier" type="button" title="La letra sale antes (−0,25 s)">Antes</button>
+            <output id="ly-off" title="Desfase de esta canción">0,00 s</output>
+            <button class="btn small-btn" id="ly-later" type="button" title="La letra sale después (+0,25 s)">Después</button>
+            <button class="btn small-btn" id="ly-pick" type="button" title="Toca la línea que estás oyendo y la letra se ajusta sola">Ajustar a lo que oigo</button>
+          </div>
+          <button class="btn small-btn" id="ly-edit" type="button" hidden>Mi letra</button>
           <button class="icon-btn" id="ly-close" type="button" aria-label="Cerrar la letra" title="Cerrar (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
       </header>
       <div id="ly-body" class="ly-body" tabindex="0"></div>

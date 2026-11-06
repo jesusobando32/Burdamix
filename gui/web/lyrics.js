@@ -1,6 +1,7 @@
 /* The lyrics screen: a panel over the whole window, with the line being sung lit and following the song. Click a line to jump there.
    The lyrics come from the backend (LRCLIB, kept on disk); the user can paste their own. */
-const LY = { open: false, id: "", data: null, lines: [], at: -1, timer: 0, userScrolled: 0, editing: false, asking: 0 };
+const LY = { open: false, id: "", data: null, lines: [], at: -1, timer: 0, userScrolled: 0, editing: false, asking: 0, picking: false };
+const lyricOffset = () => (LY.data && LY.data.ok && LY.data.offset) || 0;
 
 const lyricsPanel = () => $("#lyrics");
 
@@ -19,7 +20,7 @@ function openLyrics() {
 
 function closeLyrics() {
   if (!LY.open) return;
-  LY.open = false; LY.editing = false;
+  LY.open = false; LY.editing = false; LY.picking = false;
   clearInterval(LY.timer);
   lyricsPanel().classList.add("hidden");
   $("#pl-lyrics").setAttribute("aria-pressed", "false");
@@ -35,7 +36,8 @@ async function loadLyrics(force) {
   const track = current();
   if (!track || !LY.open) return;
   if (!force && LY.id === track.id && LY.data) return;
-  LY.id = track.id; LY.data = null; LY.editing = false;
+  LY.id = track.id; LY.data = null; LY.editing = false; LY.picking = false;
+  $("#ly-sync").hidden = true;
   const ask = ++LY.asking;
   paintLyricsHead(track);
   paintLyricsBody("Buscando la letra…", "wait");
@@ -60,6 +62,8 @@ function paintLyrics() {
   const d = LY.data, body = $("#ly-body");
   body.classList.remove("editing");
   $("#ly-edit").hidden = false;
+  $("#ly-sync").hidden = !(d && d.ok && d.synced.length);
+  paintLyricOffset();
   if (!d || !d.ok) {
     LY.lines = []; LY.at = -1;
     const none = d && d.none;
@@ -93,7 +97,7 @@ function lyricLineAt(second) {
 
 function tickLyrics(jump) {
   if (!LY.open || !LY.lines.length || !P.decks.length) return;
-  const at = lyricLineAt(deck().el.currentTime + .15);     // a hair early: the eye reads before the ear is done
+  const at = lyricLineAt(deck().el.currentTime + .15 - lyricOffset());     // a hair early: the eye reads before the ear is done
   if (at === LY.at && jump !== true) return;
   const lines = $$(".ly-line", $("#ly-body"));
   lines.forEach((el, i) => { el.classList.toggle("on", i === at); el.classList.toggle("past", i < at); });
@@ -133,6 +137,39 @@ function editLyrics() {
   field.onkeydown = ev => { if (ev.key === "Escape") { ev.stopPropagation(); $("#ly-cancel").click(); } };
 }
 
+/* ---------- matching the lyrics to the file you have ---------- */
+// positive: the lyrics run later. Shown with a comma, as the rest of the window writes numbers
+const offsetText = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2).replace(".", ",")} s`;
+
+function paintLyricOffset() {
+  const value = lyricOffset(), out = $("#ly-off");
+  out.textContent = offsetText(value);
+  out.classList.toggle("set", value !== 0);
+  out.title = value ? "Clic para volver a 0" : "Desfase de esta canción";
+}
+
+async function setLyricOffset(value) {
+  const track = current();
+  if (!track || !LY.data || !LY.data.ok) return;
+  const answer = await call("lyrics_offset", track.id, Math.round(value * 4) / 4);
+  if (!answer || !answer.ok) return toast((answer && answer.error) || "No pude ajustar la letra.", true);
+  if (!LY.data || current() === null || current().id !== track.id) return;
+  LY.data.offset = answer.offset;
+  paintLyricOffset();
+  tickLyrics(true);
+}
+
+function startPicking() {
+  LY.picking = true;
+  $("#ly-pick").classList.add("on"); $("#ly-body").classList.add("picking");
+  toast("Haz clic en la línea que estás oyendo ahora mismo.");
+}
+
+function stopPicking() {
+  LY.picking = false;
+  $("#ly-pick").classList.remove("on"); $("#ly-body").classList.remove("picking");
+}
+
 /* ---------- wiring ---------- */
 function lyricsTrackChanged() {
   if (!LY.open) return;
@@ -144,9 +181,15 @@ function wireLyrics() {
   $("#pl-lyrics").onclick = ev => { ev.stopPropagation(); toggleLyrics(); };
   $("#ly-close").onclick = closeLyrics;
   $("#ly-edit").onclick = editLyrics;
+  $("#ly-earlier").onclick = () => setLyricOffset(lyricOffset() - .25);
+  $("#ly-later").onclick = () => setLyricOffset(lyricOffset() + .25);
+  $("#ly-off").onclick = () => setLyricOffset(0);
+  $("#ly-pick").onclick = () => { LY.picking ? stopPicking() : startPicking(); };
   $("#ly-body").addEventListener("click", ev => {
     const line = ev.target.closest(".ly-line");
-    if (line) { seek(+line.dataset.t); LY.userScrolled = 0; }
+    if (!line) return;
+    if (LY.picking) { setLyricOffset(deck().el.currentTime - +line.dataset.t - .15); stopPicking(); return; }   // "this is the line I hear now"
+    seek(+line.dataset.t + lyricOffset()); LY.userScrolled = 0;
   });
   const looked = () => { LY.userScrolled = Date.now(); };
   $("#ly-body").addEventListener("wheel", looked, { passive: true });
@@ -154,6 +197,7 @@ function wireLyrics() {
   document.addEventListener("keydown", ev => {
     if (ev.key !== "Escape" || !LY.open) return;
     if (LY.editing) return;                        // the editor handles its own Esc
+    if (LY.picking) { ev.preventDefault(); ev.stopPropagation(); stopPicking(); return; }
     if ($("#ctx") || !$("#dialog").classList.contains("hidden")) return;
     ev.preventDefault(); ev.stopPropagation(); closeLyrics();
   }, true);
