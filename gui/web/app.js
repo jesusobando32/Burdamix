@@ -707,7 +707,7 @@ function init() {
   document.addEventListener("keydown", ev => {
     if (S.view !== "home" || !S.stack.length || ev.ctrlKey || ev.metaKey) return;
     const t = ev.target, typing = t.closest && t.closest("input:not([type=range]), textarea, select, [contenteditable]");
-    if (typing || anyDialogOpen() || $("#ctx") || LY.open || !$("#dialog").classList.contains("hidden")) return;
+    if (typing || anyDialogOpen() || document.getElementById("ctx") || LY.open || !$("#dialog").classList.contains("hidden")) return;
     if (ev.key === "Escape" || ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowLeft")) { ev.preventDefault(); goBack(); }
   });
   addEventListener("mouseup", ev => { if (ev.button === 3 && S.view === "home" && S.stack.length) { ev.preventDefault(); goBack(); } });
