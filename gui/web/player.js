@@ -92,7 +92,7 @@ function applyEq() {
 }
 
 function applyVolume() {
-  if (P.master) P.master.gain.value = P.muted ? 0 : P.volume * P.volume;
+  if (P.master) P.master.gain.value = P.muted ? 0 : P.volume * P.volume * (P.fade ?? 1);   // P.fade: the sleep timer lowering the volume
 }
 
 /* Equal-power fade: the two songs keep a steady loudness while they overlap. */
@@ -162,6 +162,11 @@ function hasNext() { return P.pos + 1 < P.queue.length || (P.repeat === "all" &&
 
 function advance(auto, skipBroken = false) {
   if (!P.queue.length) return;
+  if (auto && SL.mode === "song") {      // the sleep timer waits for this song to end: no crossfade into the next, no next
+    const el = deck().el;
+    if (el.ended || (isFinite(el.duration) && el.duration - el.currentTime < .8)) finishSleep();
+    return;
+  }
   if (auto && P.repeat === "one" && !skipBroken) { deck().el.currentTime = 0; deck().el.play().catch(onPlayRefused); return; }
   let next = P.pos + 1;
   if (next >= P.queue.length) {
@@ -1211,7 +1216,7 @@ const Player = {
     P.wired = true;
     restore(await call("get_player"));
     buildEq(); paintEq(); paintCrossfade(); paintVolume();
-    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireLyrics(); wireKeys();
+    wireBar(); wireQueue(); wireLibrary(); wireCrate(); wireLyrics(); wireSleep(); wireKeys();
     setPulse(P.pulseOn);
     setArm(ARM.rest, 0, true);        // nothing loaded yet: the needle rests clear of the record
     P.timer = setInterval(tick, TICK);
