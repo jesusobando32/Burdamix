@@ -37,6 +37,7 @@ class WebActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
+        Platform.init(applicationContext)
         host = Python.getInstance().getModule("burdamix_host")
         // The ffmpeg is the executable the youtubedl-android package leaves in nativeLibraryDir; its libraries are unpacked on init.
         FFmpeg.getInstance().init(application)

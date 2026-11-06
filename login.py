@@ -219,7 +219,7 @@ def run_user_login_flow(open_browser=webbrowser.open):
         return False, f"El puerto {app_port} está ocupado por otro programa. Ciérralo e inténtalo de nuevo."
 
     threading.Timer(1.25, lambda: open_browser(app_url)).start()
-    flask_process = multiprocessing.Process(target=start_flask)
+    flask_process = _new_server()
     flask_process.start()
 
     deadline = time.time() + LOGIN_TIMEOUT_SECONDS
@@ -276,7 +276,48 @@ def start_flask():
     flask_app.run(app_host, app_port)
 
 
+USE_THREAD_SERVER = False   # a host without multiprocessing (Android) sets this: the login server then runs in a thread
+_thread_server = None
+
+
+class _ThreadServer:
+    """Stands in for the child process where there is none: the flow only asks it start(), is_alive(), terminate() and exitcode."""
+
+    def __init__(self):
+        self.exitcode = None
+        self._server = None
+        self._thread = None
+
+    def start(self):
+        global _thread_server
+        from werkzeug.serving import make_server
+        self._server = make_server(app_host, app_port, app_factory(), threaded=True)
+        _thread_server = self
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def is_alive(self):
+        return self._thread is not None and self._thread.is_alive()
+
+    def finish(self, exit_code):
+        global _thread_server
+        if self.exitcode is None:
+            self.exitcode = exit_code
+        if _thread_server is self:
+            _thread_server = None
+        threading.Thread(target=self._server.shutdown, daemon=True).start()   # shutdown() waits for the loop: not from its own thread
+
+    def terminate(self):
+        self.finish(-15)
+
+
+def _new_server():
+    return _ThreadServer() if USE_THREAD_SERVER else multiprocessing.Process(target=start_flask)
+
+
 def stop_flask(exit_code=0):
+    if _thread_server is not None:
+        return _thread_server.finish(exit_code)
     os._exit(exit_code)  # the parent reads this code to know whether the login worked
 
 

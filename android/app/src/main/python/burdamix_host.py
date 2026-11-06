@@ -17,6 +17,12 @@ HIDDEN = ("attach_window",)
 _api = None
 
 
+def _open_url(url, *ignored):
+    """webbrowser.open for Android: the system opens the link (Kotlin side: Platform.openUrl)."""
+    from java import jclass
+    return bool(jclass("app.burdamix.Platform").openUrl(url))
+
+
 def start(files_dir, music_dir, ffmpeg, lib_dirs):
     """Prepares the environment and creates the Api. Must be called before the page loads."""
     global _api
@@ -25,9 +31,14 @@ def start(files_dir, music_dir, ffmpeg, lib_dirs):
     os.environ["LD_LIBRARY_PATH"] = lib_dirs + (":" + os.environ["LD_LIBRARY_PATH"] if os.environ.get("LD_LIBRARY_PATH") else "")
     os.makedirs(music_dir, exist_ok=True)
 
+    import webbrowser
+    webbrowser.open = _open_url        # before login.py is imported: it keeps webbrowser.open as a default argument
+
     import const
     const.DOWNLOADS_DIR = music_dir
     import trash
+    import login
+    login.USE_THREAD_SERVER = True     # no multiprocessing on Android: the Spotify login server runs in a thread
     from gui.backend import Api
 
     trash_dir = os.path.join(files_dir, "Burdamix", "papelera")
