@@ -10,8 +10,8 @@
   #main { width: 100%; }
 
   /* ---------- room for the tab bar and the small player ---------- */
-  .view { padding-bottom: calc(var(--nav-h) + var(--sab)); }
-  #app.has-player .view { padding-bottom: calc(var(--nav-h) + var(--sab) + 82px); }
+  .view { padding-bottom: calc(var(--nav-h) + var(--sab) + 14px); }       /* the middle button sticks out of the bar: leave it room */
+  #app.has-player .view { padding-bottom: calc(var(--nav-h) + var(--sab) + 90px); }
   .page { padding: calc(var(--sat) + 22px) 14px 36px; }
   .lib-head { padding-top: calc(var(--sat) + 22px); }
   .hero.small { padding-top: calc(var(--sat) + 4vh); }
@@ -134,9 +134,9 @@
   .ms-search:active { transform: scale(.985); border-color: var(--accent); }
   .ms-search span { flex: 1; }
   .ms-search i { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
-  .ms-chips { display: flex; gap: 8px; overflow-x: auto; padding: 14px 18px 0; scrollbar-width: none; }
+  .ms-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 18px 0; }
   .ms-chips::-webkit-scrollbar, .ms-hs::-webkit-scrollbar { display: none; }
-  .ms-chip { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; display: flex; align-items: center; gap: 7px; font-size: 13.5px; background: var(--glass); border: 1px solid var(--glass-line); transition: transform var(--t-med) var(--ease-out), background var(--t-fast) ease; }
+  .ms-chip { flex: none; height: 36px; padding: 0 12px; border-radius: 18px; display: flex; align-items: center; gap: 6px; font-size: 13px; background: var(--glass); border: 1px solid var(--glass-line); transition: transform var(--t-med) var(--ease-out), background var(--t-fast) ease; }
   .ms-chip svg { width: 16px; height: 16px; }
   .ms-chip:active { transform: scale(.94); background: var(--glass-2); }
   .ms-sec { display: flex; align-items: baseline; justify-content: space-between; padding: 24px 18px 10px; }
@@ -188,6 +188,19 @@
   .lib-tools .lib-search input { width: 100%; }
   .lib-tools #lib-sort, .lib-tools .dd { order: 4; }
 
+  /* ---------- touch feel: no desktop scrollbars, and nothing wider than the screen ---------- */
+  * { scrollbar-width: none !important; }
+  *::-webkit-scrollbar { display: none !important; }
+  html, body, #app, #main, .view { max-width: 100%; overflow-x: clip; }
+  .scroll { overflow-x: clip; overscroll-behavior: contain; }
+  img, svg, canvas, video { max-width: 100%; }
+
+  /* letters: the tight tracking of the desktop titles crushes the system font of the phone */
+  h1, .hero h1, .ms-title, .ms-hi b, .ms-week b, .list-head h2, .detail-info h2, .player.full .pl-text b, .st-tile b, .brand { letter-spacing: -.01em; }
+  .hero h1 { line-height: 1.08; }
+  .ms-sec h2, h2, .section { letter-spacing: 0; }
+  .state { min-width: 0; }
+
   /* the rest of the views keep their phone rules (crate.css, player.css); the lists need the touch size */
   .lib-row { min-height: 56px; }
   .nav-ind { display: none; }
@@ -201,3 +214,19 @@
 
 /* Inside the Android app: folders are not something the user browses, and there is no disk to pick files from. */
 .android #set-folder-open, .android #set-folder-change, .android #lib-folder, .android #tags-pick-files, .android #tags-pick-folder { display: none; }
+
+/* ---------- lyrics, stats and sharing on a phone ---------- */
+@media (max-width: 760px) {
+  .ly-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 12px 16px 4px; }
+  .ly-actions { display: contents; }
+  #ly-edit { grid-column: 2; grid-row: 1; }
+  #ly-close { grid-column: 3; grid-row: 1; }
+  .ly-sync { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; gap: 6px; }
+  .ly-sync output { min-width: 0; padding: 0 4px; }
+  .ly-sync .btn { min-height: 36px; padding: 0 12px; }
+  .ly-line { font-size: clamp(22px, 6.4vw, 30px); }
+  .ly-body { padding: 0 18px; }
+}
+
+/* what only makes sense on a computer: "Open folder" after a download (the songs are in the library; the app's folder is private to it) */
+.android #open { display: none; }

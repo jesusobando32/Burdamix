@@ -12,6 +12,23 @@ const TAG_STATUS = {
 };
 const FINISHED = ["applied"];
 
+// The phone has no "choose a file" window of the program: the page opens the system's picker and reads the picture itself.
+function pickImageFile() {
+  return new Promise(resolve => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*";
+    input.onchange = () => resolve((input.files && input.files[0]) || null);
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
+}
+const fileAsBase64 = file => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(file);
+});
+
 const tagFile = path => T.files.find(f => f.path === path);
 const baseName = p => String(p).split(/[\\/]/).pop();
 
@@ -187,9 +204,17 @@ async function onTagsClick(ev) {
     f.prepared = r; updateCard(f);
   } else if (act === "cancel1") { f.prepared = null; updateCard(f); }
   else if (act === "pickcover") {
-    const image = await call("tags_pick_image");
-    if (!image) return;
-    const r = await call("tags_set_cover", f.path, image);
+    let r;
+    if (window.pywebview && window.pywebview.platform === "android") {       // the phone's own picker (WebActivity.onShowFileChooser)
+      const file = await pickImageFile();
+      if (!file) return;
+      if (file.size > 15 * 1024 * 1024) return toast("La imagen es demasiado grande (más de 15 MB).", true);
+      r = await call("tags_set_cover_data", f.path, await fileAsBase64(file));
+    } else {
+      const image = await call("tags_pick_image");
+      if (!image) return;
+      r = await call("tags_set_cover", f.path, image);
+    }
     if (!r.ok) return toast(r.error || "No se pudo poner la portada.", true);
     f.done = { ...f.done, cover: true, problem: null }; if (r.tags) f.tags = r.tags;
     toast("Portada puesta."); updateCard(f);

@@ -2,6 +2,7 @@
 
 Same pattern as the downloads: the work runs in a thread and the window asks for news with get_events(). Tagging has
 its own event list and its own busy flag, so it never mixes with a download that is running at the same time."""
+import base64
 import os
 import threading
 import time
@@ -159,6 +160,23 @@ class TagJobs:
                 data = f.read()
         except OSError:
             return {"ok": False, "error": "No pude abrir esa imagen."}
+        return self._put_cover(path, data)
+
+    def set_cover_data(self, path, data_b64):
+        """The same as set_cover, for the phone: its picker hands over the picture itself (base64), not a path on disk."""
+        if self._busy:
+            return {"ok": False, "error": "Espera a que termine el proceso de etiquetas."}
+        if not isinstance(path, str) or not tagwriter.is_supported(path):
+            return {"ok": False, "error": "Ese archivo de audio no es compatible."}
+        if not isinstance(data_b64, str) or len(data_b64) > MAX_IMAGE_BYTES * 4 // 3 + 8:
+            return {"ok": False, "error": "La imagen es demasiado grande (más de 15 MB)." if isinstance(data_b64, str) else "No pude leer esa imagen."}
+        try:
+            data = base64.b64decode(data_b64, validate=True)
+        except ValueError:
+            return {"ok": False, "error": "No pude leer esa imagen."}
+        return self._put_cover(path, data)
+
+    def _put_cover(self, path, data):
         try:
             tagwriter.write_tags(path, SongInfo(), data)
         except MetadataError as error:

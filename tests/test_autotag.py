@@ -1361,3 +1361,33 @@ def test_the_cover_cache_stays_small():
     for n in range(5):
         finder.find(info(album=f"Album {n}", source=""))
     assert len(finder._cache) == 2
+
+
+# --- the phone picks the picture with its own picker, so the bytes come instead of a path ------------------------------------
+
+@pytest.mark.skipif(ffmpeg() is None, reason="needs the bundled ffmpeg")
+def test_a_cover_sent_as_bytes_is_written_like_one_chosen_from_a_file(tmp_path):
+    import base64
+    from gui.tags_jobs import TagJobs
+    song = make_audio(tmp_path, "a.mp3")
+    tagwriter.write_tags(song, SongInfo(title="Keep me", artist="Same Artist"))
+    result = TagJobs().set_cover_data(song, base64.b64encode(png(1200, 1200)).decode())
+    assert result["ok"] and result["tags"]["has_cover"] is True
+    assert tagwriter.read_tags(song).title == "Keep me"
+
+
+def test_a_cover_sent_as_bytes_is_checked_before_anything_is_written(tmp_path):
+    import base64
+    from gui.tags_jobs import TagJobs
+    jobs = TagJobs()
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"audio")
+    good = base64.b64encode(png(50, 50)).decode()
+    assert "no es una imagen" in jobs.set_cover_data(str(song), base64.b64encode(b"this is not a png").decode())["error"]
+    assert "No pude leer" in jobs.set_cover_data(str(song), "@@@no es base64@@@")["error"]
+    assert "No pude leer" in jobs.set_cover_data(str(song), 12)["error"]
+    assert "más de 15 MB" in jobs.set_cover_data(str(song), "A" * (20 * 1024 * 1024 * 4 // 3))["error"]
+    assert "no es compatible" in jobs.set_cover_data(str(tmp_path / "a.wav"), good)["error"]
+    assert song.read_bytes() == b"audio"
+    jobs._busy = True
+    assert "Espera" in jobs.set_cover_data(str(song), good)["error"]

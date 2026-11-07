@@ -305,3 +305,26 @@ def test_the_api_returns_the_qr_picture_and_the_tone(api):
     made = api.share_make([api.ids["Normal"], api.ids["Memorias"]], "Mis temas", "Yo")
     assert made["qr"] is True and made["qr_uri"].startswith("data:image/svg+xml")
     assert len(made["tone"]) == 7 and made["tone"].startswith("#") and len(made["light"]) == 7
+
+
+# --- the phone: the card goes to a file the system's share sheet can send -------------------------------------------------------
+
+def test_the_card_for_the_phone_is_written_to_the_share_folder_without_asking_where(api, monkeypatch):
+    folder = api.tmp / "cache" / "share"
+    monkeypatch.setenv("BURDAMIX_SHARE_DIR", str(folder))
+    made = api.share_card_file([api.ids["Normal"], api.ids["Memorias"]], "Mi lista / 2026: ¿rock?", "Yo")
+    assert made["ok"] and os.path.dirname(made["path"]) == str(folder) and made["path"].endswith(".png")
+    assert share.code_from_png(open(made["path"], "rb").read()) == api.share_make([api.ids["Normal"], api.ids["Memorias"]], "Mi lista / 2026: ¿rock?", "Yo")["code"]
+    assert api.share_card_file([], "Vacía")["ok"] is False
+
+
+def test_the_share_folder_is_cleaned_of_old_cards_so_the_phone_does_not_fill_up(api, monkeypatch):
+    folder = api.tmp / "cache" / "share"
+    folder.mkdir(parents=True)
+    old = folder / "vieja.png"
+    old.write_bytes(b"x")
+    os.utime(old, (1, 1))
+    (folder / "no-es-tarjeta.txt").write_text("no se toca")
+    monkeypatch.setenv("BURDAMIX_SHARE_DIR", str(folder))
+    assert api.share_card_file([api.ids["Normal"]], "Nueva")["ok"]
+    assert not old.exists() and (folder / "no-es-tarjeta.txt").exists()

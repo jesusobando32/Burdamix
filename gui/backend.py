@@ -279,15 +279,41 @@ class Api:
                 covers.append(data)
         return covers
 
-    def share_card_save(self, ids, name, by=""):
-        """Draws the card of the playlist and asks where to save it. Answers {ok, path} (or {ok: False, cancelled: True})."""
+    def _card_of(self, ids, name, by):
+        """(the picture of the playlist's card as PNG bytes, the answer of share_make); the answer alone when it failed."""
         made = self.share_make(ids, name, by)
         if not made["ok"]:
-            return made
+            return None, made
         items = self._by_ids(ids)
-        covers = self._covers_of(items)
-        card = share.render_card(name.strip()[:80], (by or "").strip()[:40], made["count"], sum(t.get("duration") or 0 for t in items), covers, made["code"])
+        card = share.render_card(name.strip()[:80], (by or "").strip()[:40], made["count"], sum(t.get("duration") or 0 for t in items), self._covers_of(items), made["code"])
+        return card, made
+
+    def share_card_save(self, ids, name, by=""):
+        """Draws the card of the playlist and asks where to save it. Answers {ok, path} (or {ok: False, cancelled: True})."""
+        card, made = self._card_of(ids, name, by)
+        if card is None:
+            return made
         return self._save_as(f"{sanitize_filename(name.strip()) or 'playlist'}.png", card, ("Imagen PNG (*.png)",))
+
+    def share_card_file(self, ids, name, by=""):
+        """The card as a file in the app's share folder, for the phone's share sheet (no question about where). Answers {ok, path}.
+        Cards of earlier days are removed from that folder first, so it never grows."""
+        card, made = self._card_of(ids, name, by)
+        if card is None:
+            return made
+        folder = os.environ.get("BURDAMIX_SHARE_DIR") or os.path.join(const.data_dir(), "share")
+        try:
+            os.makedirs(folder, exist_ok=True)
+            for old in os.listdir(folder):
+                path = os.path.join(folder, old)
+                if old.endswith(".png") and os.path.isfile(path) and time.time() - os.path.getmtime(path) > 86400:
+                    os.remove(path)
+            path = os.path.join(folder, f"{sanitize_filename(name.strip()) or 'playlist'}.png")
+            with open(path, "wb") as f:
+                f.write(card)
+        except OSError:
+            return {"ok": False, "error": "No pude preparar la tarjeta para compartirla."}
+        return {"ok": True, "path": path}
 
     def playlist_export_m3u(self, ids, name):
         """The playlist as a .m3u8 for other players (it lists the files of this computer). Asks where to save it."""
@@ -918,6 +944,10 @@ class Api:
 
     def tags_set_cover(self, path, image_path):
         return self._tags.set_cover(path, image_path)
+
+    def tags_set_cover_data(self, path, data_b64):
+        """A cover sent as bytes (the phone's picker gives the picture, not a path)."""
+        return self._tags.set_cover_data(path, data_b64)
 
     def tags_scan(self, paths):
         return self._tags.scan(paths if isinstance(paths, list) else [])

@@ -6,6 +6,9 @@ const ICON_IMPORT = '<svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 1
 
 const anyDialogOpen = () => ["#smart-dialog", "#share-dialog", "#import-dialog"].some(id => !$(id).classList.contains("hidden"));
 
+// inside the Android app the system's share sheet replaces the desktop's "save as" windows
+const onPhone = () => !!(window.pywebview && window.pywebview.platform === "android" && window.BurdamixAndroid && typeof window.BurdamixAndroid.shareText === "function");
+
 function shareName() { try { return localStorage.getItem("shareName") || ""; } catch (e) { return ""; } }
 function rememberShareName(value) { try { localStorage.setItem("shareName", value); } catch (e) { /* not remembered */ } }
 
@@ -40,8 +43,11 @@ function openShare(group) {
     <label class="sh-field">Tu nombre en la tarjeta (opcional)<input id="sh-by" class="dialog-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Por ejemplo, Yisus"></label>
     <div class="sh-qr" id="sh-qr" aria-live="polite"></div>
     <p class="sh-error" id="sh-error" role="alert" hidden></p>
-    <div class="sh-actions"><button class="btn primary" id="sh-copy" type="button">Copiar código</button><button class="btn" id="sh-card" type="button">Guardar tarjeta con QR</button><button class="btn" id="sh-m3u" type="button">Para otros reproductores (.m3u8)</button></div>
-    <p class="muted small sh-tip">La tarjeta es una imagen: mándala como <b>archivo</b> o documento. Si el chat la convierte en foto pierde el código; en ese caso manda el código de texto.</p>
+    <div class="sh-actions"><button class="btn primary" id="sh-copy" type="button">Copiar código</button>
+      ${onPhone() ? '<button class="btn" id="sh-text" type="button">Compartir código</button><button class="btn" id="sh-card" type="button">Compartir tarjeta</button>'
+        : '<button class="btn" id="sh-card" type="button">Guardar tarjeta con QR</button><button class="btn" id="sh-m3u" type="button">Para otros reproductores (.m3u8)</button>'}</div>
+    <p class="muted small sh-tip">${onPhone() ? "Para mandarla por un chat, comparte el <b>código</b> (siempre funciona). La tarjeta es una imagen: si el chat la convierte en foto pierde el código, así que mándala como <b>archivo</b> o documento."
+      : "La tarjeta es una imagen: mándala como <b>archivo</b> o documento. Si el chat la convierte en foto pierde el código; en ese caso manda el código de texto."}</p>
     <div class="btn-row"><button class="btn" id="sh-close" type="button">Cerrar</button></div></div>`);
   const by = $("#sh-by"), qr = $("#sh-qr"), err = $("#sh-error");
   let code = "";                                    // the code is long and meant for machines: it is never shown, only copied
@@ -59,12 +65,19 @@ function openShare(group) {
   };
   by.oninput = () => { rememberShareName(by.value); clearTimeout(timer); timer = setTimeout(refresh, 250); };
   $("#sh-copy").onclick = async () => toast(await copyToClipboard(code) ? "Código copiado. Pégalo en un chat." : "No pude copiarlo: selecciónalo y copia a mano.", false);
-  $("#sh-card").onclick = async () => {
+  if (onPhone()) {
+    $("#sh-text").onclick = () => { if (code && !window.BurdamixAndroid.shareText(code, `Playlist «${group.title}» de Burdamix`)) toast("No encontré ninguna app para compartir.", true); };
+    $("#sh-card").onclick = async () => {
+      const made = await call("share_card_file", group.ids, group.title, by.value);
+      if (!made || !made.ok) return toast((made && made.error) || "No pude preparar la tarjeta.", true);
+      if (!window.BurdamixAndroid.shareFile(made.path, "image/png", `Playlist «${group.title}» de Burdamix`)) toast("No encontré ninguna app para compartir.", true);
+    };
+  } else $("#sh-card").onclick = async () => {
     const answer = await call("share_card_save", group.ids, group.title, by.value);
     if (answer && answer.ok) toast("Tarjeta guardada. Mándala como archivo.", false, { label: "Ver carpeta", run: () => call("open_folder", answer.path.replace(/[\/][^\/]*$/, "")) });
     else if (answer && !answer.cancelled) toast((answer && answer.error) || "No pude guardar la tarjeta.", true);
   };
-  $("#sh-m3u").onclick = async () => {
+  if (!onPhone()) $("#sh-m3u").onclick = async () => {
     const answer = await call("playlist_export_m3u", group.ids, group.title);
     if (answer && answer.ok) toast("Lista guardada. Solo sirve en este ordenador: lleva rutas de tus archivos.");
     else if (answer && !answer.cancelled) toast((answer && answer.error) || "No pude guardar la lista.", true);
@@ -84,7 +97,7 @@ function paintShareQr(box, made) {
     return;
   }
   box.innerHTML = `<button type="button" class="sh-qr-plate" title="Clic para ampliar o reducir" aria-label="Código QR de la playlist. Clic para ampliar"><img alt="" src="${made.qr_uri}"></button>
-    <p class="muted small">Escanéalo con el móvil: sale el código para pegarlo en Burdamix.</p>`;
+    <p class="muted small">${onPhone() ? "Tu amigo lo escanea con su cámara y pega el código en Burdamix." : "Escanéalo con el móvil: sale el código para pegarlo en Burdamix."}</p>`;
   $(".sh-qr-plate", box).onclick = () => box.classList.toggle("big");
 }
 
@@ -93,7 +106,7 @@ function openImport() {
   const box = $("#import-dialog");
   if (!box.classList.contains("hidden")) return;
   const close = openShareBox(box, `<div class="dialog-card sh-card"><h3>Importar una playlist</h3>
-    <p class="muted small">Pega el código que te mandaron, o arrastra aquí la tarjeta (imagen) o elígela.</p>
+    <p class="muted small">${onPhone() ? "Pega el código que te mandaron, o elige la tarjeta (la imagen)." : "Pega el código que te mandaron, o arrastra aquí la tarjeta (imagen) o elígela."}</p>
     <div class="sh-drop" id="im-drop"><textarea id="im-code" rows="4" spellcheck="false" placeholder="BURDAMIX1:…" aria-label="Código de la playlist"></textarea>
       <button class="btn small-btn" id="im-file" type="button">Elegir tarjeta…</button></div>
     <p class="sh-error" id="im-error" role="alert" hidden></p>
@@ -116,18 +129,29 @@ function openImport() {
   const readCode = async text => { const mine = ++ask; const answer = await call("share_read", text); if (mine === ask) showResult(answer); };
   let timer = 0;
   code.oninput = () => { clearTimeout(timer); if (!code.value.trim()) { showResult(null); return; } timer = setTimeout(() => readCode(code.value), 250); };
-  $("#im-file").onclick = async () => { const answer = await call("share_read_file"); if (answer && answer.cancelled) return; code.value = ""; showResult(answer); };
-  const drop = $("#im-drop");
-  drop.ondragover = ev => { ev.preventDefault(); drop.classList.add("over"); };
-  drop.ondragleave = () => drop.classList.remove("over");
-  drop.ondrop = ev => {
-    ev.preventDefault(); ev.stopPropagation(); drop.classList.remove("over");
-    const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+  const readPicture = file => {
     if (!file) return;
     if (file.size > 30e6) return showResult({ ok: false, error: "Ese archivo es demasiado grande para ser una tarjeta." });
     const reader = new FileReader();
     reader.onload = async () => { code.value = ""; showResult(await call("share_read_picture", String(reader.result).split(",")[1] || "")); };
     reader.readAsDataURL(file);
+  };
+  $("#im-file").onclick = async () => {
+    if (onPhone()) {                                  // the phone's own file picker (WebActivity.onShowFileChooser)
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = "image/*";
+      input.onchange = () => readPicture(input.files && input.files[0]);
+      input.click();
+      return;
+    }
+    const answer = await call("share_read_file"); if (answer && answer.cancelled) return; code.value = ""; showResult(answer);
+  };
+  const drop = $("#im-drop");
+  drop.ondragover = ev => { ev.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = ev => {
+    ev.preventDefault(); ev.stopPropagation(); drop.classList.remove("over");
+    readPicture(ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]);
   };
   make.onclick = async () => {
     if (!found || !found.ids.length) return;
