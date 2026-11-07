@@ -158,6 +158,13 @@ class WebActivity : Activity() {
         @JavascriptInterface
         fun media(json: String) = PlaybackService.update(applicationContext, json)
 
+        /** The clipboard, which the page cannot read inside a WebView (the paste button), and writing to it. */
+        @JavascriptInterface
+        fun clipboardText(): String = Platform.clipboardText()
+
+        @JavascriptInterface
+        fun copyText(text: String): Boolean = Platform.copyText(text)
+
         /** The system's share sheet, for the code or the card of a playlist. */
         @JavascriptInterface
         fun shareText(text: String, title: String): Boolean = Platform.shareText(text, title)

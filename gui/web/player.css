@@ -435,3 +435,13 @@ body.has-player #toasts { bottom: 104px; }
 .ly-sync output.set { color: color-mix(in srgb, var(--ly) 52%, #fff); }
 #pl-lyrics[aria-pressed="true"] { color: color-mix(in srgb, var(--pc, var(--accent)) 52%, #fff); }
 .ly-sync .btn.on { background: color-mix(in srgb, var(--ly) 52%, #fff); }
+
+/* ---------- a touch screen has no hover: what only showed under the mouse shows always ---------- */
+.q-grip { display: none; width: 32px !important; height: 32px !important; touch-action: none; cursor: grab; }
+.q-row.drag { opacity: .6; }
+@media (hover: none), (pointer: coarse) {
+  .q-rm { opacity: 1; }
+  .q-grip { display: inline-grid; }
+  .lib-row .heart { opacity: .5; }
+  .lib-row .heart.on { opacity: 1; }
+}

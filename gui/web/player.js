@@ -707,6 +707,7 @@ function renderQueue() {
     return `<div class="q-row${i === P.pos ? " now" : ""}" draggable="true" data-i="${i}">
       <span class="q-cover${t.cover_url ? "" : " ph"}" style="--h:${hueOf(t)}"><span class="initial">${esc((t.title || "♪").trim().charAt(0).toUpperCase())}</span>${coverHTML(t)}<i class="q-eq" aria-hidden="true"><b></b><b></b><b></b></i></span>
       <span class="q-t"><b>${esc(t.title)}</b><span class="muted small">${esc(t.artist || "Artista desconocido")}</span></span>
+      <button class="icon-btn q-grip" type="button" aria-label="Arrastrar para reordenar" title="Arrastrar para reordenar"><svg viewBox="0 0 24 24"><path d="M5 9h14M5 15h14"/></svg></button>
       <button class="icon-btn q-rm" type="button" data-rm="${i}" aria-label="Quitar de la cola" title="Quitar de la cola"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;
   }).join("");
   const now = $(".q-row.now", list);
@@ -723,6 +724,28 @@ function wireQueue() {
     if (row) goTo(+row.dataset.i);
   });
   list.addEventListener("dragstart", ev => { const row = ev.target.closest(".q-row"); if (!row) return; from = +row.dataset.i; row.classList.add("drag"); ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", String(from)); });
+  // A finger cannot start the browser's drag and drop: on a touch screen the row has a handle that follows the finger
+  list.addEventListener("pointerdown", ev => {
+    const grip = ev.target.closest(".q-grip");
+    if (!grip || ev.pointerType === "mouse") return;
+    const row = grip.closest(".q-row"), start = +row.dataset.i;
+    let over = start;
+    ev.preventDefault();
+    try { grip.setPointerCapture(ev.pointerId); } catch (e) { /* the finger already left: the listeners below still end the drag */ }
+    row.classList.add("drag");
+    const move = e => {
+      const rect = list.getBoundingClientRect();
+      if (e.clientY < rect.top + 36) list.scrollBy(0, -10); else if (e.clientY > rect.bottom - 36) list.scrollBy(0, 10);     // near an edge the list follows
+      const hit = document.elementFromPoint(e.clientX, e.clientY), target = hit && hit.closest(".q-row");
+      if (target && list.contains(target)) { $$(".q-row.over", list).forEach(r => r.classList.remove("over")); target.classList.add("over"); over = +target.dataset.i; }
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", end); grip.removeEventListener("pointercancel", end);
+      $$(".q-row", list).forEach(r => r.classList.remove("drag", "over"));
+      if (over !== start) moveInQueue(start, over);
+    };
+    grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
+  });
   list.addEventListener("dragend", () => { from = -1; $$(".q-row", list).forEach(r => r.classList.remove("drag", "over")); });
   list.addEventListener("dragover", ev => {
     const row = ev.target.closest(".q-row");
@@ -1039,7 +1062,12 @@ document.addEventListener("scroll", closeMenu, true);
    the playlist whose page is open, delete it. */
 function openSongMenu(x, y, ids) {
   const mine = L.open && (L.byKey.get(L.open) || {}).mine ? L.byKey.get(L.open) : null;
-  const items = [{ label: "Añadir a playlist…", icon: ICON_PLAYLIST, run: () => openPlaylistMenu(x, y, ids) }];
+  // On a phone the row's own buttons (next, add, tags) are hidden: everything goes through this menu, so everything is here too
+  const items = ids.length === 1
+    ? [{ label: "Reproducir a continuación", icon: ICON_NEXT, run: () => enqueue(ids[0], true) }, { label: "Añadir a la cola", icon: ICON_ADD, run: () => enqueue(ids[0], false) },
+       { label: "Completar etiquetas…", icon: ICON_TAG, run: () => sendToTags(ids) }, { sep: true }]
+    : [{ label: "Añadir a la cola", icon: ICON_ADD, run: () => ids.forEach(id => enqueue(id, false)) }, { sep: true }];
+  items.push({ label: "Añadir a playlist…", icon: ICON_PLAYLIST, run: () => openPlaylistMenu(x, y, ids) });
   if (mine) items.push({ label: `Quitar de «${mine.title}»`, icon: ICON_MINUS, run: () => removeFromPlaylist(mine.pid, ids) });
   items.push({ sep: true }, { label: ids.length > 1 ? `Eliminar ${ids.length} canciones…` : "Eliminar de la biblioteca…", icon: ICON_TRASH, danger: true, run: () => deleteTracks(ids) });
   openMenu(x, y, items);
@@ -1083,9 +1111,11 @@ async function deleteTracks(ids) {
   const copyNote = copies.length ? ` Tiene ${copies.length === 1 ? "otra copia" : copies.length + " copias más"} en tu biblioteca (${[...new Set(copies.map(c => c.group || { liked: "Me gusta", track: "Canciones sueltas" }[c.kind] || "otra carpeta"))].join(", ")}) que no se borra${copies.length === 1 ? "" : "n"}.` : "";
   const ok = await confirmDialog({
     title: one ? "¿Eliminar esta canción?" : `¿Eliminar ${tracks.length} canciones?`,
-    text: one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se manda a la Papelera de Reciclaje: puedes recuperarla desde allí.${copyNote}`
-              : "Se mandan a la Papelera de Reciclaje: puedes recuperarlas desde allí.",
-    ok: "Mandar a la Papelera", danger: true,
+    text: onAndroid()
+      ? (one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se quita de la biblioteca de este teléfono.${copyNote}` : "Se quitan de la biblioteca de este teléfono.")
+      : (one ? `«${tracks[0].title}»${tracks[0].artist ? " de " + tracks[0].artist : ""} se manda a la Papelera de Reciclaje: puedes recuperarla desde allí.${copyNote}`
+             : "Se mandan a la Papelera de Reciclaje: puedes recuperarlas desde allí."),
+    ok: onAndroid() ? "Eliminar" : "Mandar a la Papelera", danger: true,
   });
   if (!ok) return;
   for (let i = P.queue.length - 1; i >= 0; i--) if (ids.includes(P.queue[i])) removeFromQueue(i);

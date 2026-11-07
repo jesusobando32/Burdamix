@@ -267,7 +267,7 @@
   const hint = q(".crate-hint"), hintText = hint ? hint.textContent : "";
   function sync() {
     app.classList.toggle("mobile", mq.matches);
-    if (hint) hint.textContent = mq.matches ? "Desliza para pasar los discos" : hintText;
+    if (hint) hint.textContent = mq.matches || matchMedia("(pointer: coarse)").matches ? "Desliza para pasar los discos" : hintText;
     if (mq.matches) { if (S.view === "home" && !sync.started) show("start"); sync.started = true; paintTabs(); fit(); }
     else { closeFull(true); if (S.view === "start" || S.view === "more") show("home"); }
     if (sync.started && S.view === "library") renderLibrary();      // the tabs and the shelf measure themselves again for the new width

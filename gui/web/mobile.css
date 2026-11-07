@@ -281,3 +281,13 @@
   .tab { font-size: 10px; }
   .ms-hi b { font-size: 20px; }
 }
+
+/* ---------- song rows on a phone: the heart and the "more" button are always there (nothing opens by hovering) ---------- */
+@media (max-width: 760px) {
+  .lib-row { grid-template-columns: 24px 40px minmax(0, 1fr) 34px 34px 40px; gap: 6px; }
+  .lib-act { display: flex; opacity: 1; order: 5; }
+  .lib-act .icon-btn:not([data-act="more"]) { display: none; }      /* next, add and tags are in the "more" menu */
+  .lib-act .icon-btn[data-act="more"] { width: 34px; height: 34px; }
+  .lib-row .heart { order: 4; opacity: .5; }
+  .lib-row .heart.on { opacity: 1; }
+}

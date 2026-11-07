@@ -24,6 +24,7 @@ function openShareBox(box, html) {
 }
 
 async function copyToClipboard(text) {
+  if (window.BurdamixAndroid && typeof window.BurdamixAndroid.copyText === "function" && window.BurdamixAndroid.copyText(text)) return true;
   try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* the old way below */ }
   const field = document.createElement("textarea");
   field.value = text; field.style.position = "fixed"; field.style.opacity = "0";

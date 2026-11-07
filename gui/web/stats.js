@@ -50,7 +50,7 @@ function paintStats(d) {
   if (!d) { body.innerHTML = '<div class="panel bad"><div class="panel-body"><h3>No pude leer las estadísticas</h3><p class="muted">Cierra y abre la ventana e inténtalo otra vez.</p></div></div>'; return; }
   if (!d.plays) {
     body.innerHTML = `<div class="panel"><div class="panel-ic">${ICONS.search}</div><div class="panel-body"><h3>${ST.period === "all" ? "Todavía no hay escuchas" : "Nada escuchado en este periodo"}</h3>
-      <p class="muted">Lo que escuches en la Biblioteca se cuenta aquí. Una canción cuenta cuando la oyes 30 segundos o la mitad. Todo se queda en tu ordenador.</p></div></div>`;
+      <p class="muted">Lo que escuches en la Biblioteca se cuenta aquí. Una canción cuenta cuando la oyes 30 segundos o la mitad. Todo se queda en este dispositivo.</p></div></div>`;
     return;
   }
   const top = d.artists[0];

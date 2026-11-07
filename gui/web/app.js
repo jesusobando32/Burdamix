@@ -553,7 +553,19 @@ async function updateYtdlp() {
 }
 
 /* ---------- tutorial ---------- */
+// True inside the Android app (gui/web/android.js sets it): the texts and the buttons that only make sense on a computer change
+const onAndroid = () => !!(window.pywebview && window.pywebview.platform === "android");
+
+// The phone's WebView will not let a page read the clipboard (the browser's permission question does not exist there): the app
+// reads it itself and hands the text over (Platform.clipboardText).
+async function readClipboard() {
+  const native = window.BurdamixAndroid;
+  if (native && typeof native.clipboardText === "function") return String(native.clipboardText() || "");
+  return navigator.clipboard.readText();
+}
+
 function copyText(text) {
+  if (window.BurdamixAndroid && typeof window.BurdamixAndroid.copyText === "function" && window.BurdamixAndroid.copyText(text)) { toast("Copiado."); return; }
   const fallback = () => { const t = document.createElement("textarea"); t.value = text; document.body.append(t); t.select(); document.execCommand("copy"); t.remove(); };
   (navigator.clipboard ? navigator.clipboard.writeText(text).catch(fallback) : Promise.resolve(fallback())).then(() => toast("Copiado."));
 }
@@ -601,7 +613,9 @@ const FAQ = [
   ["¿Por qué no se bajan las intros y los interludios?", "<p>Por defecto se omiten las pistas muy cortas (menos de 50 s, o intro/outro de menos de 95 s). Se puede desactivar en Configuración.</p>"],
   ["Dejó de funcionar de repente", "<p>YouTube cambia cada pocas semanas. En <b>Configuración → Actualizar yt-dlp</b> se baja la versión nueva (hace falta internet). Después cierra y abre el programa.</p>"],
   ["¿Para qué sirve «Completar etiquetas»?", "<p>Para canciones que ya tienes pero que en el reproductor salen sin nombre, sin artista o sin portada. Elige los archivos (o una carpeta), Burdamix busca de qué canción se trata y escribe título, artista, álbum, año, género, número de pista y portada. Antes de escribir te enseña qué va a cambiar; <b>no se puede deshacer</b>.</p>"],
-  ["¿Es seguro?", "<p>Todo se hace en tu computadora. Las claves de tu app de Spotify se guardan en una carpeta privada de tu usuario. Windows puede avisar de «editor desconocido» porque el programa no está firmado: es normal en programas gratuitos.</p>"],
+  ["¿Es seguro?", onAndroid()
+    ? "<p>Todo se hace en tu teléfono. Las claves de tu app de Spotify se guardan en la carpeta privada de la app, que ninguna otra app puede leer. Android puede avisar al instalar fuera de la tienda: es normal en apps gratuitas que no están en Google Play.</p>"
+    : "<p>Todo se hace en tu computadora. Las claves de tu app de Spotify se guardan en una carpeta privada de tu usuario. Windows puede avisar de «editor desconocido» porque el programa no está firmado: es normal en programas gratuitos.</p>"],
 ];
 
 function buildFaq() {
@@ -727,8 +741,11 @@ function init() {
 
   $("#composer").onsubmit = ev => { ev.preventDefault(); submitLink(); };
   $("#paste").onclick = async () => {
-    try { $("#link").value = (await navigator.clipboard.readText()).trim(); submitLink(); }
-    catch (e) { $("#link").focus(); toast("Pulsa Ctrl+V dentro del cuadro para pegar."); }
+    let text = "";
+    try { text = (await readClipboard()).trim(); }
+    catch (e) { $("#link").focus(); toast(matchMedia("(pointer: coarse)").matches ? "No pude leer el portapapeles. Mantén pulsado en el cuadro y elige Pegar." : "Pulsa Ctrl+V dentro del cuadro para pegar."); return; }
+    if (!text) { $("#link").focus(); toast("El portapapeles está vacío: copia primero un enlace."); return; }
+    $("#link").value = text; submitLink();
   };
   $("#link").addEventListener("paste", ev => {
     const text = ((ev.clipboardData || window.clipboardData).getData("text") || "").trim();

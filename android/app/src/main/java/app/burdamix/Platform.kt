@@ -1,6 +1,7 @@
 package app.burdamix
 
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -19,6 +20,24 @@ object Platform {
     @JvmStatic
     fun openUrl(url: String): Boolean = try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (error: Exception) {
+        false
+    }
+
+    /** What is on the clipboard, as text ("" when empty). The page cannot read it itself inside a WebView. */
+    @JvmStatic
+    fun clipboardText(): String = try {
+        val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
+        if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(context).toString() else ""
+    } catch (error: Exception) {
+        ""
+    }
+
+    /** Puts a text on the clipboard (the code of a playlist). */
+    @JvmStatic
+    fun copyText(text: String): Boolean = try {
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Burdamix", text))
         true
     } catch (error: Exception) {
         false
