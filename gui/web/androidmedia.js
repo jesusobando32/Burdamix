@@ -1,10 +1,15 @@
-/* The Android side of the player: the notification with controls, the lock screen and the headset buttons. Android's WebView plays the
-   songs but shows no media notification of its own, so the app keeps a service (PlaybackService.kt) that mirrors what is playing and
-   hands the buttons back here. Without `BurdamixAndroid.media` (desktop window, a browser, ?demo) this file does nothing. */
+/* The Android side of the player and of the background work: the notification with controls, the lock screen and the headset buttons,
+   and keeping the app alive while it downloads. Android's WebView plays the songs but shows no media notification of its own, so the app
+   keeps a service (PlaybackService.kt) that mirrors what is playing and hands the buttons back here; another one (KeepAliveService.kt)
+   stops Android from freezing a download when the user leaves the app. Without `BurdamixAndroid` (desktop window, a browser, ?demo)
+   this file does nothing. */
 (() => {
   const host = window.BurdamixAndroid;
-  if (!host || typeof host.media !== "function") return;
-  let last = "";
+  if (!host) return;
+  const has = name => { try { return typeof host[name] === "function" || !!host[name]; } catch (e) { return false; } };
+
+  /* ---------- the player's notification ---------- */
+  let last = "", asked = false;
 
   const state = () => {
     const t = current();
@@ -17,14 +22,29 @@
     };
   };
 
+  // Android 13 and later hide notifications until the user allows them, and a "no" is easy to give by accident: say it once,
+  // with a button that opens the right screen. Without this the player's controls simply never show and nothing explains why.
+  const checkNotifications = () => {
+    if (asked || !has("notificationsEnabled")) return;
+    asked = true;
+    try {
+      if (!host.notificationsEnabled()) {
+        toast("Las notificaciones están desactivadas, así que no verás los controles de la música fuera de la app.", true,
+          has("openNotificationSettings") ? { label: "Activar", run: () => host.openNotificationSettings() } : null);
+      }
+    } catch (e) { /* the notification is a convenience */ }
+  };
+
   // called by player.js whenever the song, the play state, the position (a jump) or the shuffle changes; the same state is not sent twice
   window.__nativeMedia = () => {
+    if (!has("media")) return;
     let s;
     try { s = state(); } catch (e) { return; }
+    if (s.has && s.playing) checkNotifications();
     const key = JSON.stringify({ ...s, position: Math.round(s.position / 1500) });
     if (key === last) return;
     last = key;
-    try { host.media(JSON.stringify(s)); } catch (e) { /* the notification is a convenience: playing never depends on it */ }
+    try { host.media(JSON.stringify(s)); } catch (e) { /* playing never depends on the notification */ }
   };
 
   // the buttons of the notification, the lock screen and the headset come back as words
@@ -38,4 +58,20 @@
     else if (action === "shuffle") setShuffle(!P.shuffle);
     else if (action.startsWith("seek:")) { const ms = Number(action.slice(5)); if (isFinite(ms)) seek(ms / 1000); }
   };
+
+  /* ---------- downloads and tag jobs keep going when the app is left ---------- */
+  // The page only says "there is work" (and what); the service watches Python itself and stops when it ends.
+  if (has("keepAlive")) {
+    let keeping = "";
+    setInterval(() => {
+      let text = "";
+      try {
+        if (S.running) { const k = counts(); text = k && k.ok ? `Descargando canciones… ${k.ok} listas` : "Descargando canciones…"; }
+        else if (typeof T !== "undefined" && (T.running || T.applying)) text = "Completando etiquetas…";
+      } catch (e) { text = S.running ? "Descargando canciones…" : text; }
+      if (text === keeping) return;
+      keeping = text;
+      try { host.keepAlive(!!text, text); } catch (e) { /* worst case the download pauses when the app is left, as before */ }
+    }, 1500);
+  }
 })();

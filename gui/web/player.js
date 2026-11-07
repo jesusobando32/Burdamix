@@ -51,7 +51,9 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 function buildAudio() {
   if (P.ctx) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
-  P.ctx = new Ctx();
+  // "playback": bigger audio buffers. The default ("interactive") is tuned for games and risks cuts on a phone that is busy;
+  // for music a few tens of milliseconds more delay (an EQ slider answers a hair later) cost nothing.
+  try { P.ctx = new Ctx({ latencyHint: "playback" }); } catch (e) { P.ctx = new Ctx(); }
   P.pre = P.ctx.createGain();
   P.filters = EQ_FREQS.map((f, i) => {
     const node = P.ctx.createBiquadFilter();
@@ -421,7 +423,10 @@ const ARM = { out: 153, inn: 121.8, rest: 170, lift: 3 };    // degrees: needle 
 const ARM_EASE = "cubic-bezier(.4, 0, .2, 1)";
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const armShown = () => !document.documentElement.classList.contains("android");     // the phone has no needle (mobile.css hides it)
+
 function setArm(angle, ms, lifted, ease = "linear") {
+  if (!armShown()) return;
   const arm = $(".ta-arm");
   P.armAngle = angle; P.armLifted = lifted;
   arm.style.transition = reduced() || !ms ? "none" : `rotate ${ms}ms ${ease}`;
@@ -442,7 +447,7 @@ function armPlace() {
 /* Called on every tick: the needle follows the playing time in small steps; when the time jumps (the bar is dragged, a seek) or
    it lifts or lands (pause, play), it glides there instead of snapping. */
 function paintArm() {
-  if (P.armBusy) return;
+  if (P.armBusy || !armShown()) return;
   const { angle, lifted } = armPlace();
   const jump = Math.abs(angle - (P.armAngle ?? angle)) > 1.2, toggled = lifted !== P.armLifted;
   if (angle === P.armAngle && !toggled) return;
@@ -450,12 +455,14 @@ function paintArm() {
 }
 
 async function armAway() {
+  if (!armShown()) return;
   P.armBusy = true;
   setArm(ARM.rest, 380, true, ARM_EASE);
   await wait(380);
 }
 
 async function armBack() {
+  if (!armShown()) return;
   const { angle, lifted } = armPlace();
   P.armAngle = null;
   setArm(angle, 620, lifted, ARM_EASE);
@@ -497,9 +504,13 @@ function tick() {
   if (Date.now() - P.lastSaved > 5000 && !el.paused) { P.lastSaved = Date.now(); call("save_player", snapshot()); }
 }
 
+// inside the Android app: the notification and the lock screen (androidmedia.js). Android's WebView may not have navigator.mediaSession at
+// all, so this is told whatever the browser supports.
+const notifyNative = () => { if (window.__nativeMedia) window.__nativeMedia(); };
+
 function setMediaSession(track) {
-  if (!("mediaSession" in navigator)) return;
-  if (!track) { navigator.mediaSession.metadata = null; return; }
+  if (!("mediaSession" in navigator)) return notifyNative();
+  if (!track) { navigator.mediaSession.metadata = null; return notifyNative(); }
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title, artist: track.artist, album: track.album,
     // Windows shows the cover in its media panel; sizes are a hint, the same picture serves them all
@@ -510,13 +521,13 @@ function setMediaSession(track) {
 
 // what the system panel (and the keyboard's media keys) show: playing or paused, and where in the song
 function syncMediaState() {
-  if (!("mediaSession" in navigator)) return;
+  if (!("mediaSession" in navigator)) return notifyNative();
   const el = P.decks.length ? deck().el : null;
   navigator.mediaSession.playbackState = !current() ? "none" : isPlaying() ? "playing" : "paused";
   try {
     if (el && isFinite(el.duration) && el.duration > 0) navigator.mediaSession.setPositionState({ duration: el.duration, position: Math.min(el.currentTime, el.duration), playbackRate: el.playbackRate || 1 });
   } catch (e) { /* the browser refuses odd values while a song is loading */ }
-  if (window.__nativeMedia) window.__nativeMedia();      // inside the Android app: the notification and the lock screen (androidmedia.js)
+  notifyNative();
 }
 
 /* ---------- colour from the cover ---------- */
@@ -667,7 +678,8 @@ function loopSpectrum() {
   const data = new Uint8Array(P.analyser.frequencyBinCount);
   const draw = () => {
     P.bars = 0;
-    const live = isPlaying() && !document.hidden && !reduced();
+    // nothing to draw (no halos, and the small spectrum hidden as it is on a phone): no analysis and no frames at all
+    const live = (P.pulseOn || $("#pl-spectrum").clientWidth > 0) && isPlaying() && !document.hidden && !reduced();
     if (live) P.analyser.getByteFrequencyData(data);
     const small = drawSmall(data, live), halos = P.pulseOn ? drawPulse(data, live) : false;
     if (live || small || halos) P.bars = requestAnimationFrame(draw);
@@ -884,7 +896,7 @@ function paintCrossfade() {
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, tab: L.tab,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, pulsePhone: P.pulseOn, tab: L.tab,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "", recent: P.recent,
@@ -903,7 +915,10 @@ function restore(saved) {
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
   // on unless it was turned off (older saves kept a mode: "off" was off, the other modes — pulse among them — become the pulse)
-  P.pulseOn = typeof saved.pulse === "boolean" ? saved.pulse : saved.viz !== "off";
+  // On the phone the halos start off (they repaint big gradients 60 times a second and the phone drops frames); the switch in the equalizer
+  // panel turns them on, and that choice is kept apart (pulsePhone) so the setting of the computer never decides it.
+  P.pulseOn = document.documentElement.classList.contains("android") ? saved.pulsePhone === true
+    : typeof saved.pulse === "boolean" ? saved.pulse : saved.viz !== "off";
   if (Array.isArray(saved.recent)) P.recent = saved.recent.filter(id => typeof id === "string").slice(0, MAX_RECENT);
   if (TABS.some(([id]) => id === saved.tab)) L.tab = saved.tab;      // the section of the library you were in
   const bands = b => Array.isArray(b) && b.length === 10 && b.every(v => typeof v === "number") ? b.map(v => clamp(v, -EQ_RANGE, EQ_RANGE)) : null;

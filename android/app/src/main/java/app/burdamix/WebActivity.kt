@@ -156,7 +156,21 @@ class WebActivity : Activity() {
 
         /** The player's state for the notification and the lock screen (JSON, see gui/web/androidmedia.js). */
         @JavascriptInterface
-        fun media(json: String) = PlaybackService.update(applicationContext, json)
+        fun media(json: String) {
+            Log.i("BurdamixMedia", "state from the page: ${json.take(120)}")
+            PlaybackService.update(applicationContext, json)
+        }
+
+        /** Whether notifications are allowed, and the settings screen where the user can allow them (the player's controls need them). */
+        @JavascriptInterface
+        fun notificationsEnabled(): Boolean = Platform.notificationsEnabled()
+
+        @JavascriptInterface
+        fun openNotificationSettings(): Boolean = Platform.openNotificationSettings()
+
+        /** While the page has downloads or tag jobs running: keep the app alive in the background (KeepAliveService). */
+        @JavascriptInterface
+        fun keepAlive(on: Boolean, text: String) = KeepAliveService.set(applicationContext, on, text)
 
         /** The clipboard, which the page cannot read inside a WebView (the paste button), and writing to it. */
         @JavascriptInterface

@@ -99,3 +99,38 @@ def test_the_back_gesture_leaves_the_music_playing_and_only_closes_the_app_when_
     kotlin = read(KOTLIN, "WebActivity.kt")
     assert "moveTaskToBack(true)" in kotlin and "finish()" in kotlin and "PlaybackService.playing" in kotlin
     assert "enableOnBackInvokedCallback" in read(APP, "AndroidManifest.xml")      # targetSdk 34 still calls onBackPressed; keep it explicit
+
+
+def test_the_service_that_keeps_downloads_alive_is_declared_and_watches_python():
+    root = manifest()
+    permissions = {p.get(ANDROID_NS + "name") for p in root.findall("uses-permission")}
+    assert "android.permission.FOREGROUND_SERVICE_DATA_SYNC" in permissions
+    service = next(s for s in root.iter("service") if s.get(ANDROID_NS + "name") == ".KeepAliveService")
+    assert service.get(ANDROID_NS + "foregroundServiceType") == "dataSync" and service.get(ANDROID_NS + "exported") == "false"
+    kotlin = read(KOTLIN, "KeepAliveService.kt")
+    assert 'callAttr("busy")' in kotlin and "stopSelf()" in kotlin                    # it ends by itself when Python is idle
+    assert "keepAlive" in read(KOTLIN, "WebActivity.kt") and "host.keepAlive" in read(WEB, "androidmedia.js")
+
+
+def test_the_page_learns_about_the_players_state_even_if_the_webview_has_no_media_session():
+    """Android's WebView may not define navigator.mediaSession: the call to the notification must not sit behind that check."""
+    player = read(WEB, "player.js")
+    for name in ("setMediaSession", "syncMediaState"):
+        body = player.split(f"function {name}(", 1)[1].split("\n}\n", 1)[0]
+        guard = body.split("\n", 1)[1].split("\n", 1)[0] if name == "syncMediaState" else body
+        assert "notifyNative" in guard or "notifyNative" in body.split("mediaSession\" in navigator")[1].split("\n")[0], name
+    assert "const notifyNative" in player
+
+
+def test_the_page_warns_when_notifications_are_off_and_can_open_the_settings():
+    page, kotlin = read(WEB, "androidmedia.js"), read(KOTLIN, "Platform.kt")
+    assert "notificationsEnabled" in page and "openNotificationSettings" in page
+    assert "areNotificationsEnabled" in kotlin and "ACTION_APP_NOTIFICATION_SETTINGS" in kotlin
+
+
+def test_the_phone_has_no_needle_no_glass_blur_and_the_audio_asks_for_big_buffers():
+    css, player = read(WEB, "mobile.css"), read(WEB, "player.js")
+    assert re.search(r"\.android #tonearm[^{]*\{\s*display:\s*none", css)
+    assert re.search(r"\.android \*[^{]*\{[^}]*backdrop-filter:\s*none\s*!important", css)
+    assert 'latencyHint: "playback"' in player and "armShown()" in player
+    assert "pulsePhone" in player

@@ -31,3 +31,29 @@ def test_a_call_goes_through_the_bridge(monkeypatch):
     assert json.loads(host.call("ping", json.dumps(["x"]))) == {"ok": True, "value": {"eco": "x"}}
     assert json.loads(host.call("fail", "[]"))["error"]["name"] == "RuntimeError"
     assert json.loads(host.call("attach_window", "[1]"))["ok"] is False
+
+
+def test_the_service_that_keeps_the_app_alive_asks_whether_anything_is_still_running(monkeypatch):
+    class Tags:
+        _busy = False
+
+    class Api(FakeApi):
+        _busy = False
+
+        def __init__(self):
+            self._tags = Tags()
+
+    api = Api()
+    monkeypatch.setattr(host, "_api", api)
+    assert host.busy() is False
+    api._busy = True                       # a download
+    assert host.busy() is True
+    api._busy, api._tags._busy = False, True    # tag jobs
+    assert host.busy() is True
+    monkeypatch.setattr(host, "_api", None)     # before start(): nothing runs
+    assert host.busy() is False
+
+
+def test_the_service_may_not_know_the_tag_jobs(monkeypatch):
+    monkeypatch.setattr(host, "_api", FakeApi())     # an Api without _busy at all
+    assert host.busy() is False

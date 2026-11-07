@@ -69,6 +69,16 @@ Escrito **sin poder compilar** (este PC no tiene Android SDK): hay que compilar 
   para elegir una portada en Completar etiquetas.
 - `tests/test_android_static.py` comprueba por lectura que la página, Kotlin, el manifiesto y los recursos coinciden en nombres.
 
+**Segunda vuelta (8 nov 2026), a raíz de probar en un teléfono:**
+- **Notificación que no salía.** Hipótesis más probable: el WebView de Android no define `navigator.mediaSession` y el aviso a Kotlin
+  estaba detrás de esa comprobación (ahora no lo está). Además, si Android 13+ tiene las notificaciones desactivadas, la app lo dice
+  una vez con un botón «Activar» que abre los ajustes. Kotlin escribe en el log (`BurdamixMedia`) cada estado que recibe.
+- **Descargas que se paraban al salir de la app:** `KeepAliveService` (primer plano, tipo `dataSync`, con CPU y Wi-Fi despiertos). La página
+  solo avisa de que hay trabajo; el servicio mira a Python (`burdamix_host.busy()`) y se apaga solo cuando termina.
+- **Animación y tirones en el móvil:** sin aguja del tocadiscos; sin `backdrop-filter` en ningún sitio (se recalculaba con cada fotograma de
+  los halos); los halos empiezan apagados (se encienden con el interruptor del ecualizador); el bucle del espectro no corre si no hay nada que
+  dibujar; el `AudioContext` pide buffers grandes (`latencyHint: "playback"`).
+
 **Sin verificar:** compilar; el servicio y la notificación en un teléfono; que Android no pause el WebView con la pantalla apagada
 (si pasa, hay que llamar a `WebView.onResume`/mantener los temporizadores); la pantalla de bloqueo en cada fabricante.
 

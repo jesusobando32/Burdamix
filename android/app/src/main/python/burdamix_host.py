@@ -58,6 +58,15 @@ def start(files_dir, music_dir, ffmpeg, lib_dirs, share_dir=None):
     _api.open_folder = lambda path=None: False   # the app's folder is private to it; the page hides these buttons anyway
 
 
+def busy():
+    """Whether a download or a tag job is running. The service that keeps the app alive in the background asks this every few
+    seconds and stops itself when the answer is no, so it never outlives the work (even if the page is gone)."""
+    api = _api
+    if api is None:
+        return False
+    return bool(getattr(api, "_busy", False) or getattr(getattr(api, "_tags", None), "_busy", False))
+
+
 def methods():
     """The names the page may call, as JSON text."""
     return json.dumps(bridge.methods(_api, HIDDEN))

@@ -1,10 +1,12 @@
 package app.burdamix
 
+import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -20,6 +22,25 @@ object Platform {
     @JvmStatic
     fun openUrl(url: String): Boolean = try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (error: Exception) {
+        false
+    }
+
+    /** Whether the app may show notifications (Android 13 asks once, and the user may have said no). */
+    @JvmStatic
+    fun notificationsEnabled(): Boolean = try {
+        context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+    } catch (error: Exception) {
+        true
+    }
+
+    /** Opens the notification settings of this app, where the user can allow them. */
+    @JvmStatic
+    fun openNotificationSettings(): Boolean = try {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
         true
     } catch (error: Exception) {
         false
