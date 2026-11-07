@@ -101,3 +101,26 @@ def test_net_js_loads_before_app_js():
     with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
         html = f.read()
     assert html.index('src="net.js"') < html.index('src="app.js"')
+
+
+def test_a_folder_is_shown_short_on_the_phone_and_whole_on_the_desktop():
+    """The whole path of the phone (/storage/emulated/0/Android/data/...) never fits and says nothing: the phone shows the last two
+    folders; the desktop shows the path as it is. A Windows path and an Android path are both cut at their separators."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    with open(os.path.join(WEB, "app.js"), encoding="utf-8") as f:
+        line = next(l for l in f.read().splitlines() if l.startswith("const folderLabel = "))
+    paths = [r"C:\Users\Tú\Music\Burdamix\tracks" + "\\", "/storage/emulated/0/Android/data/app.burdamix/files/Music/Burdamix", "", None, "Solo"]
+    script = ("let phone = true; globalThis.matchMedia = () => ({ matches: phone });\n" + line +
+              "\nconst paths = %s;\nconst on = paths.map(folderLabel); phone = false; const off = paths.map(folderLabel);\nconsole.log(JSON.stringify([on, off]));" % json.dumps(paths))
+    done = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30, encoding="utf-8")
+    assert done.returncode == 0, done.stderr
+    phone, desktop = json.loads(done.stdout)
+    assert phone == ["Burdamix / tracks", "Music / Burdamix", "", "", "Solo"]
+    assert desktop == paths

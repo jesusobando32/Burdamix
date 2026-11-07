@@ -203,6 +203,39 @@
   .ms-sec h2, h2, .section { letter-spacing: 0; }
   .state { min-width: 0; }
 
+  /* no text may be wider than the phone: long names, paths and messages break wherever they must */
+  body { overflow-wrap: anywhere; }
+  .panel-body, .tx, .t, .card-t, .tmain, .lib-t, .q-t, .ms-item span, .setting > div:first-child, .list-head > div, .detail-info, .st-name { min-width: 0; }
+  code, pre, .copyline code { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
+
+  /* the bar with the buttons of a finished download ("Otra búsqueda", "Abrir carpeta", "Ver en la biblioteca"): the text first, the buttons under it */
+  .action-bar { flex-wrap: wrap; gap: 10px 12px; padding: 12px 14px; }
+  .action-bar .grow { flex: 1 1 150px; min-width: 0; }
+  .action-bar .btn { flex: 1 1 auto; padding: 0 14px; }
+  .player.full .pl-text b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+
+  /* rows of a search or an album to download: the state ("Buscando en YouTube…", "No se pudo") goes under the title, so the title keeps its room */
+  .tracks .row { grid-template-columns: 26px 46px minmax(0, 1fr); row-gap: 0; }
+  .tracks .row .state { grid-column: 3; justify-content: flex-start; text-align: left; min-width: 0; }
+  .tracks .row .state:not(:empty) { margin-top: 4px; }
+  /* the card of a file in "Completar etiquetas": its name first, the verdict under it when they do not fit together */
+  .thead { flex-wrap: wrap; row-gap: 6px; }
+  .tmain { flex: 1 1 150px; }
+
+  /* the last few that did not fit 320 px: artist and album cards, the buttons of the share box, the rows of the rules editor */
+  .cards { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+  .dialog .btn { white-space: normal; height: auto; min-height: 38px; padding-top: 8px; padding-bottom: 8px; line-height: 1.25; }
+  .sh-actions .btn { flex: 1 1 auto; }
+  .sm-rule { grid-template-columns: minmax(0, 1fr) 36px; }
+  .sm-rule .sm-field { grid-column: 1; } .sm-rule .sm-del { grid-column: 2; grid-row: 1; }
+  .sm-rule .sm-op, .sm-rule .sm-value { grid-column: 1 / 3; }
+  .sm-rule > * { min-width: 0; }
+  .sm-order label { flex: 1 1 100%; flex-direction: column; align-items: stretch; gap: 4px; }
+  .sm-order input, .sm-order select, .sm-match select { width: 100%; }
+  .sm-match { align-items: stretch; flex-direction: column; gap: 4px; }
+  .sm-rule select, .sm-rule input, .sm-rule .dd { width: 100%; min-width: 0; }
+
   /* things that were wider than the narrowest phones (320 px) */
   .picker-foot { flex-wrap: wrap; row-gap: 8px; }
   .picker-foot .muted { text-align: right; }

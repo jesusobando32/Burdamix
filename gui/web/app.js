@@ -7,6 +7,9 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+/* A folder as people say it. On the phone the whole path (/storage/emulated/0/Android/data/...) means nothing and never fits, so only its
+   last two folders are shown; the whole path stays in the tooltip. On the desktop it is shown as it is. */
+const folderLabel = path => matchMedia("(max-width: 760px)").matches ? String(path || "").split(/[\\/]+/).filter(Boolean).slice(-2).join(" / ") : path;
 
 let api = null;
 const S = { view: "home", state: {}, cur: null, running: false, poll: null, rows: {}, favCount: 200, stack: [] };
@@ -244,7 +247,7 @@ function renderResults() {
     ${d.back ? '<button class="linkish back" id="back">← Volver</button>' : ""}
     <div class="list-head">${cover}<div>
       <div class="kind">${KIND[d.kind]}</div><h2 title="${esc(title)}">${esc(title)}</h2>${d.subtitle ? `<div class="muted">${esc(d.subtitle)}</div>` : ""}
-      <div class="muted">${esc(meta)} · <span title="${esc(d.folder)}">se guarda en ${esc(d.folder)}</span></div></div></div>
+      <div class="muted">${esc(meta)} · <span title="${esc(d.folder)}">se guarda en ${esc(folderLabel(d.folder))}</span></div></div></div>
     <div id="summary-slot"></div>${notes}
     ${(d.cards || []).length ? `<div class="cards">${d.cards.map(cardHTML).join("")}</div>` : ""}
     ${(d.albums || []).length ? discographyHTML(d.albums) : ""}
@@ -453,7 +456,7 @@ function paintSummary() {
   else {
     const kind = s.failed.length || s.blocked || s.cancelled ? "warn" : "good";
     html = `<div class="panel with-ic ${kind}"><div class="panel-ic">${kind === "good" ? ICONS.check : ICONS.alert}</div><div class="panel-body"><h3>${s.cancelled ? "Descarga cancelada" : s.blocked ? "YouTube te está bloqueando" : s.failed.length ? "Listo, con algunos problemas" : "¡Listo!"}</h3>
-      <p>${plural(k.ok, "canción descargada", "canciones descargadas")} en <b>${esc(s.folder)}</b>.</p>`;
+      <p>${plural(k.ok, "canción descargada", "canciones descargadas")} en <b title="${esc(s.folder)}">${esc(folderLabel(s.folder))}</b>.</p>`;
     if (s.blocked) html += `<p class="muted">Paré para no empeorarlo. Espera un rato (a veces una hora) o cambia de red, y pega el mismo enlace: lo que ya se bajó se salta.</p>`;
     if (s.failed.length) {
       html += `<p>No se pudieron descargar ${s.failed.length}:</p><ul>${s.failed.map(f => `<li><b>${esc(f.artists)} – ${esc(f.title)}</b>: ${esc(f.reason)}</li>`).join("")}</ul>`;
@@ -610,7 +613,7 @@ let saveTimer = null;
 async function loadSettings() {
   const s = await call("get_settings");
   if (s.error) return;
-  $("#set-folder-path").textContent = s.effective_downloads_dir;
+  $("#set-folder-path").textContent = folderLabel(s.effective_downloads_dir); $("#set-folder-path").title = s.effective_downloads_dir;
   $("#set-workers").value = s.workers; $("#set-workers-out").textContent = s.workers;
   $("#set-interludes").checked = s.skip_interludes;
   const sel = $("#set-browser");
@@ -752,7 +755,7 @@ function init() {
     const chosen = await call("choose_folder");
     if (!chosen) return;
     const r = await call("save_settings", { downloads_dir: chosen });
-    if (r.ok) { $("#set-folder-path").textContent = r.effective_downloads_dir; toast("Carpeta cambiada."); }
+    if (r.ok) { $("#set-folder-path").textContent = folderLabel(r.effective_downloads_dir); $("#set-folder-path").title = r.effective_downloads_dir; toast("Carpeta cambiada."); }
   };
   $("#set-workers").oninput = () => { $("#set-workers-out").textContent = $("#set-workers").value; saveSettingsSoon(); };
   $("#set-interludes").onchange = saveSettingsSoon;
