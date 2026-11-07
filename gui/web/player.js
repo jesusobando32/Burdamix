@@ -244,6 +244,7 @@ function setShuffle(on) {
     if (kept.includes(id)) { P.queue = kept; P.pos = kept.indexOf(id); }
   }
   render(); renderQueue(); saveSoon();
+  if (window.__nativeMedia) window.__nativeMedia();      // the phone's notification shows the shuffle state
 }
 
 function cycleRepeat() {
@@ -515,6 +516,7 @@ function syncMediaState() {
   try {
     if (el && isFinite(el.duration) && el.duration > 0) navigator.mediaSession.setPositionState({ duration: el.duration, position: Math.min(el.currentTime, el.duration), playbackRate: el.playbackRate || 1 });
   } catch (e) { /* the browser refuses odd values while a song is loading */ }
+  if (window.__nativeMedia) window.__nativeMedia();      // inside the Android app: the notification and the lock screen (androidmedia.js)
 }
 
 /* ---------- colour from the cover ---------- */
@@ -1319,6 +1321,7 @@ function demoPlayerApi(art) {
     share_read: async text => (String(text).includes("BURDAMIX1:") ? { ok: true, name: "Para el gimnasio", by: "Ana", total: 8, ids: (tracks || []).slice(0, 5).map(t => t.id), missing: [["Drake", "One Dance"], ["Dua Lipa", "Levitating"], ["Feid", "Normal"]] } : { ok: false, error: "Eso no parece un código de Burdamix. Empieza por «BURDAMIX1:»." }),
     share_read_picture: async () => ({ ok: false, error: "Esa imagen no es una tarjeta de Burdamix." }),
     share_read_file: async () => ({ ok: false, cancelled: true }),
+    share_card_file: async () => ({ ok: true, path: "/cache/share/Noche.png" }),
     share_card_save: async () => ({ ok: true, path: "C:\Users\demo\tarjeta.png" }),
     playlist_export_m3u: async () => ({ ok: true, path: "C:\Users\demo\lista.m3u8" }),
     smart_save: async (def, id) => {

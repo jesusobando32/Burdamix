@@ -23,9 +23,12 @@ def _open_url(url, *ignored):
     return bool(jclass("app.burdamix.Platform").openUrl(url))
 
 
-def start(files_dir, music_dir, ffmpeg, lib_dirs):
-    """Prepares the environment and creates the Api. Must be called before the page loads."""
+def start(files_dir, music_dir, ffmpeg, lib_dirs, share_dir=None):
+    """Prepares the environment and creates the Api. Must be called before the page loads.
+    `share_dir`: the folder of the app's cache that Android's file provider may hand to other apps (the cards of shared playlists)."""
     global _api
+    if share_dir:
+        os.environ["BURDAMIX_SHARE_DIR"] = share_dir          # gui.backend.Api.share_card_file writes there
     os.environ["XDG_CONFIG_HOME"] = files_dir                 # const.data_dir() -> <files>/Burdamix
     os.environ["BURDAMIX_FFMPEG"] = ffmpeg                    # utils.ffmpeg_command()
     os.environ["LD_LIBRARY_PATH"] = lib_dirs + (":" + os.environ["LD_LIBRARY_PATH"] if os.environ.get("LD_LIBRARY_PATH") else "")

@@ -144,8 +144,11 @@
 
   /* ---------- show(): fill the two phone-only pages and light the tab ---------- */
   const plainShow = window.show;
+  const cameFrom = {};                       // the screen each one was opened from, for the way back
   window.show = view => {
+    const before = S.view;
     plainShow(view);
+    if (view !== before) cameFrom[view] = before;
     if (view === "start") renderStart();
     if (view === "more") renderMore();
     paintTabs();
@@ -231,6 +234,34 @@
   // a panel or the lyrics opening changes how much room the controls leave
   new MutationObserver(() => { if (isFull()) fit(); }).observe(q("#lyrics"), { attributes: true, attributeFilter: ["class"] });
   new MutationObserver(() => { if (!player.classList.contains("hidden")) return; closeFull(true); }).observe(player, { attributes: true, attributeFilter: ["class"] });
+
+  /* ---------- the way back (the phone's back gesture, see WebActivity.onBackPressed) ---------- */
+  // One step per call, from the top of the stack of things that can be open down to the start page. It answers true when it did
+  // something and false when there is nothing left to go back to: only then the app lets the phone leave it.
+  const shown = id => { const e = document.getElementById(id); return !!e && !e.classList.contains("hidden"); };
+  const startView = () => (mq.matches ? "start" : "home");
+  // library, download and "More" go back to the start; a page opened from "More" or from the start goes back to where it was opened
+  const backTarget = view => ((view === "stats" || view === "favorites" || view === "tags" || view === "settings" || view === "tutorial" || view === "faq")
+    && (cameFrom[view] === "more" || cameFrom[view] === "start") ? cameFrom[view] : startView());
+  function back() {
+    if (document.getElementById("ctx")) { closeMenu(); return true; }
+    if (shown("dialog")) { q("#dialog-no").click(); return true; }
+    for (const [box, cancel] of [["smart-dialog", "#sm-cancel"], ["share-dialog", "#sh-close"], ["import-dialog", "#im-close"]]) {
+      if (shown(box)) { q(cancel).click(); return true; }
+    }
+    if (LY.open) { if (LY.editing) q("#ly-cancel").click(); else if (LY.picking) stopPicking(); else closeLyrics(); return true; }
+    if (shown("pl-queue-panel") || shown("pl-eq-panel")) { closePanels(); return true; }
+    if (isFull()) { closeFull(); return true; }
+    if (app.classList.contains("sidebar-open") && innerWidth <= 760) { setSidebar(false); return true; }
+    if (S.view === "library" && libraryBack()) return true;                          // an album or a playlist open, or a search typed
+    if (S.view === "home") {
+      if (S.stack.length && !S.running) { goBack(); return true; }                      // an album opened from the results
+      if (S.cur && !S.running) { clearSearch(); return true; }                          // the results of a search or a link
+    }
+    if (S.view !== startView()) { show(backTarget(S.view)); return true; }
+    return false;
+  }
+  window.burdamixBack = back;
 
   /* ---------- crossing the width of the phone layout ---------- */
   const hint = q(".crate-hint"), hintText = hint ? hint.textContent : "";

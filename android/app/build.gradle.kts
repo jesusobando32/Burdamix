@@ -81,6 +81,7 @@ chaquopy {
 }
 
 dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")   // FileProvider: the share sheet gets the card of a playlist through it
     implementation("androidx.webkit:webkit:1.12.1")   // WebViewAssetLoader: serves gui/web from https://appassets.androidplatform.net
     // yt-dlp and ffmpeg for Android (JunkFood02's maintained fork of yausername/youtubedl-android), from Maven Central.
     implementation("io.github.junkfood02.youtubedl-android:library:0.16.0")

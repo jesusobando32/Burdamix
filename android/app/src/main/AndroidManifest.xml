@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The player: a foreground service of the "media playback" kind, its notification (Android 13 asks), and the CPU awake with the screen off. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- PyApplication starts Chaquopy's Python once per process. -->
     <application
@@ -11,18 +16,36 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Burdamix"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:enableOnBackInvokedCallback="false"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <!-- The app: gui/web in a WebView with the Python bridge. -->
+        <!-- singleTask: tapping the notification brings the running app back instead of starting a second one (and a second Python). -->
         <activity
             android:name=".WebActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The player's notification, lock screen controls and headset buttons (PlaybackService.kt). It plays nothing itself. -->
+        <service
+            android:name=".PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Hands the cards of shared playlists (only the cache folder "share") to the share sheet. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- The phone test of step one. No icon of its own: adb shell am start -n app.burdamix/.MainActivity -->
         <activity

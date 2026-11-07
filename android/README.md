@@ -50,6 +50,28 @@ puede usarse sin el módulo `library`, o si conviene empaquetar ffmpeg por otro 
 | yt-dlp | Se actualiza solo si tiene más de 7 días, y con botón manual. |
 | Reemplazos de lo exclusivo de Windows | Explorador → app Archivos; Papelera de Reciclaje → papelera propia de 30 días; arrastrar archivos → selector del sistema; compartir → hoja de compartir de Android. |
 
+## Gesto atrás, notificación del reproductor y compartir (7 nov 2026)
+
+Escrito **sin poder compilar** (este PC no tiene Android SDK): hay que compilar y probar en el teléfono antes de fiarse.
+
+- **Gesto atrás.** `WebActivity.onBackPressed` le pregunta a la página (`window.burdamixBack()`, en `gui/web/mobile.js`) y esta cierra lo
+  que esté encima: menú, diálogo, letra, cola, reproductor grande, álbum o playlist abierto... Después vuelve al **Inicio**; desde
+  Estadísticas, Configuración, etc. vuelve a «Más» o al Inicio según de dónde se abrieron. Solo en el Inicio sin nada abierto sale de
+  la app: con música sonando la manda **al segundo plano** (sigue sonando, con su notificación) y si no suena la cierra.
+- **Notificación del reproductor** (`PlaybackService.kt`): servicio en primer plano de tipo `mediaPlayback` con `MediaSession` y
+  `Notification.MediaStyle` (solo APIs del sistema, sin librerías nuevas). Muestra portada grande, título, artista y álbum; botones
+  anterior, pausa/reproducir, siguiente y aleatorio; es pública, así que se ve en la pantalla de bloqueo. La página manda el estado con
+  `BurdamixAndroid.media(json)` (`gui/web/androidmedia.js`) y los botones vuelven como palabras a `window.__burdamixMedia`. También
+  pausa al llegar una llamada u otro reproductor (foco de audio), al desenchufar los auriculares, y mantiene la CPU despierta con la
+  pantalla apagada. Android 13+ pide permiso de notificaciones al abrir la app.
+- **Compartir y elegir archivos:** la hoja de compartir de Android (`Platform.shareText/shareFile`, con `FileProvider` y la carpeta
+  `cache/share`) en lugar de «Guardar como»; el selector del sistema (`onShowFileChooser`) para importar la tarjeta de una playlist y
+  para elegir una portada en Completar etiquetas.
+- `tests/test_android_static.py` comprueba por lectura que la página, Kotlin, el manifiesto y los recursos coinciden en nombres.
+
+**Sin verificar:** compilar; el servicio y la notificación en un teléfono; que Android no pause el WebView con la pantalla apagada
+(si pasa, hay que llamar a `WebView.onResume`/mantener los temporizadores); la pantalla de bloqueo en cada fabricante.
+
 ## Etapas
 
 1. **Prueba del teléfono** (esta). Si falla algo, se sabe en qué etapa.
