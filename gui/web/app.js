@@ -767,7 +767,13 @@ function init() {
   $("#creds").onsubmit = saveCreds;
   $("#do-login").onclick = doLogin;
 
-  $("#set-folder-open").onclick = () => call("open_folder");
+  $("#set-folder-open").onclick = async () => {
+    const opened = await call("open_folder");
+    if (opened === false && onAndroid()) {
+      const ask = window.BurdamixAndroid && window.BurdamixAndroid.requestStorageAccess;
+      toast("Tus canciones están dentro de la app y Android no deja abrir esa carpeta.", false, ask ? { label: "Mover a Música", run: () => window.BurdamixAndroid.requestStorageAccess() } : undefined);
+    }
+  };
   $("#set-folder-change").onclick = async () => {
     const chosen = await call("choose_folder");
     if (!chosen) return;

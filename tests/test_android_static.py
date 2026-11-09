@@ -141,3 +141,19 @@ def test_the_service_does_not_ask_for_audio_focus_because_the_webview_already_do
     service = read(KOTLIN, "PlaybackService.kt")
     assert "requestAudioFocus" not in service and "AudioFocusRequest" not in service
     assert "ACTION_AUDIO_BECOMING_NOISY" in service                        # unplugging the headphones still pauses
+
+
+def test_the_songs_live_in_the_shared_music_folder_and_the_permission_for_it_is_declared_and_asked():
+    permissions = {p.get(ANDROID_NS + "name") for p in manifest().findall("uses-permission")}
+    assert "android.permission.MANAGE_EXTERNAL_STORAGE" in permissions
+    storage = read(KOTLIN, "Storage.kt")
+    assert "DIRECTORY_MUSIC" in storage and "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION" in storage
+    activity = read(KOTLIN, "WebActivity.kt")
+    assert "Storage.canWrite" in activity and "Storage.privateMusic" in activity       # refusing the permission keeps the private folder
+    # the python host moves what the private folder still holds (the page's likes and playlists follow the files)
+    assert "old_music_dir" in read(APP, "python", "burdamix_host.py") and "old.path" in activity
+
+
+def test_the_settings_button_that_opens_the_folder_reaches_the_file_manager_through_the_platform():
+    assert "fun openFolder" in read(KOTLIN, "Platform.kt") and "Platform.openFolder" in read(APP, "python", "burdamix_host.py")
+    assert "#set-folder-open" not in re.search(r"\.android #set-folder[^{]*\{", read(WEB, "mobile.css")).group(0)

@@ -23,9 +23,40 @@ def _open_url(url, *ignored):
     return bool(jclass("app.burdamix.Platform").openUrl(url))
 
 
-def start(files_dir, music_dir, ffmpeg, lib_dirs, share_dir=None):
+def migrate_music(old_dir, new_dir, renamed=None):
+    """Moves the songs of the app's private folder to the public Music/Burdamix (the user can see it in any file manager).
+    `renamed(old_path, new_path)` is told of every song moved: likes and playlists point at paths. A song that already exists in the
+    new folder is never overwritten (it stays where it was). Returns how many songs moved."""
+    if not old_dir or not os.path.isdir(old_dir) or os.path.abspath(old_dir) == os.path.abspath(new_dir):
+        return 0
+    moved = 0
+    for root, _, names in os.walk(old_dir):
+        for name in names:
+            source = os.path.join(root, name)
+            target = os.path.join(new_dir, os.path.relpath(source, old_dir))
+            if os.path.exists(target):
+                continue
+            try:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.move(source, target)
+            except OSError:
+                continue                                # the song stays in the old folder: the next launch tries again
+            moved += 1
+            if renamed:
+                renamed(source, target)
+    for root, folders, names in os.walk(old_dir, topdown=False):       # the empty folders left behind
+        if root != old_dir and not os.listdir(root):
+            try:
+                os.rmdir(root)
+            except OSError:
+                pass
+    return moved
+
+
+def start(files_dir, music_dir, ffmpeg, lib_dirs, share_dir=None, old_music_dir=None):
     """Prepares the environment and creates the Api. Must be called before the page loads.
-    `share_dir`: the folder of the app's cache that Android's file provider may hand to other apps (the cards of shared playlists)."""
+    `share_dir`: the folder of the app's cache that Android's file provider may hand to other apps (the cards of shared playlists).
+    `old_music_dir`: the private folder the songs used to live in; whatever is still there moves to `music_dir`."""
     global _api
     if share_dir:
         os.environ["BURDAMIX_SHARE_DIR"] = share_dir          # gui.backend.Api.share_card_file writes there
@@ -55,7 +86,15 @@ def start(files_dir, music_dir, ffmpeg, lib_dirs, share_dir=None):
 
     _api = Api()
     _api._trash = move_to_trash
-    _api.open_folder = lambda path=None: False   # the app's folder is private to it; the page hides these buttons anyway
+    if old_music_dir:
+        migrate_music(old_music_dir, music_dir, _api._collections.renamed)
+
+    def open_folder(path=None):
+        """The system's file manager at the songs' folder (Platform.openFolder); False when no app can show it."""
+        from java import jclass
+        return bool(jclass("app.burdamix.Platform").openFolder(path or _api._downloads_dir()))
+
+    _api.open_folder = open_folder
 
 
 def busy():

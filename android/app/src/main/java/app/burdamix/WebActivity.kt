@@ -3,6 +3,7 @@ package app.burdamix
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -10,7 +11,6 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
@@ -22,11 +22,13 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.webkit.WebViewAssetLoader
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.yausername.ffmpeg.FFmpeg
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -39,8 +41,9 @@ class WebActivity : Activity() {
     private lateinit var host: PyObject
     private val pool = Executors.newCachedThreadPool()
     private var fileChooser: ValueCallback<Array<Uri>>? = null     // the page's <input type="file"> waiting for the phone's picker
+    private var booted = false              // Python started and the page loading (after the folder of the songs is decided)
+    private var waitingStorage = false      // the user is in the system screen that gives access to the shared storage
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
@@ -48,10 +51,58 @@ class WebActivity : Activity() {
         host = Python.getInstance().getModule("burdamix_host")
         // The ffmpeg is the executable the youtubedl-android package leaves in nativeLibraryDir; its libraries are unpacked on init.
         FFmpeg.getInstance().init(application)
+        chooseMusicFolder()
+    }
+
+    /** Music/Burdamix when the app may write there; otherwise ask once (the user may refuse: the private folder then). */
+    private fun chooseMusicFolder() {
+        val shared = Storage.sharedMusic()
+        val prefs = getSharedPreferences("burdamix", MODE_PRIVATE)
+        when {
+            Storage.canWrite(shared) -> boot(shared)
+            prefs.getBoolean(PREF_PRIVATE, false) -> boot(Storage.privateMusic(this))
+            else -> AlertDialog.Builder(this)
+                .setTitle("Guardar la música en tu teléfono")
+                .setMessage("Burdamix puede guardar las canciones en Música/Burdamix para que las veas desde cualquier app de archivos o reproductor. Android lo permite con «Acceso a todos los archivos»; la app solo usa esa carpeta. Si no, quedan dentro de la app, donde no se pueden abrir.")
+                .setCancelable(false)
+                .setPositiveButton("Dar permiso") { _, _ -> waitingStorage = true; Storage.requestAccess(this, REQUEST_STORAGE) }
+                .setNegativeButton("Ahora no") { _, _ -> prefs.edit().putBoolean(PREF_PRIVATE, true).apply(); boot(Storage.privateMusic(this)) }
+                .show()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (waitingStorage) {                        // back from the system screen of the permission
+            waitingStorage = false
+            if (!booted) {
+                if (Storage.canWrite(Storage.sharedMusic())) boot(Storage.sharedMusic()) else chooseMusicFolder()
+            } else if (Storage.canWrite(Storage.sharedMusic())) {
+                // Python already runs with the private folder: the app restarts to move the songs (migrate_music) at the next launch.
+                Toast.makeText(this, "Listo. Abre Burdamix otra vez y tus canciones pasarán a Música/Burdamix.", Toast.LENGTH_LONG).show()
+                finishAndRemoveTask()
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_STORAGE && !booted) {
+            waitingStorage = false
+            if (Storage.canWrite(Storage.sharedMusic())) boot(Storage.sharedMusic()) else chooseMusicFolder()
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun boot(music: File) {
+        if (booted) return
+        booted = true
         val ffmpegLibs = noBackupFilesDir.resolve("youtubedl-android/packages/ffmpeg/usr/lib").path
-        val music = (getExternalFilesDir(Environment.DIRECTORY_MUSIC) ?: filesDir).resolve("Burdamix")
+        // What the app saved in its private folder before moves to the shared one (nothing to do when both are the same).
+        val old = Storage.privateMusic(this)
         host.callAttr("start", filesDir.path, music.path, "${applicationInfo.nativeLibraryDir}/libffmpeg.so",
-            "${applicationInfo.nativeLibraryDir}:$ffmpegLibs", cacheDir.resolve("share").path)
+            "${applicationInfo.nativeLibraryDir}:$ffmpegLibs", cacheDir.resolve("share").path, old.path)
 
         // Android 13 and later hide notifications until the user allows them: the player's controls need it.
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -118,7 +169,7 @@ class WebActivity : Activity() {
         PlaybackService.onAction = null
         PlaybackService.stop(applicationContext)      // the page is going away: so does the music, and its notification
         pool.shutdownNow()
-        web.destroy()
+        if (::web.isInitialized) web.destroy()
         super.onDestroy()
     }
 
@@ -127,6 +178,7 @@ class WebActivity : Activity() {
         // One step back inside the app (close a menu, leave an album, go to the start page...). Only when there is nothing left to go
         // back to does the gesture leave the app: with music playing it goes to the background (the music goes on, with its
         // notification); otherwise the app closes.
+        if (!::web.isInitialized) { finish(); return }
         web.evaluateJavascript("(function(){ return !!(window.burdamixBack && window.burdamixBack()); })()") { consumed ->
             if (consumed != "true") {
                 if (PlaybackService.playing) moveTaskToBack(true) else finish()
@@ -147,6 +199,8 @@ class WebActivity : Activity() {
     private companion object {
         const val REQUEST_FILE = 41
         const val REQUEST_NOTIFICATIONS = 42
+        const val REQUEST_STORAGE = 43
+        const val PREF_PRIVATE = "private_music"
     }
 
     /** The only door between the page and Python (and the phone). Every call comes from a WebView thread, never the UI thread. */
@@ -167,6 +221,14 @@ class WebActivity : Activity() {
 
         @JavascriptInterface
         fun openNotificationSettings(): Boolean = Platform.openNotificationSettings()
+
+        /** The songs are in the app's private folder (the user said "not now"): opens the system screen where the permission is given. */
+        @JavascriptInterface
+        fun requestStorageAccess() = runOnUiThread {
+            getSharedPreferences("burdamix", MODE_PRIVATE).edit().remove(PREF_PRIVATE).apply()
+            waitingStorage = true
+            Storage.requestAccess(this@WebActivity, REQUEST_STORAGE)
+        }
 
         /** While the page has downloads or tag jobs running: keep the app alive in the background (KeepAliveService). */
         @JavascriptInterface

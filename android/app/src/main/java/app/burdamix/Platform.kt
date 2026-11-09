@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
@@ -42,6 +44,24 @@ object Platform {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
         true
+    } catch (error: Exception) {
+        false
+    }
+
+    /**
+     * Shows a folder of the phone's storage in the system's file manager. Only the shared storage can be opened (Music/Burdamix):
+     * Android does not let a file manager into Android/data, where the app's private folder is. False in that case, or when no app can show it.
+     */
+    @JvmStatic
+    fun openFolder(path: String): Boolean = try {
+        val root = Environment.getExternalStorageDirectory().path
+        if (!path.startsWith("$root/") && path != root || path.startsWith("$root/Android/")) {
+            false
+        } else {
+            val uri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:" + path.removePrefix(root).trim('/'))
+            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }
     } catch (error: Exception) {
         false
     }
