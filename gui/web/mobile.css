@@ -294,7 +294,7 @@
 
 /* ---------- the phone: lighter and smoother (mobile.css loads last) ---------- */
 /* No needle: it moved in jerks and the record already shows what is playing. */
-.android #tonearm, .android .tonearm { display: none; }
+.android #tonearm, .android .tonearm, .android #app#app.mfull .tonearm { display: none; }
 /* Blurring what is behind a panel must be redone every time something behind changes: on a phone, with the halos moving, that costs
    more than it gives. The panels keep their colour; only the glass is gone. */
 .android *, .android *::before, .android *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
