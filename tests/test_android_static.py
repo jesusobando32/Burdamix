@@ -70,7 +70,7 @@ def test_the_words_kotlin_sends_to_the_page_are_understood_by_the_page():
 
 
 def test_the_page_sends_the_player_state_that_the_service_reads():
-    sent = set(re.findall(r"\b(has|title|artist|album|cover|playing|position|duration|shuffle):", read(WEB, "androidmedia.js")))
+    sent = set(re.findall(r"\b(has|title|artist|album|cover|playing|position|duration|shuffle|userPaused):", read(WEB, "androidmedia.js")))
     read_by_service = set(re.findall(r'opt\w+\("(\w+)"', read(KOTLIN, "PlaybackService.kt")))
     assert read_by_service <= sent, read_by_service - sent
     assert "window.__nativeMedia" in read(WEB, "player.js")
@@ -80,7 +80,7 @@ def test_every_drawable_and_resource_the_code_names_exists_and_is_valid_xml():
     named = set()
     for name in ("PlaybackService.kt", "WebActivity.kt", "Platform.kt"):
         named |= set(re.findall(r"R\.drawable\.(\w+)", read(KOTLIN, name)))
-    assert {"ic_stat_burdamix", "ic_previous", "ic_next", "ic_play", "ic_pause", "ic_shuffle"} <= named
+    assert {"ic_stat_burdamix", "ic_previous", "ic_next", "ic_play", "ic_pause", "ic_shuffle_on", "ic_shuffle_off"} <= named
     for drawable in named:
         path = os.path.join(APP, "res", "drawable", drawable + ".xml")
         assert os.path.isfile(path), drawable
@@ -133,7 +133,7 @@ def test_the_phone_has_no_needle_no_glass_blur_and_the_audio_asks_for_big_buffer
     assert re.search(r"\.android #tonearm[^{]*\{\s*display:\s*none", css)
     assert re.search(r"\.android \*[^{]*\{[^}]*backdrop-filter:\s*none\s*!important", css)
     assert 'latencyHint: "playback"' in player and "armShown()" in player
-    assert "pulsePhone" in player
+    assert "pulseMobile" in player
 
 
 def test_the_service_does_not_ask_for_audio_focus_because_the_webview_already_does():
@@ -188,3 +188,42 @@ def test_a_playlist_code_read_by_the_camera_is_not_shown_in_the_import_window():
     share = read(WEB, "share.js")
     assert "viaScan" in share and '$("#im-drop").hidden = viaScan' in share
     assert ".sh-drop[hidden]" in read(WEB, "crate.css")        # without this rule display:flex would keep the box visible
+
+
+def test_the_interface_colour_can_be_chosen_from_sixteen_tones_of_the_same_soft_style():
+    theme = read(WEB, "theme.js")
+    hues = re.findall(r'\["([^"]+)", (\d+)\]', theme)
+    assert len(hues) == 16 and len({name for name, _ in hues}) == 16 and "Lima" in dict(hues)
+    assert {"Rojo", "Azul", "Morado", "Amarillo", "Verde"} <= {name for name, _ in hues}          # the ones the user asked for by name
+    assert "#b5ef4a" in theme and "localStorage" in theme                                         # the lime stays the default and the choice is remembered
+    html = read(WEB, "index.html")
+    assert 'id="accent-swatches"' in html
+    assert html.index('src="theme.js"') < html.index('src="android.js"')                          # the colour is applied before anything is drawn
+    assert "--pc: var(--accent)" in read(WEB, "player.css")                                        # the controls without a cover colour follow the choice
+
+
+def test_a_call_pauses_the_music_and_the_end_of_the_call_resumes_it():
+    service = read(KOTLIN, "PlaybackService.kt")
+    # the WebView's own audio focus did not pause the song on a call (it kept running, muted by Android): the service watches the audio mode
+    assert "AudioManager.MODE_NORMAL" in service and "pausedByCall" in service and 'act("pause")' in service and 'act("play")' in service
+    assert "removeCallbacks(watchCalls)" in service                   # the watch stops with the service: nothing keeps polling
+
+
+def test_the_shuffle_button_of_the_notification_shows_whether_it_is_on():
+    service = read(KOTLIN, "PlaybackService.kt")
+    assert "R.drawable.ic_shuffle_on" in service and "R.drawable.ic_shuffle_off" in service and "R.drawable.ic_shuffle," not in service
+    assert "Aleatorio activado" in service and "Aleatorio desactivado" in service          # and says it, since a small icon is easy to miss
+
+
+def test_a_pause_that_the_user_did_not_ask_for_is_undone_when_the_other_apps_sound_is_over():
+    service, media, player = read(KOTLIN, "PlaybackService.kt"), read(WEB, "androidmedia.js"), read(WEB, "player.js")
+    assert "userPaused" in media and "P.askedAt" in player and "askedAt = Date.now()" in re.search(r"function toggle\(\) \{.*?\n\}", player, re.S).group(0)
+    # Android pauses the page when another app (a video, Reels) takes the audio; the service gives it back when nothing else plays
+    assert "autoPaused" in service and "isMusicActive" in service and "userPaused" in service
+    assert "AUTO_RESUME_MS" in service                                  # and only for a while: the user may have moved on for good
+
+
+def test_the_line_that_plays_is_kept_in_the_middle_of_the_lyrics_box():
+    lyrics, css = read(WEB, "lyrics.js"), read(WEB, "player.css")
+    assert "clientHeight / 2" in lyrics and ".38" not in lyrics               # not 38 % from the top any more
+    assert re.search(r"\.ly-body \{ position: relative;", css)               # offsetTop is measured from the box, not from the whole window

@@ -111,7 +111,11 @@ function tickLyrics(jump) {
   LY.at = at;
   const el = lines[Math.max(at, 0)], box = $("#ly-body");
   if (!el || (Date.now() - LY.userScrolled < 3000 && jump !== true)) return;   // the reader is looking around: do not fight them
-  const top = el.offsetTop - box.clientHeight * .38 + el.offsetHeight / 2;
+  // the line that plays goes in the middle of the box: with the box as offsetParent (position: relative) offsetTop is measured from its top,
+  // and the padding above and below is half the box so even the first and the last lines can reach the middle
+  const half = Math.round(box.clientHeight / 2);
+  $$(".ly-pad", box).forEach(pad => { if (pad.style.height !== half + "px") pad.style.height = half + "px"; });
+  const top = el.offsetTop - half + el.offsetHeight / 2;
   box.scrollTo({ top, behavior: jump === true ? "auto" : "smooth" });
 }
 

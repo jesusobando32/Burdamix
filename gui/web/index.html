@@ -279,6 +279,11 @@
           <div class="btn-row"><button class="btn" id="set-folder-open">Abrir</button><button class="btn primary" id="set-folder-change">Cambiar…</button></div>
         </div>
 
+        <div class="card setting setting-colour">
+          <div><h2 class="h3">Color de la interfaz</h2><p class="muted">El verde lima es el de siempre. Elige otro tono suave para los botones, las pestañas y la letra que suena.</p></div>
+          <div class="swatches" id="accent-swatches" role="radiogroup" aria-label="Color de la interfaz"></div>
+        </div>
+
         <div class="card setting">
           <div><h2 class="h3">Canciones a la vez</h2><p class="muted">Más es más rápido, pero YouTube puede bloquearte si pides demasiadas. 5 va bien.</p></div>
           <div class="slider"><input id="set-workers" type="range" min="1" max="8" step="1"><output id="set-workers-out">5</output></div>
@@ -414,6 +419,7 @@
 <div id="share-dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-label="Compartir playlist"></div>
 <div id="import-dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-label="Importar playlist"></div>
 <div id="toasts" aria-live="polite"></div>
+<script src="theme.js"></script>
 <script src="android.js"></script>
 <script src="fx.js"></script>
 <script src="net.js"></script>

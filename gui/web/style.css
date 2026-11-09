@@ -474,13 +474,13 @@ button.card:active { transform: scale(.985); }
 .bg .b2 { width: 820px; height: 820px; right: -240px; top: 10%; background: radial-gradient(closest-side, rgba(122, 60, 255, .36), transparent); animation-duration: 31s; }
 .bg .b3 { width: 900px; height: 900px; left: 30%; bottom: -520px; background: radial-gradient(closest-side, rgba(255, 79, 139, .26), transparent); animation-duration: 37s; }
 @keyframes drift { to { transform: translate3d(140px, 90px, 0) scale(1.22); } }
-.bg .glow { position: absolute; inset: 0; background: radial-gradient(520px circle at var(--mx, 60%) var(--my, 30%), rgba(181, 239, 74, .09), transparent 62%); animation: none; border-radius: 0; }
+.bg .glow { position: absolute; inset: 0; background: radial-gradient(520px circle at var(--mx, 60%) var(--my, 30%), color-mix(in srgb, var(--accent) 9%, transparent), transparent 62%); animation: none; border-radius: 0; }
 #app.paused .bg i, #app.paused .vinyl { animation-play-state: paused; }
 
 .vinyl { position: absolute; z-index: 0; right: -90px; top: 28px; width: 360px; height: 360px; border-radius: 50%; pointer-events: none;
   background: repeating-radial-gradient(circle at center, #101210 0 2px, #1a1d1a 3px 4px); box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
   animation: vinyl-spin 10s linear infinite; transition: opacity var(--t-slow) var(--ease-out); }
-.vinyl::before { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: conic-gradient(#b5ef4a, #3aa220, #7a3cff, #b5ef4a); }
+.vinyl::before { content: ""; position: absolute; inset: 34%; border-radius: 50%; background: conic-gradient(var(--accent), #3aa220, #7a3cff, var(--accent)); }
 .vinyl::after { content: ""; position: absolute; inset: 48.5%; border-radius: 50%; background: var(--bg); }
 @keyframes vinyl-spin { to { transform: rotate(360deg); } }
 #app[data-view="home"]:has(#home-hero.compact) .vinyl { opacity: 0; animation-play-state: paused; }
@@ -626,3 +626,14 @@ button.card:focus-visible .disc { transform: translateX(22%) rotate(70deg); }
 @media (hover: hover) and (pointer: fine) { .st-list li[data-id]:hover { background: var(--surface-2); } }
 @media (max-width: 760px) { .st-bars { height: 120px; } }
 @media (prefers-reduced-motion: reduce) { .st-bar i { transition: none; } }
+
+/* ---------- the colour of the interface (Settings): sixteen round tones ---------- */
+/* Fixed sizes, not aspect-ratio with a width in %: a flex parent measured the card without the circles and squeezed it over the next one. */
+.setting-colour, .setting.setting-colour { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 14px; flex: none; }   /* .setting wraps on a phone: in a column that stretched the card */
+.swatches { display: grid; grid-template-columns: repeat(4, 48px); justify-content: space-between; gap: 16px 14px; }   /* 4 x 4 on a phone */
+.swatch { width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--sw); padding: 0; cursor: pointer;
+  box-shadow: 0 0 0 2px var(--surface), 0 2px 8px rgba(0, 0, 0, .35); transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) ease; }
+.swatch:active { transform: scale(.92); }
+.swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--sw), 0 2px 8px rgba(0, 0, 0, .35); }
+.swatch:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+@media (min-width: 761px) { .swatches { grid-template-columns: repeat(8, 40px); justify-content: start; gap: 12px; } .swatch { width: 40px; height: 40px; } }

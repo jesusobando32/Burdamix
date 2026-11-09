@@ -198,6 +198,7 @@ function previous() {
 
 function toggle() {
   if (!current()) return;
+  P.askedAt = Date.now();     // androidmedia.js tells a pause the user asked for from one that Android did (another app took the audio)
   buildAudio();
   if (deck().el.paused) {
     if (!deck().el.getAttribute("src")) { cueTrack(current(), P.resume || 0); P.resume = 0; }   // it was unloaded to be tagged
@@ -531,11 +532,11 @@ function syncMediaState() {
 }
 
 /* ---------- colour from the cover ---------- */
-const DEFAULT_ACCENT = "#b5ef4a";
+const defaultAccent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#b5ef4a";
 function extractAccent(track) {
   const style = $("#app").style;
   const apply = tones => {
-    if (!tones) { P.accent = DEFAULT_ACCENT; ["--pc", "--blob1", "--blob2", "--blob3"].forEach(k => style.removeProperty(k)); return; }
+    if (!tones) { P.accent = defaultAccent(); ["--pc", "--blob1", "--blob2", "--blob3"].forEach(k => style.removeProperty(k)); return; }
     P.accent = tones.accent;
     style.setProperty("--pc", tones.accent);
     style.setProperty("--blob1", tones.b1); style.setProperty("--blob2", tones.b2); style.setProperty("--blob3", tones.b3);
@@ -638,7 +639,7 @@ function drawSmall(data, live) {
   const { lv, moving } = easeLevels(viz.store, "small", n, data, live);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = P.accent || DEFAULT_ACCENT;
+  ctx.fillStyle = P.accent || defaultAccent();
   for (let i = 0; i < n; i++) {
     const bar = Math.max(2 * dpr, lv[i] * h);
     ctx.globalAlpha = .4 + lv[i] * .6;
@@ -896,7 +897,7 @@ function paintCrossfade() {
 function snapshot() {
   const el = P.decks.length ? deck().el : null;
   return {
-    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, pulsePhone: P.pulseOn, tab: L.tab,
+    volume: P.volume, muted: P.muted, xf: P.xf, shuffle: P.shuffle, repeat: P.repeat, pulse: P.pulseOn, pulseMobile: P.pulseOn, tab: L.tab,
     eq: { on: P.eq.on, bands: P.eq.bands, preset: P.eq.preset },
     custom: P.custom.map(c => ({ id: c.id, name: c.name, bands: c.bands })),
     queue: P.queue.slice(0, MAX_SAVED_QUEUE), pos: P.pos, track: P.queue[P.pos] || "", recent: P.recent,
@@ -915,9 +916,10 @@ function restore(saved) {
   P.volume = num(saved.volume, 0, 1, .8); P.muted = !!saved.muted; P.xf = Math.round(num(saved.xf, 0, 12, 0));
   P.shuffle = !!saved.shuffle; P.repeat = ["off", "all", "one"].includes(saved.repeat) ? saved.repeat : "off";
   // on unless it was turned off (older saves kept a mode: "off" was off, the other modes — pulse among them — become the pulse)
-  // On the phone the halos start off (they repaint big gradients 60 times a second and the phone drops frames); the switch in the equalizer
-  // panel turns them on, and that choice is kept apart (pulsePhone) so the setting of the computer never decides it.
-  P.pulseOn = document.documentElement.classList.contains("android") ? saved.pulsePhone === true
+  // The halos beat with the music on the phone too, like on the computer; the switch in the equalizer panel turns them off, and that choice
+  // is kept apart (pulseMobile) so the setting of the computer never decides it. (They started off on the phone while it was not known
+  // whether it could draw them smoothly: it can, see the frame measurements in HANDOFF.md.)
+  P.pulseOn = document.documentElement.classList.contains("android") ? saved.pulseMobile !== false
     : typeof saved.pulse === "boolean" ? saved.pulse : saved.viz !== "off";
   if (Array.isArray(saved.recent)) P.recent = saved.recent.filter(id => typeof id === "string").slice(0, MAX_RECENT);
   if (TABS.some(([id]) => id === saved.tab)) L.tab = saved.tab;      // the section of the library you were in

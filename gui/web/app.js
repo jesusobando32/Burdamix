@@ -627,6 +627,7 @@ let saveTimer = null;
 async function loadSettings() {
   const s = await call("get_settings");
   if (s.error) return;
+  renderAccentPicker();
   $("#set-folder-path").textContent = folderLabel(s.effective_downloads_dir); $("#set-folder-path").title = s.effective_downloads_dir;
   $("#set-workers").value = s.workers; $("#set-workers-out").textContent = s.workers;
   $("#set-interludes").checked = s.skip_interludes;
