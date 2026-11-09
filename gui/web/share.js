@@ -107,9 +107,9 @@ function openImport() {
   const box = $("#import-dialog");
   if (!box.classList.contains("hidden")) return;
   const close = openShareBox(box, `<div class="dialog-card sh-card"><h3>Importar una playlist</h3>
-    <p class="muted small">${onPhone() ? "Pega el código que te mandaron, o elige la tarjeta (la imagen)." : "Pega el código que te mandaron, o arrastra aquí la tarjeta (imagen) o elígela."}</p>
+    <p class="muted small">${onPhone() ? "Pega el código que te mandaron, escanea su QR con la cámara o elige la tarjeta (la imagen)." : "Pega el código que te mandaron, o arrastra aquí la tarjeta (imagen) o elígela."}</p>
     <div class="sh-drop" id="im-drop"><textarea id="im-code" rows="4" spellcheck="false" placeholder="BURDAMIX1:…" aria-label="Código de la playlist"></textarea>
-      <button class="btn small-btn" id="im-file" type="button">Elegir tarjeta…</button></div>
+      <div class="sh-drop-row"><button class="btn small-btn" id="im-file" type="button">Elegir tarjeta…</button>${onPhone() && canScanQr() ? '<button class="btn small-btn" id="im-scan" type="button">Escanear QR</button>' : ""}</div></div>
     <p class="sh-error" id="im-error" role="alert" hidden></p>
     <div id="im-result"></div>
     <div class="btn-row"><button class="btn" id="im-close" type="button">Cancelar</button><button class="btn primary" id="im-make" type="button" disabled>Crear playlist</button></div></div>`);
@@ -147,6 +147,8 @@ function openImport() {
     }
     const answer = await call("share_read_file"); if (answer && answer.cancelled) return; code.value = ""; showResult(answer);
   };
+  const scan = $("#im-scan");
+  if (scan) scan.onclick = () => openQrScanner(text => { code.value = text; readCode(text); });
   const drop = $("#im-drop");
   drop.ondragover = ev => { ev.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");

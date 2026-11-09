@@ -11,6 +11,9 @@
     <!-- The songs go in Music/Burdamix, where any file manager sees them; Python and ffmpeg write there with plain paths -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <!-- The camera reads the QR of a shared playlist (gui/web/scan.js); a phone without one can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- PyApplication starts Chaquopy's Python once per process. -->
     <application

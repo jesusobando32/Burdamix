@@ -244,6 +244,7 @@
   const backTarget = view => ((view === "stats" || view === "favorites" || view === "tags" || view === "settings" || view === "tutorial" || view === "faq")
     && (cameFrom[view] === "more" || cameFrom[view] === "start") ? cameFrom[view] : startView());
   function back() {
+    if (document.getElementById("qr-scan")) { closeQrScanner(); return true; }
     if (document.getElementById("ctx")) { closeMenu(); return true; }
     if (shown("dialog")) { q("#dialog-no").click(); return true; }
     for (const [box, cancel] of [["smart-dialog", "#sm-cancel"], ["share-dialog", "#sh-close"], ["import-dialog", "#im-close"]]) {

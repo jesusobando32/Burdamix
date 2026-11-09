@@ -157,3 +157,21 @@ def test_the_songs_live_in_the_shared_music_folder_and_the_permission_for_it_is_
 def test_the_settings_button_that_opens_the_folder_reaches_the_file_manager_through_the_platform():
     assert "fun openFolder" in read(KOTLIN, "Platform.kt") and "Platform.openFolder" in read(APP, "python", "burdamix_host.py")
     assert "#set-folder-open" not in re.search(r"\.android #set-folder[^{]*\{", read(WEB, "mobile.css")).group(0)
+
+
+def test_the_import_window_can_scan_a_qr_with_the_camera_and_every_piece_of_it_is_wired():
+    permissions = {p.get(ANDROID_NS + "name") for p in manifest().findall("uses-permission")}
+    assert "android.permission.CAMERA" in permissions
+    camera = next(f for f in manifest().findall("uses-feature") if f.get(ANDROID_NS + "name") == "android.hardware.camera")
+    assert camera.get(ANDROID_NS + "required") == "false"                      # phones without a camera may still install it
+    activity = read(KOTLIN, "WebActivity.kt")
+    assert "onPermissionRequest" in activity and "RESOURCE_VIDEO_CAPTURE" in activity and "Manifest.permission.CAMERA" in activity
+    assert os.path.isfile(os.path.join(WEB, "jsqr.js")) and 'src="scan.js"' in read(WEB, "index.html")
+    scan = read(WEB, "scan.js")
+    assert "jsqr.js" in scan and "getUserMedia" in scan and "openQrScanner" in scan
+    assert 'id="im-scan"' in read(WEB, "share.js") and "openQrScanner" in read(WEB, "share.js")
+
+
+def test_the_back_gesture_closes_the_scanner_before_anything_else():
+    mobile = read(WEB, "mobile.js")
+    assert mobile.index("qr-scan") < mobile.index('shown("dialog")')

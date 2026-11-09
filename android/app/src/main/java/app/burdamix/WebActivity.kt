@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -42,6 +43,7 @@ class WebActivity : Activity() {
     private val pool = Executors.newCachedThreadPool()
     private var fileChooser: ValueCallback<Array<Uri>>? = null     // the page's <input type="file"> waiting for the phone's picker
     private var booted = false              // Python started and the page loading (after the folder of the songs is decided)
+    private var pendingCamera: PermissionRequest? = null         // the QR scanner waiting for the camera permission
     private var waitingStorage = false      // the user is in the system screen that gives access to the shared storage
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,6 +90,13 @@ class WebActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA) {
+            val request = pendingCamera
+            pendingCamera = null
+            if (request != null) {
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) else request.deny()
+            }
+        }
         if (requestCode == REQUEST_STORAGE && !booted) {
             waitingStorage = false
             if (Storage.canWrite(Storage.sharedMusic())) boot(Storage.sharedMusic()) else chooseMusicFolder()
@@ -145,6 +154,26 @@ class WebActivity : Activity() {
                     return true
                 }
 
+                // The camera for the QR scanner (gui/web/scan.js). Nothing else may be asked, and only by the app's own pages.
+                override fun onPermissionRequest(request: PermissionRequest) {
+                    runOnUiThread {
+                        val camera = request.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
+                        if (request.origin.host != WebViewAssetLoader.DEFAULT_DOMAIN || camera.isEmpty()) {
+                            request.deny()
+                        } else if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(camera.toTypedArray())
+                        } else {
+                            pendingCamera?.deny()
+                            pendingCamera = request
+                            requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+                        }
+                    }
+                }
+
+                override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                    if (pendingCamera === request) pendingCamera = null
+                }
+
                 // <input type="file"> (picking the card of a shared playlist): the system's picker.
                 override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                     fileChooser?.onReceiveValue(null)
@@ -200,6 +229,7 @@ class WebActivity : Activity() {
         const val REQUEST_FILE = 41
         const val REQUEST_NOTIFICATIONS = 42
         const val REQUEST_STORAGE = 43
+        const val REQUEST_CAMERA = 44
         const val PREF_PRIVATE = "private_music"
     }
 
