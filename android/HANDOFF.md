@@ -32,51 +32,59 @@ Llevar la app a **Android**, solo Android 8+ (`minSdk 26`), 64 bits. Decisiones 
 - **Diseño móvil**: ya hecho en `gui/web/mobile.css` y `gui/web/mobile.js` (barra inferior con el botón de descarga al centro, inicio con lo
   último escuchado, reproductor pequeño que se abre completo con el vinilo). Se ve con `?demo` en el navegador. Solo se activa en ≤ 760 px.
 
-## Estado actual del branch `movil`
+## Estado actual del branch `movil` (9 de noviembre de 2026)
 
-Hecho y probado (613 pruebas de Python pasan: `python -m pytest -q`):
-- Diseño móvil responsive y modo sin conexión (`net.js`).
+La app **compila, se instala y se probó en un teléfono real** (Infinix X6855, Android 16, arm64). `python -m pytest tests -q` pasa completo y
+`tests/test_android_static.py` comprueba los contratos web ↔ Kotlin ↔ manifiesto sin necesitar el SDK.
 
-Hecho **pero nunca compilado** (se escribió sin SDK de Android, solo con la documentación):
-- `android/`: proyecto Gradle (Kotlin DSL; AGP 8.7.3, Kotlin 2.0.21, Chaquopy 17.2, Python 3.13, minSdk 26, arm64-v8a).
-- `MainActivity.kt`: pantalla de **prueba**, no la app. Dos botones que ejecutan, en el teléfono, descargar un audio y convertirlo a MP3:
-  yt-dlp en Python (Chaquopy, `app/src/main/python/burdamix_spike.py`) y la librería `youtubedl-android` 0.16.0 (módulos `library` y `ffmpeg`,
-  Maven Central). Cada etapa se informa por separado.
+Funciona y está verificado en el teléfono:
+- Biblioteca, reproductor con notificación (portada, progreso, anterior, pausa, siguiente, aleatorio con su estado), pantalla de bloqueo, teclas de
+  medios, música con la pantalla apagada, gesto atrás por pasos, cerrar desde recientes (se quita la notificación y no queda proceso).
+- Búsqueda y descarga por texto o enlace, sesión de Spotify, pegar con el portapapeles del teléfono, importar y compartir playlists (código,
+  tarjeta con QR y hoja del sistema), **escanear el QR con la cámara** (jsQR dentro de la app, `gui/web/scan.js`).
+- Las canciones van a **`Música/Burdamix`** del teléfono (`Storage.kt`; pide «Acceso a todos los archivos» una vez; si se niega quedan en la carpeta
+  privada de la app y Configuración ofrece «Mover a Música»). Lo que ya hubiera en la carpeta privada se mueve solo
+  (`burdamix_host.migrate_music`, que también corrige «Me gusta» y playlists, que apuntan a rutas). Configuración → «Abrir» la muestra en Archivos.
+- Configuración → **Color de la interfaz**: 16 tonos (`gui/web/theme.js`, OKLCH) además del lima; se guarda en el teléfono.
+- El pulso de la portada (halos que laten con la música) viene encendido como en escritorio; 0 frames lentos medidos con `dumpsys gfxinfo`.
+- Llamadas: el servicio pausa la música mientras el teléfono suena o está en llamada y la reanuda después. Si otra app (un video, Reels) hace que
+  Android pause la canción, el servicio la reanuda cuando nada más suena durante 2 s (hasta 15 min); lo que pausa el usuario no se reanuda.
+  **Estas dos reanudaciones están programadas pero no se pudieron probar con una llamada ni con Reels reales.**
 
-GitHub Actions no está disponible ahora: la cuenta del usuario tiene un bloqueo de facturación. Por eso se compila en este PC.
+Limitaciones conocidas:
+- **Las descargas se detienen al salir de la app en el Infinix** (ROM de Transsion): el proceso se congela (`cgroup.events frozen 1`) aunque
+  `KeepAliveService` esté en primer plano y tenga su bloqueo de CPU; siguen al volver. En otros teléfonos no se ha comprobado. No se encontró
+  ajuste de Phone Master que lo evite; cualquier arreglo es una decisión de diseño (avisar en la app, etc.).
+- YouTube pide «confirma que no eres un robot» tras muchas descargas seguidas, sobre todo con VPN; es temporal.
+- Sin probar con manos: auriculares desenchufados, selector de portada de las etiquetas, audio de otra app y llamada reales.
 
-## Primeros pasos en el PC con Android Studio
+## Compilar y probar en un teléfono
 
-```bash
-git clone https://github.com/jesusobando32/Burdamix.git
-cd Burdamix
-git checkout movil
+Entorno de esta máquina (no se reinstala): JDK 17 y SDK en `C:\Users\Yisu\devtools`, `android/local.properties` (ignorado) apunta al SDK.
+
+```powershell
+cd android
+$env:JAVA_HOME="C:\Users\Yisu\devtools\jdk\jdk-17.0.21+9"; $env:ANDROID_HOME="C:\Users\Yisu\devtools\sdk"; $env:Path="$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat assembleDebug --console=plain
+adb install -r app\build\outputs\apk\debug\app-debug.apk      # -r conserva los datos
 ```
 
-1. Abre la carpeta **`android/`** (no la raíz) en Android Studio y deja que sincronice Gradle.
-   - Chaquopy necesita un **Python 3.13** en el PC (el mismo major.minor que `version = "3.13"` de `app/build.gradle.kts`); si el PC tiene otro,
-     instala 3.13 o indica su ruta con `buildPython("...")` dentro del bloque `chaquopy`.
-   - Si el wrapper de Gradle no existe (no se generó), Android Studio ofrece crearlo; o usa **Gradle 8.10.2** (AGP 8.7.3 pide 8.9 o más).
-2. **Corrige lo que no compile.** Lo más probable: los imports de `youtubedl-android` en `MainActivity.kt` (el README de la librería no los
-   muestra; deberían ser `com.yausername.youtubedl_android.YoutubeDL`, `YoutubeDLRequest` y `com.yausername.ffmpeg.FFmpeg`) y la firma de
-   `YoutubeDL.getInstance().execute(...)`.
-3. Instala en un **teléfono real** (modo desarrollador y depuración USB) o un emulador arm64/x86_64 con internet. Abre Burdamix, espera a que
-   se activen los botones y pulsa los dos. La pantalla enseña cada etapa con ✔ o ✘.
-4. Lo que hay que averiguar y anotar en `android/README.md`:
-   - ¿Importa yt-dlp en Python y llega a YouTube? ¿Descarga el audio?
-   - **¿Se puede ejecutar el ffmpeg empaquetado?** Android 10+ limita ejecutar binarios desde la carpeta de datos de la app; la librería dice dónde
-     lo deja? La prueba busca `ffmpeg`/`libffmpeg.so` en `noBackupFilesDir`, `filesDir` y `nativeLibraryDir` y lo informa.
-   - ¿Cuál de los dos motores conviene para la app real? (Decisión: si el de Python funciona con ffmpeg ejecutable, mantiene un solo código con el
-     escritorio; si no, el motor Kotlin hace de «descargador» y Python se queda con la lógica.)
-5. Con eso decidido, seguir las etapas de `android/README.md` (puente WebView↔Python con el mismo contrato que `pywebview` en
-   `gui/backend.py`; adaptar el backend a Android; servicio de reproducción y de descargas; firma y release).
+- En Git Bash usa `export MSYS_NO_PATHCONV=1` para rutas del teléfono; las capturas (`adb exec-out screencap -p > x.png`) solo salen bien desde Bash.
+- Etiquetas de log útiles: `BurdamixMedia`, `BurdamixKeepAlive`, `BurdamixWeb`, `Burdamix`. **Esta ROM filtra `Log.d`: usa `Log.i` o `Log.w`.**
+- Las coordenadas de `input tap` son del tamaño real (1080x2436); una captura vista a 887x2000 se multiplica por 1,22.
+
+## Release
+
+GitHub Actions falla en segundos en este repositorio (el flujo existe pero no llega a compilar), así que los releases se hacen a mano: compilar,
+nombrar el APK `Burdamix-prueba-arm64.apk` y `gh release create movil-vX.Y.Z-prueba <apk> --target movil --prerelease`. Va firmado con la clave de
+depuración (ver «Firma» en `README.md`). Sube el `versionName` de `app/build.gradle.kts` con cada release.
 
 ## Cómo trabajar
 
 - Cambios pequeños y verificados; corre `python -m pytest -q` (debe seguir en verde) y, en la interfaz, prueba en el navegador con
   `python -m http.server` dentro de `gui/web` y abre `http://localhost:8000/?demo` (la ventana a ≤ 760 px de ancho es el diseño móvil).
 - Pruebas primero cuando el proyecto ya tiene pruebas. Buenas prácticas profesionales, sin parches adivinados: reproducir, aislar, arreglar, verificar.
-- Commits en español, uno por función, con esta línea al final: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
-- **No subir claves de firma** (`*.keystore`, `*.jks` están ignorados) ni datos del usuario. Preguntar antes de publicar, hacer push a `main`,
-  borrar o crear releases.
+- Commits en español y pequeños, **sin** línea `Co-Authored-By` (regla del usuario).
+- **No subir claves de firma** (`*.keystore`, `*.jks` están ignorados) ni datos del usuario. Preguntar antes de hacer push a `main`, borrar
+  o desinstalar la app del teléfono (borra sus datos y su música). Nunca borrar `downloads/`.
 - El usuario no quiere gimmicks invasivos (cursor que sigue al mouse, transiciones de cortina entre pantallas): se quitaron.

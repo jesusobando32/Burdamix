@@ -175,7 +175,7 @@ function advance(auto, skipBroken = false) {
   let next = P.pos + 1;
   if (next >= P.queue.length) {
     if (P.repeat !== "all") {
-      if (auto) { deck().el.pause(); deck().el.currentTime = 0; render(); }
+      if (auto) { P.askedAt = Date.now(); deck().el.pause(); deck().el.currentTime = 0; render(); }
       return;
     }
     next = 0;
@@ -293,11 +293,11 @@ function removeFromQueue(index) {
   if (index < P.pos) P.pos--;
   if (!P.queue.length) {
     P.pos = -1;
-    if (P.decks.length) { deck().el.pause(); deck().el.removeAttribute("src"); deck().el.load(); }
+    if (P.decks.length) { P.askedAt = Date.now(); deck().el.pause(); deck().el.removeAttribute("src"); deck().el.load(); }
   } else if (wasCurrent) {
     if (P.pos >= P.queue.length) P.pos = P.queue.length - 1;   // it was the last one: the new last one is cued, not played
     else if (wasPlaying) { startTrack(current(), QUICK_FADE); return renderQueue(), saveSoon(); }
-    if (!wasPlaying || index >= P.queue.length) { deck().el.pause(); cueTrack(current()); }
+    if (!wasPlaying || index >= P.queue.length) { P.askedAt = Date.now(); deck().el.pause(); cueTrack(current()); }
   }
   trackChanged(); renderQueue(); saveSoon();
 }
@@ -1008,6 +1008,7 @@ function releaseFile(ids) {
   const track = current();
   if (!track || !ids.includes(track.id) || !P.decks.length || !deck().el.getAttribute("src")) return;
   P.resume = deck().el.currentTime;
+  P.askedAt = Date.now();
   deck().el.pause();
   deck().el.removeAttribute("src");
   deck().el.load();

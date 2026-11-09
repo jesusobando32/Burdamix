@@ -4,9 +4,13 @@ Rama `movil`. La app móvil descarga **en el propio teléfono**, sin PC, y funci
 
 ## Estado
 
-**Paso 1 de 5: la prueba del teléfono.** Esta carpeta todavía no es la app: es un APK de prueba que dice, etapa por etapa, si el
-teléfono puede hacer todo el trabajo (Python dentro de la app, yt-dlp, descargar un audio, convertirlo a MP3 con ffmpeg).
-Ya compila en el PC de desarrollo con Android Studio/Gradle (los imports de `youtubedl-android` estaban bien).
+**Ya es la app** (versión de prueba 0.4.0). Un WebView en Kotlin muestra la misma interfaz que el escritorio (`gui/web`) y el Python del programa corre
+dentro con Chaquopy; yt-dlp y ffmpeg van empaquetados. Se instala y se probó en un teléfono real arm64 (Infinix, Android 16): biblioteca,
+reproductor con notificación, descargas, Spotify, compartir e importar playlists (con escáner de QR por cámara), canciones en `Música/Burdamix`,
+paleta de color de la interfaz. Lo que falta y lo que no se pudo probar está en [`HANDOFF.md`](HANDOFF.md) (sobre todo: en el Infinix las descargas
+se detienen al salir de la app).
+
+Las secciones de abajo («Resultado de la prueba», «Etapas») son la historia de cómo se llegó aquí: la prueba del 6 de noviembre de 2026 con el emulador.
 
 ## Resultado de la prueba (6 nov 2026)
 

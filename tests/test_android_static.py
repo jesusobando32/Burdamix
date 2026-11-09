@@ -227,3 +227,12 @@ def test_the_line_that_plays_is_kept_in_the_middle_of_the_lyrics_box():
     lyrics, css = read(WEB, "lyrics.js"), read(WEB, "player.css")
     assert "clientHeight / 2" in lyrics and ".38" not in lyrics               # not 38 % from the top any more
     assert re.search(r"\.ly-body \{ position: relative;", css)               # offsetTop is measured from the box, not from the whole window
+
+
+def test_every_pause_the_program_itself_makes_is_marked_so_it_is_not_taken_for_another_apps():
+    player = read(WEB, "player.js")
+    # the active deck is paused by the program in these places (end of the queue, the queue emptied, a file released for tagging):
+    # without the mark the service would "give the song back" two seconds later
+    for needle in ("if (auto) { P.askedAt = Date.now(); deck().el.pause()", "P.askedAt = Date.now();\n  deck().el.pause();",
+                   "if (P.decks.length) { P.askedAt = Date.now(); deck().el.pause()", "{ P.askedAt = Date.now(); deck().el.pause(); cueTrack(current()); }"):
+        assert needle in player, needle

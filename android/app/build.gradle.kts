@@ -12,8 +12,8 @@ android {
         applicationId = "app.burdamix"
         minSdk = 26            // Android 8; Chaquopy 17.2 itself needs 24 or more
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-movil-prueba"
+        versionCode = 5
+        versionName = "0.4.0-movil-prueba"
 
         ndk {
             // Python 3.12 and newer is 64-bit only. arm64-v8a is every current phone.
