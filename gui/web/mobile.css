@@ -19,6 +19,16 @@
   .scroll { scrollbar-gutter: auto; }
   body.has-player #toasts { bottom: calc(var(--nav-h) + var(--sab) + 90px); }
   #toasts { bottom: calc(var(--nav-h) + var(--sab) + 16px); }
+  /* The messages that pop up take the whole width of the phone. #toasts hangs from left: 50%, so on its own it could only grow to half
+     the screen (a shrink-to-fit box starts at its left edge) and the text was squeezed into a narrow column and cut at the sides. */
+  #toasts { left: 16px; right: 16px; transform: none; justify-items: stretch; }
+  .toast { max-width: none; width: 100%; box-sizing: border-box; text-align: left; line-height: 1.35; }
+  .toast.has-action { justify-content: space-between; }
+  .toast.has-action > span { flex: 1 1 auto; min-width: 0; }
+  .toast-action { flex: none; }
+  /* the menus of a song (…): inside the screen, and a long label wraps instead of pushing the menu out of it */
+  .ctx { max-width: calc(100vw - 24px); }
+  .ctx-item { white-space: normal; height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; line-height: 1.25; text-align: left; }
 
   /* ---------- tab bar, with the download button in the middle ---------- */
   #tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--sab)); padding-bottom: var(--sab);

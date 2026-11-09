@@ -175,3 +175,16 @@ def test_the_import_window_can_scan_a_qr_with_the_camera_and_every_piece_of_it_i
 def test_the_back_gesture_closes_the_scanner_before_anything_else():
     mobile = read(WEB, "mobile.js")
     assert mobile.index("qr-scan") < mobile.index('shown("dialog")')
+
+
+def test_the_messages_that_pop_up_use_the_width_of_the_phone_with_a_margin_and_never_squeeze_their_text():
+    css = read(WEB, "mobile.css")
+    rule = re.search(r"#toasts \{ left: (\d+)px; right: (\d+)px; transform: none;", css)
+    assert rule and rule.group(1) == rule.group(2) and int(rule.group(1)) >= 12          # a margin on both sides, not the whole width
+    assert re.search(r"\.ctx \{ max-width: calc\(100vw - \d+px\); \}", css)               # the menus of a song stay inside the screen
+
+
+def test_a_playlist_code_read_by_the_camera_is_not_shown_in_the_import_window():
+    share = read(WEB, "share.js")
+    assert "viaScan" in share and '$("#im-drop").hidden = viaScan' in share
+    assert ".sh-drop[hidden]" in read(WEB, "crate.css")        # without this rule display:flex would keep the box visible

@@ -114,9 +114,10 @@ function openImport() {
     <div id="im-result"></div>
     <div class="btn-row"><button class="btn" id="im-close" type="button">Cancelar</button><button class="btn primary" id="im-make" type="button" disabled>Crear playlist</button></div></div>`);
   const code = $("#im-code"), err = $("#im-error"), result = $("#im-result"), make = $("#im-make");
-  let found = null, ask = 0;
+  let found = null, ask = 0, viaScan = false;
   const showResult = answer => {
     found = answer && answer.ok ? answer : null;
+    $("#im-drop").hidden = viaScan && !!found;         // a code the camera read is not shown: only what it holds, "Crear playlist" and "Cancelar"
     err.hidden = !!found || !answer; err.textContent = found || !answer ? "" : (answer.error || "No pude leer eso.");
     make.disabled = !found || !found.ids.length;
     make.textContent = found ? (found.ids.length ? `Crear con las ${found.ids.length} que tengo` : "No tengo ninguna") : "Crear playlist";
@@ -129,12 +130,12 @@ function openImport() {
   };
   const readCode = async text => { const mine = ++ask; const answer = await call("share_read", text); if (mine === ask) showResult(answer); };
   let timer = 0;
-  code.oninput = () => { clearTimeout(timer); if (!code.value.trim()) { showResult(null); return; } timer = setTimeout(() => readCode(code.value), 250); };
+  code.oninput = () => { viaScan = false; clearTimeout(timer); if (!code.value.trim()) { showResult(null); return; } timer = setTimeout(() => readCode(code.value), 250); };
   const readPicture = file => {
     if (!file) return;
     if (file.size > 30e6) return showResult({ ok: false, error: "Ese archivo es demasiado grande para ser una tarjeta." });
     const reader = new FileReader();
-    reader.onload = async () => { code.value = ""; showResult(await call("share_read_picture", String(reader.result).split(",")[1] || "")); };
+    reader.onload = async () => { viaScan = false; code.value = ""; showResult(await call("share_read_picture", String(reader.result).split(",")[1] || "")); };
     reader.readAsDataURL(file);
   };
   $("#im-file").onclick = async () => {
@@ -148,7 +149,7 @@ function openImport() {
     const answer = await call("share_read_file"); if (answer && answer.cancelled) return; code.value = ""; showResult(answer);
   };
   const scan = $("#im-scan");
-  if (scan) scan.onclick = () => openQrScanner(text => { code.value = text; readCode(text); });
+  if (scan) scan.onclick = () => openQrScanner(text => { viaScan = true; code.value = text; readCode(text); });
   const drop = $("#im-drop");
   drop.ondragover = ev => { ev.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");

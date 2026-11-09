@@ -126,6 +126,7 @@
 .sh-tip { margin: 0 0 14px; line-height: 1.5; }
 .sh-error { margin: 0 0 10px; color: var(--danger); font-size: 13px; }
 .sh-drop { position: relative; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border-radius: 14px; border: 2px dashed var(--glass-line); margin-bottom: 12px; transition: border-color .15s, background .15s; }
+.sh-drop[hidden] { display: none; }
 .sh-drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .im-summary { margin: 4px 0 8px; }
 .im-summary p { margin: 4px 0 0; }
