@@ -292,6 +292,9 @@
   .lib-row .heart.on { opacity: 1; }
 }
 
+/* The long hint of the download box does not fit on a phone: end it with "…" instead of cutting it mid-word. */
+#link { text-overflow: ellipsis; }
+
 /* ---------- the phone: lighter and smoother (mobile.css loads last) ---------- */
 /* No needle: it moved in jerks and the record already shows what is playing. */
 .android #tonearm, .android .tonearm, .android #app#app.mfull .tonearm { display: none; }
