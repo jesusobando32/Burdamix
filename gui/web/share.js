@@ -98,7 +98,7 @@ function paintShareQr(box, made) {
     return;
   }
   box.innerHTML = `<button type="button" class="sh-qr-plate" title="Clic para ampliar o reducir" aria-label="Código QR de la playlist. Clic para ampliar"><img alt="" src="${made.qr_uri}"></button>
-    <p class="muted small">${onPhone() ? "Tu amigo lo escanea con su cámara y pega el código en Burdamix." : "Escanéalo con el móvil: sale el código para pegarlo en Burdamix."}</p>`;
+    <p class="muted small">${onPhone() ? "Tu amigo lo escanea desde su Burdamix: Playlists → Importar → Escanear QR." : "Escanéalo desde Burdamix en el móvil: Playlists → Importar → Escanear QR."}</p>`;
   $(".sh-qr-plate", box).onclick = () => box.classList.toggle("big");
 }
 

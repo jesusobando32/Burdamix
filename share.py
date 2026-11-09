@@ -126,7 +126,8 @@ def match(songs, items):
 # --- the card -------------------------------------------------------------------------------------------------------------------
 
 def _font(size, bold=False):
-    for path in (rf"C:\Windows\Fonts\{'segoeuib' if bold else 'segoeui'}.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+    for path in (rf"C:\Windows\Fonts\{'segoeuib' if bold else 'segoeui'}.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                 "/system/fonts/DroidSans-Bold.ttf" if bold else "/system/fonts/Roboto-Regular.ttf", "/system/fonts/DroidSans.ttf"):   # the phone's own fonts
         try:
             return ImageFont.truetype(path, size)
         except OSError:
@@ -299,7 +300,7 @@ def render_card(name, by, count, seconds, covers, code):
         for i, (text, size) in enumerate(((reason[0], 44), (reason[1], 44), ("Usa el código de texto o arrastra", 32), ("esta imagen a Burdamix.", 32))):
             font = _font(size, i < 2)
             draw.text((mid - draw.textlength(text, font=font) / 2, PANEL[1] + 230 + i * (58 if i < 2 else 46)), text, font=font, fill=INK)
-    foot, ff = _fit(draw, "Burdamix · Playlists → Importar, o arrastra esta imagen a la app", lambda s: _font(s), CARD_W - 160, (26, 22, 18))
+    foot, ff = _fit(draw, "Burdamix · Playlists > Importar: escanea el QR o arrastra esta imagen", lambda s: _font(s), CARD_W - 160, (26, 22, 18))
     draw.text(((CARD_W - draw.textlength(foot, font=ff)) / 2, 1290), foot, font=ff, fill=(190, 200, 192))
     info = PngInfo()
     info.add_text(TEXT_KEY, code)

@@ -328,3 +328,18 @@ def test_the_share_folder_is_cleaned_of_old_cards_so_the_phone_does_not_fill_up(
     monkeypatch.setenv("BURDAMIX_SHARE_DIR", str(folder))
     assert api.share_card_file([api.ids["Normal"]], "Nueva")["ok"]
     assert not old.exists() and (folder / "no-es-tarjeta.txt").exists()
+
+
+def test_the_card_finds_a_font_on_android_so_its_text_and_arrow_are_not_squares():
+    import share
+    import inspect
+    source = inspect.getsource(share._font)
+    assert "/system/fonts/" in source            # Windows and Linux fonts do not exist on the phone: without these the card used a font with no arrow
+
+
+def test_the_footer_of_the_card_only_uses_characters_every_font_has():
+    import inspect
+    import re
+    import share
+    footer = re.search(r'"(Burdamix · Playlists[^"]*)"', inspect.getsource(share.render_card)).group(1)
+    assert "→" not in footer         # Roboto on the phone has no arrow: the card showed an empty square
