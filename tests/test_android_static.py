@@ -134,3 +134,10 @@ def test_the_phone_has_no_needle_no_glass_blur_and_the_audio_asks_for_big_buffer
     assert re.search(r"\.android \*[^{]*\{[^}]*backdrop-filter:\s*none\s*!important", css)
     assert 'latencyHint: "playback"' in player and "armShown()" in player
     assert "pulsePhone" in player
+
+
+def test_the_service_does_not_ask_for_audio_focus_because_the_webview_already_does():
+    """On a real phone a second request from the service made Android tell it 'focus lost' as soon as the page asked, and it paused the song."""
+    service = read(KOTLIN, "PlaybackService.kt")
+    assert "requestAudioFocus" not in service and "AudioFocusRequest" not in service
+    assert "ACTION_AUDIO_BECOMING_NOISY" in service                        # unplugging the headphones still pauses

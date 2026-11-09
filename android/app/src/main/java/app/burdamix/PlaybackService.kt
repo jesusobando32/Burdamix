@@ -13,8 +13,6 @@ import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaSession
@@ -44,7 +42,6 @@ class PlaybackService : Service() {
     private lateinit var session: MediaSession
     private lateinit var notifications: NotificationManager
     private var wakeLock: PowerManager.WakeLock? = null
-    private var focus: AudioFocusRequest? = null
     private var noisyReceiver: BroadcastReceiver? = null
     private var foreground = false
 
@@ -118,7 +115,7 @@ class PlaybackService : Service() {
             shuffle = s.optBoolean("shuffle")
             PlaybackService.playing = playing
             if (newCover != coverUrl) { coverUrl = newCover; cover = null; if (newCover.isNotEmpty()) loadCover(newCover) }
-            if (playing && !wasPlaying) { takeFocus(); listenForUnplug() } else if (!playing && wasPlaying) { dropFocus(); stopListeningForUnplug() }
+            if (playing && !wasPlaying) listenForUnplug() else if (!playing && wasPlaying) stopListeningForUnplug()
             holdCpu(playing)
             render()
         }
@@ -227,23 +224,9 @@ class PlaybackService : Service() {
 
     // --- being a good citizen -----------------------------------------------------------------------------------------
 
-    private fun takeFocus() {
-        val audio = getSystemService(AudioManager::class.java)
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-            .setOnAudioFocusChangeListener { change ->
-                // A call, another player: pause, and do not start again by itself (the user decides).
-                if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) act("pause")
-            }
-            .build()
-        focus = request
-        audio.requestAudioFocus(request)
-    }
-
-    private fun dropFocus() {
-        focus?.let { getSystemService(AudioManager::class.java).abandonAudioFocusRequest(it) }
-        focus = null
-    }
+    // Audio focus is NOT requested here on purpose: the WebView's own player already asks for it (and pauses itself on a call or another
+    // player). A second request from this service made Android tell it "you lost the focus" the moment the page asked, and the service
+    // answered by pausing the song two seconds after it started (seen on a real phone).
 
     private fun listenForUnplug() {
         if (noisyReceiver != null) return
@@ -277,7 +260,6 @@ class PlaybackService : Service() {
         has = false
         playing = false
         PlaybackService.playing = false
-        dropFocus()
         stopListeningForUnplug()
         holdCpu(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -288,7 +270,6 @@ class PlaybackService : Service() {
 
     override fun onDestroy() {
         stopListeningForUnplug()
-        dropFocus()
         holdCpu(false)
         session.isActive = false
         session.release()
