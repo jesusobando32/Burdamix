@@ -24,6 +24,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Toast
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -55,6 +56,11 @@ class PlaybackService : Service() {
     private var durationMs = 0L
     private var shuffle = false
     private var has = false
+    private var autoPaused = false        // Android paused the song because another app played a sound (not the user): it goes on afterwards
+    private var autoPausedAt = 0L
+    private var quietSince = 0L
+    private var pausedByCall = false      // a call (or a video call) interrupted the song: it goes on when the call ends
+    private var askedShuffle = false      // the shuffle button of the notification was pressed: the next state says what it did
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -112,10 +118,19 @@ class PlaybackService : Service() {
             playing = s.optBoolean("playing")
             positionMs = s.optLong("position")
             durationMs = s.optLong("duration")
+            val userPaused = s.optBoolean("userPaused", false)
+            val wasShuffle = shuffle
             shuffle = s.optBoolean("shuffle")
+            if (askedShuffle && shuffle != wasShuffle) {
+                askedShuffle = false
+                Toast.makeText(this, if (shuffle) "Aleatorio activado" else "Aleatorio desactivado", Toast.LENGTH_SHORT).show()
+            }
             PlaybackService.playing = playing
+            if (playing) autoPaused = false
+            else if (wasPlaying && !userPaused && !pausedByCall) { autoPaused = true; autoPausedAt = SystemClock.elapsedRealtime(); quietSince = 0L }
             if (newCover != coverUrl) { coverUrl = newCover; cover = null; if (newCover.isNotEmpty()) loadCover(newCover) }
             if (playing && !wasPlaying) listenForUnplug() else if (!playing && wasPlaying) stopListeningForUnplug()
+            if (playing || pausedByCall || autoPaused) { main.removeCallbacks(watchCalls); main.post(watchCalls) }
             holdCpu(playing)
             render()
         }
@@ -139,7 +154,7 @@ class PlaybackService : Service() {
                     PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_STOP or
                         PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO
                 )
-                .addCustomAction(PlaybackState.CustomAction.Builder(ACTION_SHUFFLE, if (shuffle) "Aleatorio: activado" else "Aleatorio", R.drawable.ic_shuffle).build())
+                .addCustomAction(PlaybackState.CustomAction.Builder(ACTION_SHUFFLE, if (shuffle) "Aleatorio activado" else "Aleatorio desactivado", shuffleIcon()).build())
                 .setState(if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED, positionMs, if (playing) 1f else 0f, SystemClock.elapsedRealtime())
                 .build()
         )
@@ -175,10 +190,13 @@ class PlaybackService : Service() {
             .addAction(button(R.drawable.ic_previous, "Anterior", ACTION_PREVIOUS))
             .addAction(if (playing) button(R.drawable.ic_pause, "Pausa", ACTION_TOGGLE) else button(R.drawable.ic_play, "Reproducir", ACTION_TOGGLE))
             .addAction(button(R.drawable.ic_next, "Siguiente", ACTION_NEXT))
-            .addAction(button(R.drawable.ic_shuffle, if (shuffle) "Aleatorio: activado" else "Aleatorio", ACTION_SHUFFLE))
+            .addAction(button(shuffleIcon(), if (shuffle) "Aleatorio activado" else "Aleatorio desactivado", ACTION_SHUFFLE))
             .setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
         return builder.build()
     }
+
+    /** Full strength with a bar under it when shuffle is on, faint when it is off: it is the only way to tell inside a notification. */
+    private fun shuffleIcon() = if (shuffle) R.drawable.ic_shuffle_on else R.drawable.ic_shuffle_off
 
     private fun command(action: String) = PendingIntent.getService(
         this, action.hashCode(), Intent(this, PlaybackService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -224,6 +242,34 @@ class PlaybackService : Service() {
 
     // --- being a good citizen -----------------------------------------------------------------------------------------
 
+    // A call: Android mutes the song instead of pausing it (the WebView's player went on running, in silence, and the song was over when
+    // the call ended), so the service pauses it itself while the phone rings or is in a call, and plays it again afterwards. It watches
+    // the audio mode (ringtone, call, voice call) once a second while the music plays; it needs no permission.
+    private val watchCalls = object : Runnable {
+        override fun run() {
+            val audio = getSystemService(AudioManager::class.java)
+            val inCall = audio.mode != AudioManager.MODE_NORMAL
+            if (inCall && playing && !pausedByCall) {
+                pausedByCall = true
+                act("pause")
+            } else if (!inCall && pausedByCall) {
+                pausedByCall = false
+                if (!playing) act("play")           // pressing play by hand during the call counts: nothing to resume then
+            }
+            // Another app (a video, Reels) took the audio and Android paused the song: when nothing else sounds any more for two seconds, play it again.
+            if (autoPaused && !inCall) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - autoPausedAt > AUTO_RESUME_MS) autoPaused = false
+                else if (audio.isMusicActive) quietSince = 0L
+                else {
+                    if (quietSince == 0L) quietSince = now
+                    if (now - quietSince >= QUIET_MS) { autoPaused = false; act("play") }
+                }
+            }
+            if (playing || pausedByCall || autoPaused) main.postDelayed(this, CALL_CHECK_MS)
+        }
+    }
+
     // Audio focus is NOT requested here on purpose: the WebView's own player already asks for it (and pauses itself on a call or another
     // player). A second request from this service made Android tell it "you lost the focus" the moment the page asked, and the service
     // answered by pausing the song two seconds after it started (seen on a real phone).
@@ -253,12 +299,16 @@ class PlaybackService : Service() {
     }
 
     private fun act(action: String) {
+        if (action == "shuffle") askedShuffle = true
         onAction?.invoke(action)
     }
 
     fun stopEverything() {
         has = false
         playing = false
+        pausedByCall = false
+        autoPaused = false
+        main.removeCallbacks(watchCalls)
         PlaybackService.playing = false
         stopListeningForUnplug()
         holdCpu(false)
@@ -269,6 +319,7 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        main.removeCallbacks(watchCalls)
         stopListeningForUnplug()
         holdCpu(false)
         session.isActive = false
@@ -281,6 +332,9 @@ class PlaybackService : Service() {
     companion object {
         private const val CHANNEL = "playback"
         private const val ID = 7
+        private const val CALL_CHECK_MS = 1000L
+        private const val AUTO_RESUME_MS = 15 * 60 * 1000L      // a song stopped by another app is given back for this long, then it is left alone
+        private const val QUIET_MS = 2000L
         private const val ACTION_TOGGLE = "app.burdamix.action.TOGGLE"
         private const val ACTION_NEXT = "app.burdamix.action.NEXT"
         private const val ACTION_PREVIOUS = "app.burdamix.action.PREVIOUS"

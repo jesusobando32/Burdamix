@@ -19,6 +19,8 @@
     return {
       has: true, title: t.title || "", artist: t.artist || "", album: t.album || "", cover: t.cover_url || "",
       playing: isPlaying(), position: el ? Math.round(el.currentTime * 1000) : 0, duration: Math.round(duration * 1000), shuffle: !!P.shuffle,
+      // paused on purpose (a tap, the notification, the headset, the end of the song), not by Android because another app played a sound
+      userPaused: !isPlaying() && (!!(el && el.ended) || Date.now() - (P.askedAt || 0) < 2000),
     };
   };
 
